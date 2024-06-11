@@ -8,12 +8,8 @@ mod utils;
 
 #[pyfunction]
 fn open_array(path: &str) -> PyResult<array::Array> {
-    const HTTP_URL: &str =
-        "https://raw.githubusercontent.com/LDeakin/zarrs/main/tests/data/array_write_read.zarr";
-    const ARRAY_PATH: &str = "/group/array";
-
-    let s: ReadableStorage = Arc::new(store::HTTPStore::new(HTTP_URL).or_else(|x| utils::err(x.to_string()))?);
-    let arr  = RustArray::new(s, ARRAY_PATH).or_else(|x| utils::err(x.to_string()))?; 
+    let s: ReadableStorage = Arc::new(store::HTTPStore::new(path).or_else(|x| utils::err(x.to_string()))?);
+    let arr  = RustArray::new(s, &"/").or_else(|x| utils::err(x.to_string()))?; 
     Ok(array::Array{ arr })
 }
 
