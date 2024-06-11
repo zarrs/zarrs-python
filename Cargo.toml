@@ -1,0 +1,14 @@
+[package]
+name = "zarrs-python"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "zarrs_python"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = "0.21.2"
+zarrs = { version="0.12.5", features = ["http"] }
+paste = "1.0"
