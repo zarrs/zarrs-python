@@ -24,9 +24,9 @@ impl Array {
         return Ok(ind_u64);
     }
 
-    fn bound_slice(&self, slice: &Bound<PySlice>) -> PyResult<Range<u64>> {
+    fn bound_slice(&self, slice: &Bound<PySlice>, axis: usize) -> PyResult<Range<u64>> {
         let start: i32 = slice.getattr("start")?.extract().map_or(0, |x| x);
-        let stop: i32 = slice.getattr("stop")?.extract().map_or(0, |x| x);
+        let stop: i32 = slice.getattr("stop")?.extract().map_or(self.arr.shape()[axis] as i32, |x| x);
         let start_u64 = self.maybe_convert_u64(start, 0)?;
         let stop_u64 = self.maybe_convert_u64(stop, 0)?;
         // let _step: u64 = slice.getattr("step")?.extract().map_or(1, |x| x); // there is no way to use step it seems with zarrs?
@@ -45,14 +45,14 @@ impl Array {
     pub fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
         let selection: ArraySubset;
         if let Ok(slice) = key.downcast::<PySlice>() {
-            selection = ArraySubset::new_with_ranges(&self.fill_from_slices(vec![self.bound_slice(slice)?])?);
+            selection = ArraySubset::new_with_ranges(&self.fill_from_slices(vec![self.bound_slice(slice, 0)?])?);
         } else if let Ok(list) = key.downcast::<PyList>(){
             let ranges: Vec<Range<u64>> = list.into_iter().enumerate().map(|(index, val)| {
                 if let Ok(int) = val.downcast::<PyInt>() {
                     let end = self.maybe_convert_u64(int.extract()?, index)?;
                     Ok(end..(end + 1))
                 } else if let Ok(slice) = val.downcast::<PySlice>() {
-                    Ok(self.bound_slice(slice)?)
+                    Ok(self.bound_slice(slice, index)?)
                 } else {
                     return Err(PyValueError::new_err(format!("Cannot take {0}, must be int or slice", val.to_string())));
                 }
