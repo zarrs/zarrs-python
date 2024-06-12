@@ -1,3 +1,4 @@
+use array::Array;
 use pyo3::{exceptions::PyTypeError, prelude::*};
 use std::sync::Arc;
 use zarrs::storage::{ReadableStorage, store};
@@ -8,7 +9,12 @@ mod utils;
 
 #[pyfunction]
 fn open_array(path: &str) -> PyResult<array::Array> {
-    let s: ReadableStorage = Arc::new(store::HTTPStore::new(path).or_else(|x| utils::err(x.to_string()))?);
+    let s: ReadableStorage;
+    if path.starts_with("http://") | path.starts_with("https://") {
+        s = Arc::new(store::HTTPStore::new(path).or_else(|x| utils::err(x.to_string()))?);
+    } else {
+        s = Arc::new(store::FilesystemStore::new(path).or_else(|x| utils::err(x.to_string()))?);
+    }
     let arr  = RustArray::new(s, &"/").or_else(|x| utils::err(x.to_string()))?; 
     Ok(array::Array{ arr })
 }
