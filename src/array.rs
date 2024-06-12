@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 use zarrs::array::{Array as RustArray};
 use zarrs::array_subset::ArraySubset;
 use zarrs::storage::ReadableStorageTraits;
-use pyo3::types::{PyInt, PyList, PySlice};
+use pyo3::types::{PyInt, PyList, PySlice, PyTuple};
 use std::ops::Range;
 
 #[pyclass]
@@ -46,8 +46,8 @@ impl Array {
         let selection: ArraySubset;
         if let Ok(slice) = key.downcast::<PySlice>() {
             selection = ArraySubset::new_with_ranges(&self.fill_from_slices(vec![self.bound_slice(slice, 0)?])?);
-        } else if let Ok(list) = key.downcast::<PyList>(){
-            let ranges: Vec<Range<u64>> = list.into_iter().enumerate().map(|(index, val)| {
+        } else if let Ok(tuple) = key.downcast::<PyTuple>(){
+            let ranges: Vec<Range<u64>> = tuple.into_iter().enumerate().map(|(index, val)| {
                 if let Ok(int) = val.downcast::<PyInt>() {
                     let end = self.maybe_convert_u64(int.extract()?, index)?;
                     Ok(end..(end + 1))
@@ -59,7 +59,7 @@ impl Array {
             }).collect::<Result<Vec<Range<u64>>, _>>()?;
             selection = ArraySubset::new_with_ranges(&self.fill_from_slices(ranges)?);
         } else {
-            return Err(PyTypeError::new_err("Unsupported type"));
+            return Err(PyTypeError::new_err(format!("Unsupported type: {0}", key)));
         }
         return self.arr.retrieve_array_subset(&selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()));
     }
