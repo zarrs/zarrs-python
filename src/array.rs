@@ -61,6 +61,8 @@ impl Array {
         } else {
             return Err(PyTypeError::new_err("Unsupported type"));
         }
-        return self.arr.retrieve_chunks(&selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()));
+        return self.arr.retrieve_array_subset(&selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()));
     }
 }
+
+
