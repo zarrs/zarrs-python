@@ -15,9 +15,9 @@ fn open_array(path: &str) -> PyResult<array::Array> {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn zarrs_python(_py: Python, m: &PyModule) -> PyResult<()> {
-    let core = PyModule::new(_py, "core")?;
-    core.add_function(wrap_pyfunction!(open_array, core)?)?;
-    m.add_submodule(core);
+fn zarrs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    let core = PyModule::new_bound(m.py(),"core")?;
+    core.add_function(wrap_pyfunction!(open_array, &core)?)?;
+    let _ = m.add_submodule(&core);
     Ok(())
 }
