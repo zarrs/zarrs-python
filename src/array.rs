@@ -3,10 +3,11 @@ use pyo3::prelude::*;
 use zarrs::array::{Array as RustArray};
 use zarrs::array_subset::ArraySubset;
 use zarrs::storage::ReadableStorageTraits;
-use pyo3::types::{PyInt, PyList, PySlice, PyTuple};
+use pyo3::types::{PyInt, PySlice, PyTuple};
 use std::ops::Range;
 use dlpark::prelude::*;
 use std::ffi::c_void;
+
 
 #[pyclass]
 pub struct Array {
@@ -36,7 +37,7 @@ impl Array {
         return Ok(selection)
     }
 
-    fn fill_from_slices(&self, slices: Vec<Range<u64>>) -> PyResult<Vec<Range<u64>>> {
+    pub fn fill_from_slices(&self, slices: Vec<Range<u64>>) -> PyResult<Vec<Range<u64>>> {
         Ok(self.arr.shape().iter().enumerate().map(|(index, &value)| { if index < slices.len() { slices[index].clone() } else { 0..value } }).collect())
     }
 }
@@ -44,7 +45,7 @@ impl Array {
 #[pymethods]
 impl Array {
 
-    pub fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<DLPack> {
+    pub fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<ManagerCtx<PyZarrArr>> {
         let selection: ArraySubset;
         if let Ok(slice) = key.downcast::<PySlice>() {
             selection = ArraySubset::new_with_ranges(&self.fill_from_slices(vec![self.bound_slice(slice, 0)?])?);
@@ -63,33 +64,38 @@ impl Array {
         } else {
             return Err(PyTypeError::new_err(format!("Unsupported type: {0}", key)));
         }
-        let dlpacked_buf = self.arr.retrieve_array_subset_elements(&selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?.into_dlpack();
-        let shape = selection.shape();
+        let arr = self.arr.retrieve_array_subset(&selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+        let shape = selection.shape().iter().map(|&x| x as i64).collect::<Vec<i64>>();
+        Ok(ManagerCtx::new(PyZarrArr{ shape, arr }))
     }
 }
 
-struct PyZarrArr<T> {
-    arr: Vec<T>,
-    shape: Vec<u64>,
+
+pub struct PyZarrArr {
+    arr: Vec<u8>,
+    shape: Vec<i64>,
 }
 
-impl<T> PyZarrArr<T> {
-    pub fn new(arr: Vec<T>, shape: Vec<u64>) -> Self {
-        Self {
-            arr,
-            shape,
-        }
-    }
-}
-
-impl<T> ToTensor for PyZarrArr<T> { 
+impl ToTensor for PyZarrArr { 
     fn data_ptr(&self) -> *mut std::ffi::c_void {
         self.arr.as_ptr() as *const c_void as *mut c_void
     }
-    fn shape_and_strides(&self) -> ShapeAndStrides;
-    fn device(&self) -> Device;
-    fn dtype(&self) -> DataType;
-    fn byte_offset(&self) -> u64;
+    fn shape_and_strides(&self) -> ShapeAndStrides {
+        ShapeAndStrides::new_contiguous_with_strides(
+            self.shape.iter()
+        )
+    }
+
+    fn byte_offset(&self) -> u64 {
+        0
+    }
+
+
+    fn device(&self) -> Device {
+        Device::CPU
+    }
+
+    fn dtype(&self) -> DataType {
+        DataType::U8
+    }
  }
-
-
