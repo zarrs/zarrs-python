@@ -1,4 +1,3 @@
-use array::Array;
 use pyo3::{exceptions::PyTypeError, prelude::*};
 use std::sync::Arc;
 use zarrs::storage::{ReadableStorage, store};
@@ -8,7 +7,7 @@ mod array;
 mod utils;
 
 #[pyfunction]
-fn open_array(path: &str) -> PyResult<array::Array> {
+fn open_array(path: &str) -> PyResult<array::ZarrsPythonArray> {
     let s: ReadableStorage;
     if path.starts_with("http://") | path.starts_with("https://") {
         s = Arc::new(store::HTTPStore::new(path).or_else(|x| utils::err(x.to_string()))?);
@@ -16,14 +15,13 @@ fn open_array(path: &str) -> PyResult<array::Array> {
         s = Arc::new(store::FilesystemStore::new(path).or_else(|x| utils::err(x.to_string()))?);
     }
     let arr  = RustArray::new(s, &"/").or_else(|x| utils::err(x.to_string()))?; 
-    Ok(array::Array{ arr })
+    Ok(array::ZarrsPythonArray{ arr })
 }
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn zarrs_python(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    let core = PyModule::new_bound(m.py(),"core")?;
-    core.add_function(wrap_pyfunction!(open_array, &core)?)?;
-    let _ = m.add_submodule(&core);
+fn zarrs_python_internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(open_array, m)?)?;
+    m.add_class::<array::ZarrsPythonArray>()?;
     Ok(())
 }

@@ -11,5 +11,20 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies = [
+    'asciitree',
+    'numpy>=1.24',
+    'fasteners',
+    'numcodecs[msgpack]>=0.10.0',
+    'fsspec>2024',
+    'crc32c',
+    'zstandard',
+    'typing_extensions',
+    'donfig',
+    'pytest',
+    'universal_pathlib>=0.2.0'
+]
+
 [tool.maturin]
+module-name = "zarrs_python.zarrs_python_internal"
 features = ["pyo3/extension-module"]

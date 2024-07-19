@@ -3,18 +3,18 @@ use pyo3::prelude::*;
 use zarrs::array::{Array as RustArray};
 use zarrs::array_subset::ArraySubset;
 use zarrs::storage::ReadableStorageTraits;
-use pyo3::types::{PyInt, PySlice, PyTuple};
+use pyo3::types::{PyInt, PyList, PySlice, PyTuple};
 use std::ops::Range;
 use dlpark::prelude::*;
 use std::ffi::c_void;
 
 
 #[pyclass]
-pub struct Array {
+pub struct ZarrsPythonArray {
     pub arr: RustArray<dyn ReadableStorageTraits + 'static>
 }
 
-impl Array {
+impl ZarrsPythonArray {
 
     fn maybe_convert_u64(&self, ind: i32, axis: usize) -> PyResult<u64> {
         let mut ind_u64: u64 = ind as u64;
@@ -43,7 +43,7 @@ impl Array {
 }
 
 #[pymethods]
-impl Array {
+impl ZarrsPythonArray {
 
     pub fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<ManagerCtx<PyZarrArr>> {
         let selection: ArraySubset;

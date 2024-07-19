@@ -1,0 +1,3 @@
+[submodule "zarrs_python"]
+	path = zarrs_python
+	url = https://github.com/zarr-developers/zarr-python.git
