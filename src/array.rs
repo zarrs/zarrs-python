@@ -45,26 +45,46 @@ impl ZarrsPythonArray {
 #[pymethods]
 impl ZarrsPythonArray {
 
-    pub fn __getitem__(&self, key: &Bound<'_, PyAny>) -> PyResult<ManagerCtx<PyZarrArr>> {
-        let selection: ArraySubset;
-        if let Ok(slice) = key.downcast::<PySlice>() {
-            selection = ArraySubset::new_with_ranges(&self.fill_from_slices(vec![self.bound_slice(slice, 0)?])?);
-        } else if let Ok(tuple) = key.downcast::<PyTuple>(){
-            let ranges: Vec<Range<u64>> = tuple.into_iter().enumerate().map(|(index, val)| {
-                if let Ok(int) = val.downcast::<PyInt>() {
-                    let end = self.maybe_convert_u64(int.extract()?, index)?;
-                    Ok(end..(end + 1))
-                } else if let Ok(slice) = val.downcast::<PySlice>() {
-                    Ok(self.bound_slice(slice, index)?)
-                } else {
-                    return Err(PyValueError::new_err(format!("Cannot take {0}, must be int or slice", val.to_string())));
+    pub fn retrieve_chunk_subset(&self, chunk_coords_and_selections: &Bound<'_, PyList>) -> PyResult<ManagerCtx<PyZarrArr>> {
+        if let Ok(chunk_coords_and_selection_list) = chunk_coords_and_selections.downcast::<PyList>() {
+            let coords_extracted: Vec<Vec<u64>> = vec![vec![0]; chunk_coords_and_selection_list.len()];
+            let selections_extracted: Vec<ArraySubset> = vec![ArraySubset::new_empty(1); chunk_coords_and_selection_list.len()];
+            chunk_coords_and_selection_list.into_iter().enumerate().map(|(index, chunk_coord_and_selection)| {
+                if let Ok(chunk_coord_and_selection_tuple) = chunk_coord_and_selection.downcast::<PyTuple>() {
+                    let coord = chunk_coord_and_selection_tuple.get_item(0)?;
+                    let coord_extracted: Vec<u64>;
+                    if let Ok(coord_downcast) = coord.downcast::<PyTuple>() {
+                        coord_extracted = coord_downcast.extract()?;
+                        coords_extracted[index] = coord_extracted;
+                    } else {
+                        return Err(PyValueError::new_err(format!("Cannot take {0}, must be int or slice", coord.to_string())));
+                    }
+                    let selection = chunk_coord_and_selection_tuple.get_item(1)?;
+                    let selection_extracted: ArraySubset;
+                    if let Ok(slice) = selection.downcast::<PySlice>() {
+                        selections_extracted[index] = ArraySubset::new_with_ranges(&self.fill_from_slices(vec![self.bound_slice(slice, 0)?])?);
+                    } else if let Ok(tuple) = selection.downcast::<PyTuple>(){
+                        let ranges: Vec<Range<u64>> = tuple.into_iter().enumerate().map(|(index, val)| {
+                            if let Ok(int) = val.downcast::<PyInt>() {
+                                let end = self.maybe_convert_u64(int.extract()?, index)?;
+                                Ok(end..(end + 1))
+                            } else if let Ok(slice) = val.downcast::<PySlice>() {
+                                Ok(self.bound_slice(slice, index)?)
+                            } else {
+                                return Err(PyValueError::new_err(format!("Cannot take {0}, must be int or slice", val.to_string())));
+                            }
+                        }).collect::<Result<Vec<Range<u64>>, _>>()?;
+                        selections_extracted[index] = ArraySubset::new_with_ranges(&self.fill_from_slices(ranges)?);
+                    } else {
+                        return Err(PyTypeError::new_err(format!("Unsupported type: {0}", selection)));
+                    }
                 }
-            }).collect::<Result<Vec<Range<u64>>, _>>()?;
-            selection = ArraySubset::new_with_ranges(&self.fill_from_slices(ranges)?);
+                return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coord_and_selection)));
+            });
         } else {
-            return Err(PyTypeError::new_err(format!("Unsupported type: {0}", key)));
+            return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coords)));
         }
-        let arr = self.arr.retrieve_array_subset(&selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+        let arr = self.arr.retrieve_chunk_subset(&coords, &selection).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
         let shape = selection.shape().iter().map(|&x| x as i64).collect::<Vec<i64>>();
         Ok(ManagerCtx::new(PyZarrArr{ shape, arr }))
     }
