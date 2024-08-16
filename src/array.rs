@@ -100,15 +100,17 @@ impl ZarrsPythonArray {
 
     pub fn retrieve_chunk_subset(&self, chunk_coords_and_selections: &Bound<'_, PyList>) -> PyResult<ManagerCtx<PyZarrArr>> {
         if let Ok(chunk_coords_and_selection_list) = chunk_coords_and_selections.downcast::<PyList>() {
+            // Need to scale up everything because zarr's chunks don't match zarrs' chunks
+            let chunk_representation = self.arr.chunk_array_representation(&vec![0; self.arr.chunk_grid().dimensionality()]).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+            let data_type_size = chunk_representation.data_type().size();
+
             let coords_extracted = &self.extract_coords(chunk_coords_and_selection_list)?;
             let selections_extracted = self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
             let out_selections_extracted = &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
-            let selections_length = selections_extracted.len();
-            let total_shape = selections_extracted.iter().map(|x| (*x.shape()).to_vec()).fold(vec![0; selections_length], |mut acc, arr| {
+            let total_shape = selections_extracted.iter().map(|x| (*x.shape()).to_vec()).fold(vec![0; coords_extracted[0].len()], |mut acc, arr| {
                 acc.iter_mut().zip(arr).for_each(|(a, b)| *a += b);
                 acc
             });       
-            let chunk_representation = self.arr.chunk_array_representation(&vec![0; self.arr.chunk_grid().dimensionality()]).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
             let chunks = ArraySubset::new_with_shape(self.arr.chunk_grid_shape().unwrap());
             let concurrent_target = std::thread::available_parallelism().unwrap().get();
             let (chunks_concurrent_limit, codec_concurrent_target) =
@@ -127,20 +129,19 @@ impl ZarrsPythonArray {
                 );
             let codec_options = CodecOptionsBuilder::new().concurrent_target(codec_concurrent_target).build();
             let size_output = selections_extracted.iter().fold(1, |res, a| res * a.shape().iter().product::<u64>() as usize);
-            let mut output = Vec::with_capacity(size_output);
+            let mut output = Vec::with_capacity(size_output * data_type_size);
             let borrowed_selections = &selections_extracted;
             {
                 let output =
                     UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
                 let retrieve_chunk = |chunk: Chunk| {
-                    // println!("Chunk/shard: {:?}", chunk_indices);
                     let chunk_subset_bytes = self.arr.retrieve_chunk_subset_opt(&chunk.index, &chunk.selection, &codec_options).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                     update_bytes_flen(
                         unsafe { output.get() },
                         &total_shape,
                         &chunk_subset_bytes,
                         &chunk.out_selection,
-                        chunk_representation.data_type().size(),
+                        data_type_size,
                     );
                     Ok::<_, PyErr>(())
                 };
@@ -153,7 +154,7 @@ impl ZarrsPythonArray {
                 )?;
             }
             unsafe { output.set_len(size_output) };
-            Ok(ManagerCtx::new(PyZarrArr{ shape: total_shape, arr: output }))
+            Ok(ManagerCtx::new(PyZarrArr{ shape: total_shape, arr: output, dtype: chunk_representation.data_type().clone() }))
         } else {
             return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coords_and_selections)));
         }
@@ -164,6 +165,7 @@ impl ZarrsPythonArray {
 pub struct PyZarrArr {
     arr: Vec<u8>,
     shape: Vec<u64>,
+    dtype: zarrs::array::DataType
 }
 
 impl ToTensor for PyZarrArr { 
@@ -186,6 +188,19 @@ impl ToTensor for PyZarrArr {
     }
 
     fn dtype(&self) -> DataType {
-        DataType::U8
+        match(self.dtype) {
+            zarrs::array::DataType::Int16 => DataType::I16,
+            zarrs::array::DataType::Int32 => DataType::I32,
+            zarrs::array::DataType::Int64 => DataType::I64,
+            zarrs::array::DataType::Int8 => DataType::I8,
+            zarrs::array::DataType::UInt16 => DataType::U16,
+            zarrs::array::DataType::UInt32 => DataType::U32,
+            zarrs::array::DataType::UInt64 => DataType::U64,
+            zarrs::array::DataType::UInt8 => DataType::U8,
+            zarrs::array::DataType::Float32 => DataType::F32,
+            zarrs::array::DataType::Float64 => DataType::F64,
+            zarrs::array::DataType::Bool => DataType::BOOL,
+            _ => panic!("Unsupported data type")
+        }
     }
  }
