@@ -188,7 +188,7 @@ impl ToTensor for PyZarrArr {
     }
 
     fn dtype(&self) -> DataType {
-        match(self.dtype) {
+        match  self.dtype {
             zarrs::array::DataType::Int16 => DataType::I16,
             zarrs::array::DataType::Int32 => DataType::I32,
             zarrs::array::DataType::Int64 => DataType::I64,
