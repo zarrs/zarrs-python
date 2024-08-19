@@ -12,11 +12,13 @@ pub fn update_bytes_flen(
 ) {
     debug_assert_eq!(
         output_bytes.len(),
-        usize::try_from(output_shape.iter().product::<u64>()).unwrap() * data_type_size
+        usize::try_from(output_shape.iter().product::<u64>()).unwrap() * data_type_size,
+        "Failed out check: output_bytes.len(): {:?}, output_shape: {:?}, data_type_size: {:?}", output_bytes.len(), output_shape, data_type_size,
     );
     debug_assert_eq!(
         subset_bytes.len(),
         subset.num_elements_usize() * data_type_size,
+        "Failed subset check: subset_bytes.len(): {:?}, subset.num_elements_usize(): {:?}, data_type_size: {:?}", output_bytes.len(), output_shape, data_type_size,
     );
 
     let contiguous_indices =
