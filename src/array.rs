@@ -128,7 +128,7 @@ impl ZarrsPythonArray {
                         .recommended_concurrency(&chunk_representation).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
                 );
             let codec_options = CodecOptionsBuilder::new().concurrent_target(codec_concurrent_target).build();
-            let size_output = selections_extracted.iter().fold(0, |res, a| res + a.shape().iter().product::<u64>()) as usize;
+            let size_output = total_shape.iter().product::<u64>() as usize;
             let mut output = Vec::with_capacity(size_output * data_type_size);
             let borrowed_selections = &selections_extracted;
             {
