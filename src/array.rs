@@ -98,19 +98,15 @@ impl ZarrsPythonArray {
 #[pymethods]
 impl ZarrsPythonArray {
 
-    pub fn retrieve_chunk_subset(&self, chunk_coords_and_selections: &Bound<'_, PyList>) -> PyResult<ManagerCtx<PyZarrArr>> {
+    pub fn retrieve_chunk_subset(&self, out_shape: &Bound<'_, PyTuple>, chunk_coords_and_selections: &Bound<'_, PyList>) -> PyResult<ManagerCtx<PyZarrArr>> {
         if let Ok(chunk_coords_and_selection_list) = chunk_coords_and_selections.downcast::<PyList>() {
             // Need to scale up everything because zarr's chunks don't match zarrs' chunks
             let chunk_representation = self.arr.chunk_array_representation(&vec![0; self.arr.chunk_grid().dimensionality()]).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
             let data_type_size = chunk_representation.data_type().size();
-
+            let out_shape_extracted = out_shape.into_iter().map(|x| x.extract::<u64>()).collect::<PyResult<Vec<u64>>>()?;
             let coords_extracted = &self.extract_coords(chunk_coords_and_selection_list)?;
             let selections_extracted = self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
             let out_selections_extracted = &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
-            let total_shape = selections_extracted.iter().map(|x| (*x.shape()).to_vec()).fold(vec![0; coords_extracted[0].len()], |mut acc, arr| {
-                acc.iter_mut().zip(arr).for_each(|(a, b)| *a += b);
-                acc
-            });       
             let chunks = ArraySubset::new_with_shape(self.arr.chunk_grid_shape().unwrap());
             let concurrent_target = std::thread::available_parallelism().unwrap().get();
             let (chunks_concurrent_limit, codec_concurrent_target) =
@@ -128,7 +124,7 @@ impl ZarrsPythonArray {
                         .recommended_concurrency(&chunk_representation).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
                 );
             let codec_options = CodecOptionsBuilder::new().concurrent_target(codec_concurrent_target).build();
-            let size_output = total_shape.iter().product::<u64>() as usize;
+            let size_output = out_shape_extracted.iter().product::<u64>() as usize;
             let mut output = Vec::with_capacity(size_output * data_type_size);
             let borrowed_selections = &selections_extracted;
             {
@@ -138,7 +134,7 @@ impl ZarrsPythonArray {
                     let chunk_subset_bytes = self.arr.retrieve_chunk_subset_opt(&chunk.index, &chunk.selection, &codec_options).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                     update_bytes_flen(
                         unsafe { output.get() },
-                        &total_shape,
+                        &out_shape_extracted,
                         &chunk_subset_bytes,
                         &chunk.out_selection,
                         data_type_size,
@@ -154,7 +150,7 @@ impl ZarrsPythonArray {
                 )?;
             }
             unsafe { output.set_len(size_output) };
-            Ok(ManagerCtx::new(PyZarrArr{ shape: total_shape, arr: output, dtype: chunk_representation.data_type().clone() }))
+            Ok(ManagerCtx::new(PyZarrArr{ shape: out_shape_extracted, arr: output, dtype: chunk_representation.data_type().clone() }))
         } else {
             return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coords_and_selections)));
         }
