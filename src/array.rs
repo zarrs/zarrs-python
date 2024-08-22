@@ -1,3 +1,5 @@
+use numpy::ndarray::{Array, ArrayBase, ArrayViewD};
+use numpy::{PyArray, PyArray2, PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
@@ -12,11 +14,17 @@ use dlpark::prelude::*;
 use std::ffi::c_void;
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use rayon::prelude::*;
-use crate::utils::update_bytes_flen;
+use crate::utils::{cartesian_product, update_bytes_flen, update_bytes_flen_with_indexer};
 
 struct Chunk<'a> {
     index: &'a Vec<u64>,
     selection: &'a ArraySubset,
+    out_selection: &'a ArraySubset,
+}
+
+struct NdArrayChunk<'a> {
+    index: &'a Vec<u64>,
+    selection: &'a Vec<Vec<i64>>,
     out_selection: &'a ArraySubset,
 }
 
@@ -60,8 +68,11 @@ impl ZarrsPythonArray {
                 if let Ok(coord_downcast) = coord.downcast::<PyTuple>() {
                     coord_extracted = coord_downcast.extract()?;
                     return Ok(coord_extracted);
+                } else if let Ok(nd_array) = coord.downcast::<PyArray2<u64>>() {
+                    let nd_array_extracted: Vec<u64> = nd_array.to_vec()?;
+                    return Ok(nd_array_extracted);
                 } else {
-                    return Err(PyValueError::new_err(format!("Cannot take {0}, must be int or slice", coord.to_string())));
+                    return Err(PyValueError::new_err(format!("Cannot take {0}, must be int, ndarray, or slice", coord.to_string())));
                 }
             }
             return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coord_and_selection)));
@@ -93,6 +104,53 @@ impl ZarrsPythonArray {
             return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coord_and_selection)));
         }).collect::<PyResult<Vec<ArraySubset>>>()
     }
+
+    fn extract_selection_to_vec_indices(&self, chunk_coords_and_selections: &Bound<'_, PyList>, index: usize) -> PyResult<Vec<Vec<Vec<i64>>>> {
+        chunk_coords_and_selections.into_iter().map(|chunk_coord_and_selection| {
+             if let Ok(chunk_coord_and_selection_tuple) = chunk_coord_and_selection.downcast::<PyTuple>() {
+                let selection = chunk_coord_and_selection_tuple.get_item(index)?;
+                if let Ok(tuple) = selection.downcast::<PyTuple>(){
+                    let res = tuple.into_iter().map(|(val)| {
+                        if let Ok(nd_array) = val.downcast::<PyArrayDyn<i64>>() {
+                            let res = nd_array.to_vec()?;
+                            Ok(res)
+                        } else {
+                            Err(PyTypeError::new_err(format!("Unsupported type: {0}", tuple)))
+                        }
+                    }).collect::<PyResult<Vec<Vec<i64>>>>()?;
+                    return Ok(res);
+                } else {
+                    return Err(PyTypeError::new_err(format!("Unsupported type: {0}", selection)));
+                }
+            }
+            return Err(PyTypeError::new_err(format!("Unsupported type: {0}", chunk_coord_and_selection)));
+        }).collect::<PyResult<Vec<Vec<Vec<i64>>>>>()
+    }
+
+    fn is_selection_numpy_array(&self, chunk_coords_and_selections: &Bound<'_, PyList>, index: usize) -> bool {
+        let results = chunk_coords_and_selections.into_iter().map(|chunk_coord_and_selection| {
+            if let Ok(chunk_coord_and_selection_tuple) = chunk_coord_and_selection.downcast::<PyTuple>() {
+                let selection = chunk_coord_and_selection_tuple.get_item(index);
+                if let Ok(selection_unwrapped) = selection {
+                    if let Ok(tuple) = selection_unwrapped.downcast::<PyTuple>(){
+                        let res: Vec<bool> = tuple.into_iter().map(|(val)| -> bool {
+                            let nd_array = val.downcast::<PyArrayDyn<i64>>();
+                            let res = match nd_array {
+                                Ok(_) => true,
+                                Err(_) => false
+                            };
+                            return res;
+                        }).collect();
+                        return res;
+                    }
+                    return vec![false];
+                }
+                return vec![false]
+            }
+            return vec![false];
+        }).flatten().collect::<Vec<bool>>();
+        results.iter().any(|x: &bool| *x )
+    }
 }
 
 #[pymethods]
@@ -105,7 +163,6 @@ impl ZarrsPythonArray {
             let data_type_size = chunk_representation.data_type().size();
             let out_shape_extracted = out_shape.into_iter().map(|x| x.extract::<u64>()).collect::<PyResult<Vec<u64>>>()?;
             let coords_extracted = &self.extract_coords(chunk_coords_and_selection_list)?;
-            let selections_extracted = self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
             let out_selections_extracted = &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
             let chunks = ArraySubset::new_with_shape(self.arr.chunk_grid_shape().unwrap());
             let concurrent_target = std::thread::available_parallelism().unwrap().get();
@@ -126,6 +183,39 @@ impl ZarrsPythonArray {
             let codec_options = CodecOptionsBuilder::new().concurrent_target(codec_concurrent_target).build();
             let size_output = out_shape_extracted.iter().product::<u64>() as usize;
             let mut output = Vec::with_capacity(size_output * data_type_size);
+
+            if self.is_selection_numpy_array(chunk_coords_and_selections, 1) {
+                let selections_extracted = self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
+                let borrowed_selections = &selections_extracted;
+                println!("hereeees");
+                {
+                    let output =
+                        UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
+                    let retrieve_chunk = |chunk: NdArrayChunk| {
+                        println!("{:?} {:?}", cartesian_product(chunk.selection), out_shape_extracted);
+                        let indices: Vec<u64> = cartesian_product(chunk.selection).iter().map(|x| x.iter().enumerate().fold(0, |acc, (ind, x)| {acc + (*x as u64) * out_shape_extracted[1..].iter().product::<u64>()})).collect();
+                        let chunk_subset_bytes = self.arr.retrieve_chunk(&chunk.index).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+                        update_bytes_flen_with_indexer(
+                            unsafe { output.get() },
+                            &out_shape_extracted,
+                            &chunk_subset_bytes,
+                            &chunk.out_selection,
+                            &indices,
+                            data_type_size,
+                        );
+                        Ok::<_, PyErr>(())
+                    };
+                    let zipped_iterator = coords_extracted.into_iter().zip(borrowed_selections.into_iter()).zip(out_selections_extracted.into_iter()).map(|((index, selection), out_selection)| NdArrayChunk { index, selection, out_selection });
+                    iter_concurrent_limit!(
+                        chunks_concurrent_limit,
+                        zipped_iterator.collect::<Vec<NdArrayChunk>>(),
+                        try_for_each,
+                        retrieve_chunk
+                    )?;
+                }
+            }
+            let selections_extracted = self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
+            let out_selections_extracted = &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
             let borrowed_selections = &selections_extracted;
             {
                 let output =
