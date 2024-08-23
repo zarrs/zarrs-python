@@ -187,13 +187,11 @@ impl ZarrsPythonArray {
             if self.is_selection_numpy_array(chunk_coords_and_selections, 1) {
                 let selections_extracted = self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
                 let borrowed_selections = &selections_extracted;
-                println!("hereeees");
                 {
                     let output =
                         UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
                     let retrieve_chunk = |chunk: NdArrayChunk| {
-                        println!("{:?} {:?}", cartesian_product(chunk.selection), out_shape_extracted);
-                        let indices: Vec<u64> = cartesian_product(chunk.selection).iter().map(|x| x.iter().enumerate().fold(0, |acc, (ind, x)| {acc + (*x as u64) * out_shape_extracted[1..].iter().product::<u64>()})).collect();
+                        let indices: Vec<u64> = cartesian_product(chunk.selection).iter().map(|x| x.iter().enumerate().fold(0, |acc, (ind, x)| {acc + (*x as u64) * if (ind + 1 == chunk.selection.len()) { 1 } else { self.arr.chunk_shape(&chunk.index).unwrap()[(ind + 1)..].iter().map(|x| x.get() as u64).product::<u64>()}})).collect();
                         let chunk_subset_bytes = self.arr.retrieve_chunk(&chunk.index).map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                         update_bytes_flen_with_indexer(
                             unsafe { output.get() },
@@ -213,6 +211,8 @@ impl ZarrsPythonArray {
                         retrieve_chunk
                     )?;
                 }
+                unsafe { output.set_len(size_output) };
+                return Ok(ManagerCtx::new(PyZarrArr{ shape: out_shape_extracted, arr: output, dtype: chunk_representation.data_type().clone() }));
             }
             let selections_extracted = self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
             let out_selections_extracted = &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
