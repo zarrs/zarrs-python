@@ -1,7 +1,9 @@
 use pyo3::{exceptions::PyTypeError, PyErr};
 use zarrs::array_subset::ArraySubset;
 
-pub fn err<T>(msg: String) -> Result<T, PyErr> { Err(PyErr::new::<PyTypeError, _>(msg)) }
+pub fn err<T>(msg: String) -> Result<T, PyErr> {
+    Err(PyErr::new::<PyTypeError, _>(msg))
+}
 
 pub fn update_bytes_flen_with_indexer(
     output_bytes: &mut [u8],
@@ -11,13 +13,13 @@ pub fn update_bytes_flen_with_indexer(
     indexer: &Vec<u64>,
     data_type_size: usize,
 ) {
-
     let contiguous_indices =
         unsafe { subset.contiguous_linearised_indices_unchecked(output_shape) };
     // TODO: Par iteration?
     let mut indexer_index = 0;
     for (array_subset_element_index, _num_elements) in contiguous_indices.iter() {
-        let mut output_offset = usize::try_from(array_subset_element_index).unwrap() * data_type_size;
+        let mut output_offset =
+            usize::try_from(array_subset_element_index).unwrap() * data_type_size;
         for _num_elem in 0.._num_elements {
             let decoded_offset = (indexer[indexer_index] as usize) * data_type_size;
             debug_assert!((output_offset + data_type_size) <= output_bytes.len());
@@ -40,7 +42,10 @@ pub fn update_bytes_flen(
     debug_assert_eq!(
         output_bytes.len(),
         usize::try_from(output_shape.iter().product::<u64>()).unwrap() * data_type_size,
-        "Failed out check: output_bytes.len(): {:?}, output_shape: {:?}, data_type_size: {:?}", output_bytes.len(), output_shape, data_type_size,
+        "Failed out check: output_bytes.len(): {:?}, output_shape: {:?}, data_type_size: {:?}",
+        output_bytes.len(),
+        output_shape,
+        data_type_size,
     );
     debug_assert_eq!(
         subset_bytes.len(),
@@ -67,11 +72,13 @@ pub fn cartesian_product<T: Clone>(vecs: &Vec<Vec<T>>) -> Vec<Vec<T>> {
     vecs.into_iter().fold(vec![vec![]], |acc, vec| {
         acc.into_iter()
             .flat_map(|prefix| {
-                vec.iter().map(move |elem| {
-                    let mut new_prefix = prefix.clone();
-                    new_prefix.push(elem.clone());
-                    new_prefix
-                }).collect::<Vec<_>>()
+                vec.iter()
+                    .map(move |elem| {
+                        let mut new_prefix = prefix.clone();
+                        new_prefix.push(elem.clone());
+                        new_prefix
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     })

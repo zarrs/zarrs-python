@@ -1,7 +1,7 @@
 use pyo3::{exceptions::PyTypeError, prelude::*};
 use std::sync::Arc;
-use zarrs::storage::{ReadableStorage, store};
 use zarrs::array::Array as RustArray;
+use zarrs::storage::{store, ReadableStorage};
 
 mod array;
 mod utils;
@@ -14,8 +14,8 @@ fn open_array(path: &str) -> PyResult<array::ZarrsPythonArray> {
     } else {
         s = Arc::new(store::FilesystemStore::new(path).or_else(|x| utils::err(x.to_string()))?);
     }
-    let arr  = RustArray::new(s, &"/").or_else(|x| utils::err(x.to_string()))?; 
-    Ok(array::ZarrsPythonArray{ arr })
+    let arr = RustArray::new(s, &"/").or_else(|x| utils::err(x.to_string()))?;
+    Ok(array::ZarrsPythonArray { arr })
 }
 
 /// A Python module implemented in Rust.
