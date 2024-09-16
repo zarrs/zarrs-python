@@ -17,3 +17,6 @@ image = "0.25.0"
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 numpy = "0.21"
+
+[profile.release]
+lto = true
