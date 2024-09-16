@@ -4,7 +4,7 @@ use numpy::ndarray::{Array, ArrayBase, ArrayViewD};
 use numpy::{PyArray, PyArray2, PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyInt, PyList, PySlice, PyTuple};
+use pyo3::types::{PyBool, PyInt, PyList, PySlice, PyTuple};
 use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use rayon::prelude::*;
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
@@ -155,12 +155,12 @@ impl ZarrsPythonArray {
                         let ranges: Vec<Range<u64>> = tuple
                             .into_iter()
                             .enumerate()
-                            .map(|(index, val)| {
+                            .map(|(axis, val)| {
                                 if let Ok(int) = val.downcast::<PyInt>() {
-                                    let end = self.maybe_convert_u64(int.extract()?, index)?;
+                                    let end = self.maybe_convert_u64(int.extract()?, axis)?;
                                     Ok(end..(end + 1))
                                 } else if let Ok(slice) = val.downcast::<PySlice>() {
-                                    Ok(self.bound_slice(slice, index)?)
+                                    Ok(self.bound_slice(slice, axis)?)
                                 } else {
                                     return Err(PyValueError::new_err(format!(
                                         "Cannot take {0}, must be int or slice",
@@ -274,6 +274,7 @@ impl ZarrsPythonArray {
     pub fn retrieve_chunk_subset(
         &self,
         out_shape: &Bound<'_, PyTuple>,
+        is_o_index: &Bound<'_, PyBool>,
         chunk_coords_and_selections: &Bound<'_, PyList>,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         if let Ok(chunk_coords_and_selection_list) =
@@ -285,10 +286,17 @@ impl ZarrsPythonArray {
                 .chunk_array_representation(&vec![0; self.arr.chunk_grid().dimensionality()])
                 .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
             let data_type_size = chunk_representation.data_type().size();
-            let out_shape_extracted = out_shape
+            let mut out_shape_extracted = out_shape
                 .into_iter()
                 .map(|x| x.extract::<u64>())
                 .collect::<PyResult<Vec<u64>>>()?;
+            let is_o_index_extracted = is_o_index.extract::<bool>()?;
+            if !is_o_index_extracted {
+                out_shape_extracted = out_shape_extracted
+                    .into_iter()
+                    .filter(|&x| x != 1)
+                    .collect();
+            }
             let coords_extracted = &self.extract_coords(chunk_coords_and_selection_list)?;
             let out_selections_extracted =
                 &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
@@ -317,7 +325,7 @@ impl ZarrsPythonArray {
             let mut output = Vec::with_capacity(size_output * data_type_size);
 
             if self.is_selection_numpy_array(chunk_coords_and_selections, 1) {
-                let selections_extracted =
+                let selections_extracted: Vec<Vec<Vec<i64>>> =
                     self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
                 let borrowed_selections = &selections_extracted;
                 {
