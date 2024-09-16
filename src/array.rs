@@ -9,6 +9,7 @@ use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use rayon::prelude::*;
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::ffi::c_void;
+use std::fmt::Display;
 use std::ops::Range;
 use zarrs::array::codec::CodecOptionsBuilder;
 use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency, UnsafeCellSlice};
@@ -16,16 +17,42 @@ use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::storage::ReadableStorageTraits;
 
+#[derive(Debug)]
 struct Chunk<'a> {
     index: &'a Vec<u64>,
     selection: &'a ArraySubset,
     out_selection: &'a ArraySubset,
 }
 
+impl Display for Chunk<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{index len: {:?}, selection: {:?}, out_selection: {:?}}}",
+            self.index.len(),
+            self.selection,
+            self.out_selection
+        )
+    }
+}
+
+#[derive(Debug)]
 struct NdArrayChunk<'a> {
     index: &'a Vec<u64>,
     selection: &'a Vec<Vec<i64>>,
     out_selection: &'a ArraySubset,
+}
+
+impl Display for NdArrayChunk<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{index len: {:?}, selection len: {:?}, out_selection: {:?}}}",
+            self.index.len(),
+            self.selection.len(),
+            self.out_selection
+        )
+    }
 }
 
 #[pyclass]
