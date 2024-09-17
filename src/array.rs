@@ -152,6 +152,11 @@ impl ZarrsPythonArray {
                             &self.fill_from_slices(vec![self.bound_slice(slice, 0)?])?,
                         ));
                     } else if let Ok(tuple) = selection.downcast::<PyTuple>() {
+                        if tuple.len() == 0 {
+                            return Ok(ArraySubset::new_with_ranges(
+                                &self.fill_from_slices(vec![0..1])?,
+                            ));
+                        }
                         let ranges: Vec<Range<u64>> = tuple
                             .into_iter()
                             .enumerate()
