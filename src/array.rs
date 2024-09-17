@@ -291,7 +291,7 @@ impl ZarrsPythonArray {
                 .map(|x| x.extract::<u64>())
                 .collect::<PyResult<Vec<u64>>>()?;
             let is_int_slice_index_extracted = is_int_slice_index.extract::<bool>()?;
-            if !is_int_slice_index_extracted {
+            if is_int_slice_index_extracted {
                 out_shape_extracted = out_shape_extracted
                     .into_iter()
                     .filter(|&x| x != 1)
