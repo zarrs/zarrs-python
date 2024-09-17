@@ -274,7 +274,7 @@ impl ZarrsPythonArray {
     pub fn retrieve_chunk_subset(
         &self,
         out_shape: &Bound<'_, PyTuple>,
-        is_o_index: &Bound<'_, PyBool>,
+        is_int_slice_index: &Bound<'_, PyBool>,
         chunk_coords_and_selections: &Bound<'_, PyList>,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         if let Ok(chunk_coords_and_selection_list) =
@@ -290,8 +290,8 @@ impl ZarrsPythonArray {
                 .into_iter()
                 .map(|x| x.extract::<u64>())
                 .collect::<PyResult<Vec<u64>>>()?;
-            let is_o_index_extracted = is_o_index.extract::<bool>()?;
-            if !is_o_index_extracted {
+            let is_int_slice_index_extracted = is_int_slice_index.extract::<bool>()?;
+            if !is_int_slice_index_extracted {
                 out_shape_extracted = out_shape_extracted
                     .into_iter()
                     .filter(|&x| x != 1)
