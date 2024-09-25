@@ -12,7 +12,10 @@ use std::ffi::c_void;
 use std::fmt::Display;
 use std::ops::Range;
 use zarrs::array::codec::CodecOptionsBuilder;
-use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency, UnsafeCellSlice};
+use zarrs::array::{
+    Array as RustArray, ArrayCodecTraits, ArrayRepresentation, RecommendedConcurrency,
+    UnsafeCellSlice,
+};
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::storage::ReadableStorageTraits;
@@ -60,6 +63,7 @@ pub struct ZarrsPythonArray {
     pub arr: RustArray<dyn ReadableStorageTraits + 'static>,
 }
 
+// First some extraction utilities for going from python to rust
 impl ZarrsPythonArray {
     fn maybe_convert_u64(&self, ind: i32, axis: usize) -> PyResult<u64> {
         let mut ind_u64: u64 = ind as u64;
@@ -274,6 +278,80 @@ impl ZarrsPythonArray {
     }
 }
 
+impl ZarrsPythonArray {
+    fn get_data_from_numpy_selection(
+        &self,
+        chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
+        mut output: Vec<u8>,
+        out_shape_extracted: Vec<u64>,
+        data_type_size: usize,
+        coords_extracted: &Vec<Vec<u64>>,
+        out_selections_extracted: &Vec<ArraySubset>,
+        chunks_concurrent_limit: usize,
+        size_output: usize,
+        dtype: zarrs::array::DataType,
+    ) -> PyResult<ManagerCtx<PyZarrArr>> {
+        let selections_extracted: Vec<Vec<Vec<i64>>> =
+            self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
+        let borrowed_selections = &selections_extracted;
+        {
+            let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
+            let retrieve_chunk = |chunk: NdArrayChunk| {
+                let indices: Vec<u64> = cartesian_product(chunk.selection)
+                    .iter()
+                    .map(|x| {
+                        x.iter().enumerate().fold(0, |acc, (ind, x)| {
+                            acc + (*x as u64)
+                                * if ind + 1 == chunk.selection.len() {
+                                    1
+                                } else {
+                                    self.arr.chunk_shape(&chunk.index).unwrap()[(ind + 1)..]
+                                        .iter()
+                                        .map(|x| x.get() as u64)
+                                        .product::<u64>()
+                                }
+                        })
+                    })
+                    .collect();
+                let chunk_subset_bytes = self
+                    .arr
+                    .retrieve_chunk(&chunk.index)
+                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+                update_bytes_flen_with_indexer(
+                    unsafe { output.get() },
+                    &out_shape_extracted,
+                    &chunk_subset_bytes,
+                    &chunk.out_selection,
+                    &indices,
+                    data_type_size,
+                );
+                Ok::<_, PyErr>(())
+            };
+            let zipped_iterator = coords_extracted
+                .into_iter()
+                .zip(borrowed_selections.into_iter())
+                .zip(out_selections_extracted.into_iter())
+                .map(|((index, selection), out_selection)| NdArrayChunk {
+                    index,
+                    selection,
+                    out_selection,
+                });
+            iter_concurrent_limit!(
+                chunks_concurrent_limit,
+                zipped_iterator.collect::<Vec<NdArrayChunk>>(),
+                try_for_each,
+                retrieve_chunk
+            )?;
+        }
+        unsafe { output.set_len(size_output) };
+        return Ok(ManagerCtx::new(PyZarrArr {
+            shape: out_shape_extracted,
+            arr: output,
+            dtype,
+        }));
+    }
+}
+
 #[pymethods]
 impl ZarrsPythonArray {
     pub fn retrieve_chunk_subset(
@@ -320,66 +398,19 @@ impl ZarrsPythonArray {
                 .build();
             let size_output = out_shape_extracted.iter().product::<u64>() as usize;
             let mut output = Vec::with_capacity(size_output * data_type_size);
-
+            let dtype = chunk_representation.data_type().clone();
             if self.is_selection_numpy_array(chunk_coords_and_selections, 1) {
-                let selections_extracted: Vec<Vec<Vec<i64>>> =
-                    self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
-                let borrowed_selections = &selections_extracted;
-                {
-                    let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
-                    let retrieve_chunk = |chunk: NdArrayChunk| {
-                        let indices: Vec<u64> = cartesian_product(chunk.selection)
-                            .iter()
-                            .map(|x| {
-                                x.iter().enumerate().fold(0, |acc, (ind, x)| {
-                                    acc + (*x as u64)
-                                        * if (ind + 1 == chunk.selection.len()) {
-                                            1
-                                        } else {
-                                            self.arr.chunk_shape(&chunk.index).unwrap()[(ind + 1)..]
-                                                .iter()
-                                                .map(|x| x.get() as u64)
-                                                .product::<u64>()
-                                        }
-                                })
-                            })
-                            .collect();
-                        let chunk_subset_bytes = self
-                            .arr
-                            .retrieve_chunk(&chunk.index)
-                            .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
-                        update_bytes_flen_with_indexer(
-                            unsafe { output.get() },
-                            &out_shape_extracted,
-                            &chunk_subset_bytes,
-                            &chunk.out_selection,
-                            &indices,
-                            data_type_size,
-                        );
-                        Ok::<_, PyErr>(())
-                    };
-                    let zipped_iterator = coords_extracted
-                        .into_iter()
-                        .zip(borrowed_selections.into_iter())
-                        .zip(out_selections_extracted.into_iter())
-                        .map(|((index, selection), out_selection)| NdArrayChunk {
-                            index,
-                            selection,
-                            out_selection,
-                        });
-                    iter_concurrent_limit!(
-                        chunks_concurrent_limit,
-                        zipped_iterator.collect::<Vec<NdArrayChunk>>(),
-                        try_for_each,
-                        retrieve_chunk
-                    )?;
-                }
-                unsafe { output.set_len(size_output) };
-                return Ok(ManagerCtx::new(PyZarrArr {
-                    shape: out_shape_extracted,
-                    arr: output,
-                    dtype: chunk_representation.data_type().clone(),
-                }));
+                return self.get_data_from_numpy_selection(
+                    chunk_coords_and_selections,
+                    output,
+                    out_shape_extracted,
+                    data_type_size,
+                    coords_extracted,
+                    out_selections_extracted,
+                    chunks_concurrent_limit,
+                    size_output,
+                    dtype,
+                );
             }
             let selections_extracted =
                 self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
