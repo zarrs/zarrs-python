@@ -15,4 +15,8 @@ To benchmark this implementation, there [is a fork of `zarrs_tools`](https://git
 
 At the moment, parallelization occurs at the chunk level.  That is, every fetch-index-out operation (get data, index it, put it in an out-buffer) is its own thread in a similar way as `zarrs` (the code should look quite similar: https://github.com/LDeakin/zarrs/blob/5edbc502b05c98fbe2ab434948208473ef573f66/zarrs/src/array/array_sync_readable.rs#L733-L767); one can think of each chunk-fetch (and subsequent write into the returned buffer) as its own thread.  The output buffer is then wrapped as a [`dlpack`](https://dmlc.github.io/dlpack/latest/) object which should (in theory) enable a zero-copy return to the calling python function.  See also: https://github.com/zarr-developers/zarr-python/issues/2199 for more info on how this `dlpack` usage could be upstreamed in many ways.
 
-This may *not* be the best way to achieve parallelization.  No profiling has been done on this matter.s
+This may *not* be the best way to achieve parallelization.  No profiling has been done on this matter.
+
+## Testing
+
+At the moment, we rely on the python tests for correctness, so `pytest zarrs_python/tests/v3` should run the relevant tests within `zarr-python` that hit the rust-based codepaths.  These tests should all pass, although some have been xfailed for good reasons (like object equality).
