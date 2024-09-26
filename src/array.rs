@@ -1,19 +1,17 @@
 use crate::utils::{cartesian_product, update_bytes_flen, update_bytes_flen_with_indexer};
 use dlpark::prelude::*;
-use numpy::ndarray::{Array, ArrayBase, ArrayViewD};
-use numpy::{PyArray, PyArray2, PyArrayDyn, PyArrayMethods};
+use numpy::{PyArray2, PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyInt, PyList, PySlice, PyTuple};
-use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
-use rayon::prelude::*;
+use pyo3::types::{PyInt, PyList, PySlice, PyTuple};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::ffi::c_void;
 use std::fmt::Display;
 use std::ops::Range;
 use zarrs::array::codec::CodecOptionsBuilder;
 use zarrs::array::{
-    Array as RustArray, ArrayCodecTraits, ArrayRepresentation, RecommendedConcurrency,
+    Array as RustArray, ArrayCodecTraits, RecommendedConcurrency,
     UnsafeCellSlice,
 };
 use zarrs::array_subset::ArraySubset;
@@ -211,7 +209,7 @@ impl ZarrsPythonArray {
                     if let Ok(tuple) = selection.downcast::<PyTuple>() {
                         let res = tuple
                             .into_iter()
-                            .map(|(val)| {
+                            .map(|val| {
                                 if let Ok(nd_array) = val.downcast::<PyArrayDyn<i64>>() {
                                     let res = nd_array.to_vec()?;
                                     Ok(res)
@@ -255,7 +253,7 @@ impl ZarrsPythonArray {
                         if let Ok(tuple) = selection_unwrapped.downcast::<PyTuple>() {
                             let res: Vec<bool> = tuple
                                 .into_iter()
-                                .map(|(val)| -> bool {
+                                .map(|val| -> bool {
                                     let nd_array = val.downcast::<PyArrayDyn<i64>>();
                                     let res = match nd_array {
                                         Ok(_) => true,
@@ -282,15 +280,19 @@ impl ZarrsPythonArray {
     fn get_data_from_primitive_selection(
         &self,
         chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
-        mut output: Vec<u8>,
         out_shape_extracted: Vec<u64>,
         data_type_size: usize,
         coords_extracted: &Vec<Vec<u64>>,
         out_selections_extracted: &Vec<ArraySubset>,
         chunks_concurrent_limit: usize,
+        codec_concurrent_target: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
+        let mut output = Vec::with_capacity(size_output * data_type_size);
+        let codec_options = CodecOptionsBuilder::new()
+            .concurrent_target(codec_concurrent_target)
+            .build();
         let selections_extracted =
             self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
         let out_selections_extracted =
@@ -339,17 +341,21 @@ impl ZarrsPythonArray {
     fn get_data_from_numpy_selection(
         &self,
         chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
-        mut output: Vec<u8>,
         out_shape_extracted: Vec<u64>,
         data_type_size: usize,
         coords_extracted: &Vec<Vec<u64>>,
         out_selections_extracted: &Vec<ArraySubset>,
         chunks_concurrent_limit: usize,
+        codec_concurrent_target: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
+        let mut output = Vec::with_capacity(size_output * data_type_size);
         let selections_extracted: Vec<Vec<Vec<i64>>> =
             self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
+        let codec_options = CodecOptionsBuilder::new()
+            .concurrent_target(codec_concurrent_target)
+            .build();
         let borrowed_selections = &selections_extracted;
         {
             let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
@@ -372,7 +378,7 @@ impl ZarrsPythonArray {
                     .collect();
                 let chunk_subset_bytes = self
                     .arr
-                    .retrieve_chunk(&chunk.index)
+                    .retrieve_chunk_opt(&chunk.index, &codec_options)
                     .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                 update_bytes_flen_with_indexer(
                     unsafe { output.get() },
@@ -450,36 +456,33 @@ impl ZarrsPythonArray {
                         .recommended_concurrency(&chunk_representation)
                         .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
                 );
-            let codec_options = CodecOptionsBuilder::new()
-                .concurrent_target(codec_concurrent_target)
-                .build();
             let size_output = out_shape_extracted.iter().product::<u64>() as usize;
-            let mut output = Vec::with_capacity(size_output * data_type_size);
             let dtype = chunk_representation.data_type().clone();
             if self.is_selection_numpy_array(chunk_coords_and_selections, 1) {
-                return self.get_data_from_numpy_selection(
+                self.get_data_from_numpy_selection(
                     chunk_coords_and_selections,
-                    output,
                     out_shape_extracted,
                     data_type_size,
                     coords_extracted,
                     out_selections_extracted,
                     chunks_concurrent_limit,
+                    codec_concurrent_target,
                     size_output,
                     dtype,
-                );
+                )
+            } else {
+                self.get_data_from_primitive_selection(
+                    chunk_coords_and_selections,
+                    out_shape_extracted,
+                    data_type_size,
+                    coords_extracted,
+                    out_selections_extracted,
+                    chunks_concurrent_limit,
+                    codec_concurrent_target,
+                    size_output,
+                    dtype,
+                )
             }
-            return self.get_data_from_primitive_selection(
-                chunk_coords_and_selections,
-                output,
-                out_shape_extracted,
-                data_type_size,
-                coords_extracted,
-                out_selections_extracted,
-                chunks_concurrent_limit,
-                size_output,
-                dtype,
-            );
         } else {
             return Err(PyTypeError::new_err(format!(
                 "Unsupported type: {0}",
