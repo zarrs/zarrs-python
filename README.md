@@ -9,7 +9,7 @@ Currently, the API should be identical to that of `zarr` at that last merge-comm
 3. The `out_selection` tuples contain either slices, ints, or arrays that can be converted to slices. See https://github.com/LDeakin/zarrs/issues/52 for what would be required to allow integer-array indexing.
 4. Any slice selection, out or in, needs to have a step size of 1.
 
-To benchmark this implementation, there [is a fork of `zarrs_tools`](https://github.com/ilan-gold/zarrs_tools/tree/ig/zarrs_python) with some slight changes to allow for benchmarking this implementation on a mac.  To benchmark on linux, you would need to change the `time` command and the cache dropping e.g., [these lines].  When creating the python environment for that repo to do benchmarking, simply install `-e ../zarrs-python` this project as well.  Then follow the directions there for running the various files in `./scripts`.
+To benchmark this implementation, there [is a fork of `zarrs_tools`](https://github.com/ilan-gold/zarrs_tools/tree/ig/zarrs_python) with some slight changes to allow for benchmarking this implementation on a mac.  To benchmark on linux, you would need to change the `time` command and the cache dropping e.g., [these lines](https://github.com/ilan-gold/zarrs_tools/blob/c60fcf43e11032f81531464986500433e9c9dffb/scripts/run_benchmark_read_chunks.py#L8-L17).  When creating the python environment for that repo to do benchmarking, simply install `-e ../zarrs-python` this project as well.  Then follow the directions there for running the various files in `./scripts`.
 
 ## `Rust` specifics overview
 
