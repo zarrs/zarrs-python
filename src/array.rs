@@ -11,7 +11,7 @@ use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::ffi::c_void;
 use std::fmt::Display;
 use std::ops::Range;
-use zarrs::array::codec::CodecOptionsBuilder;
+use zarrs::array::codec::{CodecOptions, CodecOptionsBuilder};
 use zarrs::array::{
     Array as RustArray, ArrayCodecTraits, ArrayRepresentation, RecommendedConcurrency,
     UnsafeCellSlice,
@@ -290,6 +290,7 @@ impl ZarrsPythonArray {
         chunks_concurrent_limit: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
+        codec_options: CodecOptions,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         let selections_extracted =
             self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
@@ -347,6 +348,7 @@ impl ZarrsPythonArray {
         chunks_concurrent_limit: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
+        codec_options: CodecOptions,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         let selections_extracted: Vec<Vec<Vec<i64>>> =
             self.extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
@@ -372,7 +374,7 @@ impl ZarrsPythonArray {
                     .collect();
                 let chunk_subset_bytes = self
                     .arr
-                    .retrieve_chunk(&chunk.index)
+                    .retrieve_chunk_opt(&chunk.index, &codec_options)
                     .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                 update_bytes_flen_with_indexer(
                     unsafe { output.get() },
@@ -454,7 +456,7 @@ impl ZarrsPythonArray {
                 .concurrent_target(codec_concurrent_target)
                 .build();
             let size_output = out_shape_extracted.iter().product::<u64>() as usize;
-            let mut output = Vec::with_capacity(size_output * data_type_size);
+            let output = Vec::with_capacity(size_output * data_type_size);
             let dtype = chunk_representation.data_type().clone();
             if self.is_selection_numpy_array(chunk_coords_and_selections, 1) {
                 return self.get_data_from_numpy_selection(
@@ -467,6 +469,7 @@ impl ZarrsPythonArray {
                     chunks_concurrent_limit,
                     size_output,
                     dtype,
+                    codec_options,
                 );
             }
             return self.get_data_from_primitive_selection(
@@ -479,6 +482,7 @@ impl ZarrsPythonArray {
                 chunks_concurrent_limit,
                 size_output,
                 dtype,
+                codec_options,
             );
         } else {
             return Err(PyTypeError::new_err(format!(
