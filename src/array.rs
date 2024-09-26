@@ -10,10 +10,7 @@ use std::ffi::c_void;
 use std::fmt::Display;
 use std::ops::Range;
 use zarrs::array::codec::CodecOptionsBuilder;
-use zarrs::array::{
-    Array as RustArray, ArrayCodecTraits, RecommendedConcurrency,
-    UnsafeCellSlice,
-};
+use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency, UnsafeCellSlice};
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::storage::ReadableStorageTraits;
@@ -72,7 +69,7 @@ impl ZarrsPythonArray {
             ind_u64 =
                 u64::try_from(ind).map_err(|_| PyIndexError::new_err("Failed to extract start"))?;
         }
-        return Ok(ind_u64);
+        Ok(ind_u64)
     }
 
     fn bound_slice(&self, slice: &Bound<PySlice>, axis: usize) -> PyResult<Range<u64>> {
@@ -85,7 +82,7 @@ impl ZarrsPythonArray {
         let stop_u64 = self.maybe_convert_u64(stop, 0)?;
         // let _step: u64 = slice.getattr("step")?.extract().map_or(1, |x| x); // there is no way to use step it seems with zarrs?
         let selection = start_u64..stop_u64;
-        return Ok(selection);
+        Ok(selection)
     }
 
     pub fn fill_from_slices(&self, slices: Vec<Range<u64>>) -> PyResult<Vec<Range<u64>>> {
@@ -125,14 +122,14 @@ impl ZarrsPythonArray {
                     } else {
                         return Err(PyValueError::new_err(format!(
                             "Cannot take {0}, must be int, ndarray, or slice",
-                            coord.to_string()
+                            coord
                         )));
                     }
                 }
-                return Err(PyTypeError::new_err(format!(
+                Err(PyTypeError::new_err(format!(
                     "Unsupported type: {0}",
                     chunk_coord_and_selection
-                )));
+                )))
             })
             .collect::<PyResult<Vec<Vec<u64>>>>()
     }
@@ -156,6 +153,7 @@ impl ZarrsPythonArray {
                     } else if let Ok(tuple) = selection.downcast::<PyTuple>() {
                         if tuple.len() == 0 {
                             return Ok(ArraySubset::new_with_ranges(
+                                #[allow(clippy::single_range_in_vec_init)]
                                 &self.fill_from_slices(vec![0..1])?,
                             ));
                         }
@@ -171,7 +169,7 @@ impl ZarrsPythonArray {
                                 } else {
                                     return Err(PyValueError::new_err(format!(
                                         "Cannot take {0}, must be int or slice",
-                                        val.to_string()
+                                        val
                                     )));
                                 }
                             })
@@ -186,10 +184,10 @@ impl ZarrsPythonArray {
                         )));
                     }
                 }
-                return Err(PyTypeError::new_err(format!(
+                Err(PyTypeError::new_err(format!(
                     "Unsupported type: {0}",
                     chunk_coord_and_selection
-                )));
+                )))
             })
             .collect::<PyResult<Vec<ArraySubset>>>()
     }
@@ -229,10 +227,10 @@ impl ZarrsPythonArray {
                         )));
                     }
                 }
-                return Err(PyTypeError::new_err(format!(
+                Err(PyTypeError::new_err(format!(
                     "Unsupported type: {0}",
                     chunk_coord_and_selection
-                )));
+                )))
             })
             .collect::<PyResult<Vec<Vec<Vec<i64>>>>>()
     }
@@ -244,7 +242,7 @@ impl ZarrsPythonArray {
     ) -> bool {
         let results = chunk_coords_and_selections
             .into_iter()
-            .map(|chunk_coord_and_selection| {
+            .flat_map(|chunk_coord_and_selection| {
                 if let Ok(chunk_coord_and_selection_tuple) =
                     chunk_coord_and_selection.downcast::<PyTuple>()
                 {
@@ -253,14 +251,7 @@ impl ZarrsPythonArray {
                         if let Ok(tuple) = selection_unwrapped.downcast::<PyTuple>() {
                             let res: Vec<bool> = tuple
                                 .into_iter()
-                                .map(|val| -> bool {
-                                    let nd_array = val.downcast::<PyArrayDyn<i64>>();
-                                    let res = match nd_array {
-                                        Ok(_) => true,
-                                        Err(_) => false,
-                                    };
-                                    return res;
-                                })
+                                .map(|val| -> bool { val.downcast::<PyArrayDyn<i64>>().is_ok() })
                                 .collect();
                             return res;
                         }
@@ -268,22 +259,22 @@ impl ZarrsPythonArray {
                     }
                     return vec![false];
                 }
-                return vec![false];
+                vec![false]
             })
-            .flatten()
             .collect::<Vec<bool>>();
         results.iter().any(|x: &bool| *x)
     }
 }
 
 impl ZarrsPythonArray {
+    #[allow(clippy::too_many_arguments)]
     fn get_data_from_primitive_selection(
         &self,
         chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
         out_shape_extracted: Vec<u64>,
         data_type_size: usize,
-        coords_extracted: &Vec<Vec<u64>>,
-        out_selections_extracted: &Vec<ArraySubset>,
+        coords_extracted: &[Vec<u64>],
+        out_selections_extracted: &[ArraySubset],
         chunks_concurrent_limit: usize,
         codec_concurrent_target: usize,
         size_output: usize,
@@ -303,21 +294,21 @@ impl ZarrsPythonArray {
             let retrieve_chunk = |chunk: Chunk| {
                 let chunk_subset_bytes = self
                     .arr
-                    .retrieve_chunk_subset_opt(&chunk.index, &chunk.selection, &codec_options)
+                    .retrieve_chunk_subset_opt(chunk.index, chunk.selection, &codec_options)
                     .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                 update_bytes_flen(
                     unsafe { output.get() },
                     &out_shape_extracted,
                     &chunk_subset_bytes,
-                    &chunk.out_selection,
+                    chunk.out_selection,
                     data_type_size,
                 );
                 Ok::<_, PyErr>(())
             };
             let zipped_iterator = coords_extracted
-                .into_iter()
-                .zip(borrowed_selections.into_iter())
-                .zip(out_selections_extracted.into_iter())
+                .iter()
+                .zip(borrowed_selections)
+                .zip(out_selections_extracted)
                 .map(|((index, selection), out_selection)| Chunk {
                     index,
                     selection,
@@ -331,19 +322,20 @@ impl ZarrsPythonArray {
             )?;
         }
         unsafe { output.set_len(size_output) };
-        return Ok(ManagerCtx::new(PyZarrArr {
+        Ok(ManagerCtx::new(PyZarrArr {
             shape: out_shape_extracted,
             arr: output,
             dtype,
-        }));
+        }))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn get_data_from_numpy_selection(
         &self,
         chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
         out_shape_extracted: Vec<u64>,
         data_type_size: usize,
-        coords_extracted: &Vec<Vec<u64>>,
+        coords_extracted: &[Vec<u64>],
         out_selections_extracted: &Vec<ArraySubset>,
         chunks_concurrent_limit: usize,
         codec_concurrent_target: usize,
@@ -368,32 +360,32 @@ impl ZarrsPythonArray {
                                 * if ind + 1 == chunk.selection.len() {
                                     1
                                 } else {
-                                    self.arr.chunk_shape(&chunk.index).unwrap()[(ind + 1)..]
+                                    self.arr.chunk_shape(chunk.index).unwrap()[(ind + 1)..]
                                         .iter()
-                                        .map(|x| x.get() as u64)
+                                        .map(|x| x.get())
                                         .product::<u64>()
                                 }
                         })
                     })
                     .collect();
-                let chunk_subset_bytes = self
-                    .arr
-                    .retrieve_chunk_opt(&chunk.index, &codec_options)
-                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+                let chunk_subset_bytes =
+                    self.arr
+                        .retrieve_chunk_opt(chunk.index, &codec_options)
+                        .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
                 update_bytes_flen_with_indexer(
                     unsafe { output.get() },
                     &out_shape_extracted,
                     &chunk_subset_bytes,
-                    &chunk.out_selection,
+                    chunk.out_selection,
                     &indices,
                     data_type_size,
                 );
                 Ok::<_, PyErr>(())
             };
             let zipped_iterator = coords_extracted
-                .into_iter()
-                .zip(borrowed_selections.into_iter())
-                .zip(out_selections_extracted.into_iter())
+                .iter()
+                .zip(borrowed_selections)
+                .zip(out_selections_extracted)
                 .map(|((index, selection), out_selection)| NdArrayChunk {
                     index,
                     selection,
@@ -407,11 +399,11 @@ impl ZarrsPythonArray {
             )?;
         }
         unsafe { output.set_len(size_output) };
-        return Ok(ManagerCtx::new(PyZarrArr {
+        Ok(ManagerCtx::new(PyZarrArr {
             shape: out_shape_extracted,
             arr: output,
             dtype,
-        }));
+        }))
     }
 }
 
@@ -484,10 +476,10 @@ impl ZarrsPythonArray {
                 )
             }
         } else {
-            return Err(PyTypeError::new_err(format!(
+            Err(PyTypeError::new_err(format!(
                 "Unsupported type: {0}",
                 chunk_coords_and_selections
-            )));
+            )))
         }
     }
 }
