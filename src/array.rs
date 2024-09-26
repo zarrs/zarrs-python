@@ -294,8 +294,6 @@ impl ZarrsPythonArray {
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         let selections_extracted =
             self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
-        let out_selections_extracted =
-            &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
         let borrowed_selections = &selections_extracted;
         {
             let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
