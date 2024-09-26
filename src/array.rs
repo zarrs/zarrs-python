@@ -279,6 +279,63 @@ impl ZarrsPythonArray {
 }
 
 impl ZarrsPythonArray {
+    fn get_data_from_primitive_selection(
+        &self,
+        chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
+        mut output: Vec<u8>,
+        out_shape_extracted: Vec<u64>,
+        data_type_size: usize,
+        coords_extracted: &Vec<Vec<u64>>,
+        out_selections_extracted: &Vec<ArraySubset>,
+        chunks_concurrent_limit: usize,
+        size_output: usize,
+        dtype: zarrs::array::DataType,
+    ) -> PyResult<ManagerCtx<PyZarrArr>> {
+        let selections_extracted =
+            self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
+        let out_selections_extracted =
+            &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
+        let borrowed_selections = &selections_extracted;
+        {
+            let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
+            let retrieve_chunk = |chunk: Chunk| {
+                let chunk_subset_bytes = self
+                    .arr
+                    .retrieve_chunk_subset_opt(&chunk.index, &chunk.selection, &codec_options)
+                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+                update_bytes_flen(
+                    unsafe { output.get() },
+                    &out_shape_extracted,
+                    &chunk_subset_bytes,
+                    &chunk.out_selection,
+                    data_type_size,
+                );
+                Ok::<_, PyErr>(())
+            };
+            let zipped_iterator = coords_extracted
+                .into_iter()
+                .zip(borrowed_selections.into_iter())
+                .zip(out_selections_extracted.into_iter())
+                .map(|((index, selection), out_selection)| Chunk {
+                    index,
+                    selection,
+                    out_selection,
+                });
+            iter_concurrent_limit!(
+                chunks_concurrent_limit,
+                zipped_iterator.collect::<Vec<Chunk>>(),
+                try_for_each,
+                retrieve_chunk
+            )?;
+        }
+        unsafe { output.set_len(size_output) };
+        return Ok(ManagerCtx::new(PyZarrArr {
+            shape: out_shape_extracted,
+            arr: output,
+            dtype,
+        }));
+    }
+
     fn get_data_from_numpy_selection(
         &self,
         chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
@@ -412,49 +469,17 @@ impl ZarrsPythonArray {
                     dtype,
                 );
             }
-            let selections_extracted =
-                self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
-            let out_selections_extracted =
-                &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
-            let borrowed_selections = &selections_extracted;
-            {
-                let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
-                let retrieve_chunk = |chunk: Chunk| {
-                    let chunk_subset_bytes = self
-                        .arr
-                        .retrieve_chunk_subset_opt(&chunk.index, &chunk.selection, &codec_options)
-                        .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
-                    update_bytes_flen(
-                        unsafe { output.get() },
-                        &out_shape_extracted,
-                        &chunk_subset_bytes,
-                        &chunk.out_selection,
-                        data_type_size,
-                    );
-                    Ok::<_, PyErr>(())
-                };
-                let zipped_iterator = coords_extracted
-                    .into_iter()
-                    .zip(borrowed_selections.into_iter())
-                    .zip(out_selections_extracted.into_iter())
-                    .map(|((index, selection), out_selection)| Chunk {
-                        index,
-                        selection,
-                        out_selection,
-                    });
-                iter_concurrent_limit!(
-                    chunks_concurrent_limit,
-                    zipped_iterator.collect::<Vec<Chunk>>(),
-                    try_for_each,
-                    retrieve_chunk
-                )?;
-            }
-            unsafe { output.set_len(size_output) };
-            Ok(ManagerCtx::new(PyZarrArr {
-                shape: out_shape_extracted,
-                arr: output,
-                dtype: chunk_representation.data_type().clone(),
-            }))
+            return self.get_data_from_primitive_selection(
+                chunk_coords_and_selections,
+                output,
+                out_shape_extracted,
+                data_type_size,
+                coords_extracted,
+                out_selections_extracted,
+                chunks_concurrent_limit,
+                size_output,
+                dtype,
+            );
         } else {
             return Err(PyTypeError::new_err(format!(
                 "Unsupported type: {0}",
