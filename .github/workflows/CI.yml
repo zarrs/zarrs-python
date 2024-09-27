@@ -35,11 +35,10 @@ jobs:
       - name: Install python deps
         run: |
           uv pip install --system -e ".[test]" maturin --verbose
-          echo PATH=$PATH >> $GITHUB_ENV
       
       - name: Build
         run: |
-          env VIRTUAL_ENV=$(python3 -c 'import sys; print(sys.base_prefix)') maturin develop --uv
+          env VIRTUAL_ENV=$(python3 -c 'import sys; print(sys.base_prefix)') maturin develop --uv --skip-install
       
       - name: Test python
         run: pytest zarrs_python/tests/v3              
