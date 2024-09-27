@@ -45,8 +45,6 @@ test = [
 [tool.maturin]
 module-name = "zarrs_python.zarrs_python_internal"
 features = ["pyo3/extension-module"]
-# python-source = "zarrs_python/src" # softlink zarrs_python/src/zarr to zarrs_python/src/zarrs_python
-python-source = "."
 
 
 [tool.pytest.ini_options]
