@@ -40,7 +40,7 @@ jobs:
       - name: Build
         run: |
           source venv/bin/activate
-          maturin develop
+          maturin develop --uv
       
       - name: Test python
         run: pytest zarrs_python/tests/v3              
