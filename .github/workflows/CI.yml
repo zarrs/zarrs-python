@@ -35,9 +35,12 @@ jobs:
           uv venv venv
           source venv/bin/activate
           uv pip install -e ".[test]" maturin
+          echo PATH=$PATH >> $GITHUB_ENV
       
       - name: Build
-        run: maturin develop
+        run: |
+          source venv/bin/activate
+          maturin develop
       
       - name: Test python
         run: pytest zarrs_python/tests/v3              
