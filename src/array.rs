@@ -306,19 +306,6 @@ impl ZarrsPythonArray {
                     data_type_size,
                 );
                 Ok::<_, PyErr>(())
-                // unsafe {
-                //     // NOTE: This is a private API in zarrs 0.17.0. It could be exposed...
-                //     self.arr
-                //         .retrieve_chunk_subset_into(
-                //             chunk.index,
-                //             chunk.selection,
-                //             output,
-                //             &out_shape_extracted,
-                //             chunk.out_selection,
-                //             &codec_options,
-                //         )
-                //         .map_err(|err| PyErr::new::<PyTypeError, _>(err.to_string()))
-                // }
             };
             let zipped_iterator = coords_extracted
                 .iter()
