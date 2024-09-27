@@ -10,7 +10,7 @@ pub fn update_bytes_flen_with_indexer(
     output_shape: &[u64],
     subset_bytes: &[u8],
     subset: &ArraySubset,
-    indexer: &Vec<u64>,
+    indexer: &[u64],
     data_type_size: usize,
 ) {
     let contiguous_indices =
@@ -68,8 +68,8 @@ pub fn update_bytes_flen(
     }
 }
 
-pub fn cartesian_product<T: Clone>(vecs: &Vec<Vec<T>>) -> Vec<Vec<T>> {
-    vecs.into_iter().fold(vec![vec![]], |acc, vec| {
+pub fn cartesian_product<T: Clone>(vecs: &[Vec<T>]) -> Vec<Vec<T>> {
+    vecs.iter().fold(vec![vec![]], |acc, vec| {
         acc.into_iter()
             .flat_map(|prefix| {
                 vec.iter()
