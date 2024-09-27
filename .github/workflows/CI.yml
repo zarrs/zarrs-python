@@ -31,9 +31,10 @@ jobs:
           cache-dependency-path: pyproject.toml
       
       - name: Install python deps
-        run: uv venv venv
-        run: uv source venv/bin/activate
-        run: uv pip install -e ".[test]" maturin
+        run: |
+          uv venv venv
+          uv source venv/bin/activate
+          uv pip install -e ".[test]" maturin
       
       - name: Build
         run: maturin develop
