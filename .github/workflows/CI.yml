@@ -48,7 +48,7 @@ jobs:
       - name: Install perl and such as per https://stackoverflow.com/a/74330717/8060591 and https://github.com/sfackler/rust-openssl/issues/1550
         run: |
           sudo apt-get update
-          sudo apt-get install -y perl-core openssl-devel perl openssl
+          sudo apt-get install -y libssl-dev perl
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
