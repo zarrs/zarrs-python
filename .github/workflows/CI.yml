@@ -73,6 +73,10 @@ jobs:
         with:
           python-version: '3.10'
           architecture: ${{ matrix.platform.target }}
+      - name: Install perl as per https://stackoverflow.com/a/74330717/8060591
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
