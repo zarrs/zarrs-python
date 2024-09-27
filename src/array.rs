@@ -279,7 +279,6 @@ impl ZarrsPythonArray {
         codec_concurrent_target: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
-        codec_options: CodecOptions,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         let mut output = Vec::with_capacity(size_output * data_type_size);
         let codec_options = CodecOptionsBuilder::new()
@@ -340,7 +339,6 @@ impl ZarrsPythonArray {
         codec_concurrent_target: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
-        codec_options: CodecOptions,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         let mut output = Vec::with_capacity(size_output * data_type_size);
         let selections_extracted: Vec<Vec<Vec<i64>>> =
