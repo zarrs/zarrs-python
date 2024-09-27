@@ -16,7 +16,7 @@ dlpark = { version = "0.4.1", features = ["pyo3"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
-openssl = { version = "0.9", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }
 
 [profile.release]
 lto = true
