@@ -33,7 +33,7 @@ jobs:
       - name: Install python deps
         run: |
           uv venv venv
-          uv source venv/bin/activate
+          source venv/bin/activate
           uv pip install -e ".[test]" maturin
       
       - name: Build
