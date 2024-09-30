@@ -26,16 +26,18 @@ jobs:
       - name: Install Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: '3.x'
 
       - name: Install UV
         uses: hynek/setup-cached-uv@v2
         with:
           cache-dependency-path: pyproject.toml
+
+      - name: Setup rust cache
+        uses: Swatinem/rust-cache@v2
       
       - name: Install python deps + Build
-        run: |
-          uv pip install --system -e ".[test]" maturin --verbose
+        run: uv pip install --system -e ".[test]" maturin --verbose
 
       - name: Test python using zarr
         run: pytest zarrs_python/tests/v3
