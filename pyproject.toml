@@ -41,6 +41,7 @@ test = [
     "mypy",
     "hypothesis"
 ]
+dev = ["maturin"]
 
 [tool.maturin]
 module-name = "zarrs_python.zarrs_python_internal"
