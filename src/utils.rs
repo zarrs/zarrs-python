@@ -17,10 +17,10 @@ pub fn update_bytes_flen_with_indexer(
         unsafe { subset.contiguous_linearised_indices_unchecked(output_shape) };
     // TODO: Par iteration?
     let mut indexer_index = 0;
-    for (array_subset_element_index, _num_elements) in contiguous_indices.iter() {
+    for (array_subset_element_index, num_elements) in &contiguous_indices {
         let mut output_offset =
             usize::try_from(array_subset_element_index).unwrap() * data_type_size;
-        for _num_elem in 0.._num_elements {
+        for _num_elem in 0..num_elements {
             let decoded_offset = (indexer[indexer_index] as usize) * data_type_size;
             debug_assert!((output_offset + data_type_size) <= output_bytes.len());
             debug_assert!((decoded_offset + data_type_size) <= subset_bytes.len(), "Failed subset check: decoded_offset: {:?}, data_type_size: {:?}, subset_bytes.len(): {:?}", decoded_offset, data_type_size, subset_bytes.len());
