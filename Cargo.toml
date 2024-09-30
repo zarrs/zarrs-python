@@ -18,6 +18,7 @@ rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
 openssl = { version = "0.10", features = ["vendored"] }
 numpy = "0.21"
+static_assertions = "1.1.0"
 
 [profile.release]
 lto = true

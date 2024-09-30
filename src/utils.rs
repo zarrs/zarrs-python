@@ -5,6 +5,10 @@ pub fn err<T>(msg: String) -> Result<T, PyErr> {
     Err(PyErr::new::<PyTypeError, _>(msg))
 }
 
+// TODO: make more generic or at least allow usize > u64
+static_assertions::assert_eq_size!(u64, usize);
+
+#[allow(clippy::cast_possible_truncation)]
 pub fn update_bytes_flen_with_indexer(
     output_bytes: &mut [u8],
     output_shape: &[u64],
@@ -18,12 +22,14 @@ pub fn update_bytes_flen_with_indexer(
     // TODO: Par iteration?
     let mut indexer_index = 0;
     for (array_subset_element_index, num_elements) in &contiguous_indices {
-        let mut output_offset =
-            usize::try_from(array_subset_element_index).unwrap() * data_type_size;
+        let mut output_offset = array_subset_element_index as usize * data_type_size;
         for _num_elem in 0..num_elements {
-            let decoded_offset = (indexer[indexer_index] as usize) * data_type_size;
+            let decoded_offset: usize = indexer[indexer_index] as usize * data_type_size;
             debug_assert!((output_offset + data_type_size) <= output_bytes.len());
-            debug_assert!((decoded_offset + data_type_size) <= subset_bytes.len(), "Failed subset check: decoded_offset: {:?}, data_type_size: {:?}, subset_bytes.len(): {:?}", decoded_offset, data_type_size, subset_bytes.len());
+            debug_assert!(
+                (decoded_offset + data_type_size) <= subset_bytes.len(),
+                "Failed subset check: decoded_offset: {decoded_offset:?}, data_type_size: {data_type_size:?}, subset_bytes.len(): {:?}", subset_bytes.len()
+            );
             output_bytes[output_offset..output_offset + data_type_size]
                 .copy_from_slice(&subset_bytes[decoded_offset..decoded_offset + data_type_size]);
             indexer_index += 1;

@@ -327,18 +327,16 @@ impl ZarrsPythonArray {
         {
             let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
             let retrieve_chunk = |chunk: NdArrayChunk| {
-                let indices: Vec<u64> = cartesian_product(chunk.selection)
-                    .iter()
+                let chunk_shape = self.arr.chunk_shape(chunk.index).unwrap();
+                let indices: Vec<_> = cartesian_product(chunk.selection)
+                    .into_iter()
                     .map(|x| {
-                        x.iter().enumerate().fold(0, |acc, (ind, x)| {
-                            acc + (*x as u64)
+                        x.into_iter().enumerate().fold(0, |acc: u64, (ind, x)| {
+                            acc.saturating_add_signed(x)
                                 * if ind + 1 == chunk.selection.len() {
                                     1
                                 } else {
-                                    self.arr.chunk_shape(chunk.index).unwrap()[(ind + 1)..]
-                                        .iter()
-                                        .map(|x| x.get())
-                                        .product::<u64>()
+                                    chunk_shape[(ind + 1)..].iter().map(|x| x.get()).product()
                                 }
                         })
                     })
@@ -405,7 +403,7 @@ impl ZarrsPythonArray {
         let out_shape_extracted = out_shape
             .into_iter()
             .map(|x| x.extract::<u64>())
-            .collect::<PyResult<Vec<u64>>>()?;
+            .collect::<PyResult<Vec<_>>>()?;
         let coords_extracted = ZarrsPythonArray::extract_coords(chunk_coords_and_selection_list)?;
         let out_selections_extracted =
             &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
@@ -427,7 +425,7 @@ impl ZarrsPythonArray {
                     .recommended_concurrency(&chunk_representation)
                     .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
             );
-        let size_output = out_shape_extracted.iter().product::<u64>() as usize;
+        let size_output = out_shape_extracted.iter().product::<u64>().try_into()?;
         let dtype = chunk_representation.data_type().clone();
         if ZarrsPythonArray::is_selection_numpy_array(chunk_coords_and_selections, 1) {
             self.get_data_from_numpy_selection(
@@ -465,13 +463,17 @@ pub struct PyZarrArr {
 
 impl ToTensor for PyZarrArr {
     fn data_ptr(&self) -> *mut std::ffi::c_void {
-        self.arr.as_ptr() as *const c_void as *mut c_void
+        self.arr.as_ptr().cast::<c_void>().cast_mut()
     }
+
     fn shape_and_strides(&self) -> ShapeAndStrides {
         ShapeAndStrides::new_contiguous_with_strides(
             self.shape
                 .iter()
-                .map(|x| *x as i64)
+                .map(|x| {
+                    (*x).try_into()
+                        .expect("Array is too big to be converted into a tensor")
+                })
                 .collect::<Vec<i64>>()
                 .iter(),
         )
