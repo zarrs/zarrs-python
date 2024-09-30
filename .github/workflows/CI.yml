@@ -12,6 +12,7 @@ concurrency:
 
 env: 
   CARGO_TERM_COLOR: always
+  PY_COLORS: '1'
 
 jobs:
   build_and_test:
@@ -37,4 +38,7 @@ jobs:
           uv pip install --system -e ".[test]" maturin --verbose
 
       - name: Test python using zarr
-        run: pytest zarrs_python/tests/v3              
+        run: pytest zarrs_python/tests/v3
+      
+      - name: Run pre-commit checks
+        uses: pre-commit/action@v3.0.1

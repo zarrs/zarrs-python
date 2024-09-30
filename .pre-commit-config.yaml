@@ -4,6 +4,13 @@ repos:
       - id: rustfmt
         name: rustfmt
         description: Check if all files follow the rustfmt style
-        entry: cargo fmt --all -- --color always
+        entry: cargo fmt --all -- --color=always
         language: system
+        types: [rust]
+      - id: clippy
+        name: clippy
+        description: Check if Clippy has complaints
+        entry: cargo clippy -- --deny=warnings
+        language: system
+        types: [rust]
         pass_filenames: false
