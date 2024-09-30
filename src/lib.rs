@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use pyo3::prelude::*;
 use std::sync::Arc;
 use zarrs::array::Array as RustArray;
