@@ -61,29 +61,24 @@ pub struct ZarrsPythonArray {
 
 // First some extraction utilities for going from python to rust
 impl ZarrsPythonArray {
-    fn maybe_convert_u64(&self, ind: i32, axis: usize) -> PyResult<u64> {
-        let mut ind_u64: u64 = ind as u64;
-        if ind < 0 {
-            if self.arr.shape()[axis] as i32 + ind < 0 {
-                return Err(PyIndexError::new_err(format!("{ind} out of bounds")));
-            }
-            ind_u64 =
-                u64::try_from(ind).map_err(|_| PyIndexError::new_err("Failed to extract start"))?;
+    fn maybe_convert_u64(&self, ind: i64, axis: usize) -> PyResult<u64> {
+        if self.arr.shape()[axis].checked_add_signed(ind).is_none() {
+            return Err(PyIndexError::new_err(format!("{ind} out of bounds")));
         }
-        Ok(ind_u64)
+        u64::try_from(ind).map_err(|_| PyIndexError::new_err("Failed to extract start"))
     }
 
     fn bound_slice(&self, slice: &Bound<PySlice>, axis: usize) -> PyResult<Range<u64>> {
-        let start: i32 = slice.getattr("start")?.extract().map_or(0, |x| x);
-        let stop: i32 = slice
-            .getattr("stop")?
-            .extract()
-            .map_or(self.arr.shape()[axis] as i32, |x| x);
-        let start_u64 = self.maybe_convert_u64(start, 0)?;
-        let stop_u64 = self.maybe_convert_u64(stop, 0)?;
+        let start: u64 = slice
+            .getattr("start")?
+            .extract::<i64>()
+            .map_or(Ok(0), |x| self.maybe_convert_u64(x, 0))?;
+        let stop: u64 = slice.getattr("stop")?.extract().map_or_else(
+            |_| Ok(self.arr.shape()[axis]),
+            |x| self.maybe_convert_u64(x, 0),
+        )?;
         // let _step: u64 = slice.getattr("step")?.extract().map_or(1, |x| x); // there is no way to use step it seems with zarrs?
-        let selection = start_u64..stop_u64;
-        Ok(selection)
+        Ok(start..stop)
     }
 
     pub fn fill_from_slices(&self, slices: &[Range<u64>]) -> std::vec::Vec<std::ops::Range<u64>> {
@@ -101,9 +96,7 @@ impl ZarrsPythonArray {
             .collect()
     }
 
-    fn extract_coords(
-        chunk_coords_and_selections: &Bound<'_, PyList>,
-    ) -> PyResult<Vec<Vec<u64>>> {
+    fn extract_coords(chunk_coords_and_selections: &Bound<'_, PyList>) -> PyResult<Vec<Vec<u64>>> {
         chunk_coords_and_selections
             .into_iter()
             .map(|chunk_coord_and_selection| {
