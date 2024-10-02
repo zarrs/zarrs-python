@@ -9,8 +9,9 @@ use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::ffi::c_void;
 use std::fmt::Display;
 use std::ops::Range;
+use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::CodecOptionsBuilder;
-use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency, UnsafeCellSlice};
+use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency};
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::storage::ReadableStorageTraits;
@@ -101,9 +102,7 @@ impl ZarrsPythonArray {
             .collect()
     }
 
-    fn extract_coords(
-        chunk_coords_and_selections: &Bound<'_, PyList>,
-    ) -> PyResult<Vec<Vec<u64>>> {
+    fn extract_coords(chunk_coords_and_selections: &Bound<'_, PyList>) -> PyResult<Vec<Vec<u64>>> {
         chunk_coords_and_selections
             .into_iter()
             .map(|chunk_coord_and_selection| {
@@ -274,12 +273,15 @@ impl ZarrsPythonArray {
         {
             let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
             let retrieve_chunk = |chunk: Chunk| {
+                let output = unsafe { output.as_mut_slice() };
                 let chunk_subset_bytes = self
                     .arr
                     .retrieve_chunk_subset_opt(chunk.index, chunk.selection, &codec_options)
-                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?
+                    .into_fixed()
+                    .expect("zarrs-python does not support variable-sized data types");
                 update_bytes_flen(
-                    unsafe { output.get() },
+                    output,
                     &out_shape_extracted,
                     &chunk_subset_bytes,
                     chunk.out_selection,
@@ -350,12 +352,14 @@ impl ZarrsPythonArray {
                         })
                     })
                     .collect();
-                let chunk_subset_bytes =
-                    self.arr
-                        .retrieve_chunk_opt(chunk.index, &codec_options)
-                        .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+                let chunk_subset_bytes = self
+                    .arr
+                    .retrieve_chunk_opt(chunk.index, &codec_options)
+                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?
+                    .into_fixed()
+                    .expect("zarrs-python does not support variable-sized data types");
                 update_bytes_flen_with_indexer(
-                    unsafe { output.get() },
+                    unsafe { output.as_mut_slice() },
                     &out_shape_extracted,
                     &chunk_subset_bytes,
                     chunk.out_selection,
@@ -408,7 +412,10 @@ impl ZarrsPythonArray {
             .arr
             .chunk_array_representation(&vec![0; self.arr.chunk_grid().dimensionality()])
             .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
-        let data_type_size = chunk_representation.data_type().size();
+        let data_type_size = chunk_representation
+            .data_type()
+            .fixed_size()
+            .expect("zarrs-python does not support variable-sized data types");
         let out_shape_extracted = out_shape
             .into_iter()
             .map(|x| x.extract::<u64>())
