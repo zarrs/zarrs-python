@@ -11,7 +11,7 @@ mod array;
 mod utils;
 
 #[pyfunction]
-fn open_array(path: &str) -> PyResult<array::ZarrsPythonArray> {
+fn open_array(path: &str, n_threads: usize) -> PyResult<array::ZarrsPythonArray> {
     #![allow(deprecated)] // HTTPStore is moved to an independent crate in zarrs 0.17 and undeprecated
     let s: ReadableStorage = if path.starts_with("http://") | path.starts_with("https://") {
         Arc::new(HTTPStore::new(path).or_else(|x| utils::err(x.to_string()))?)
@@ -19,7 +19,15 @@ fn open_array(path: &str) -> PyResult<array::ZarrsPythonArray> {
         Arc::new(FilesystemStore::new(path).or_else(|x| utils::err(x.to_string()))?)
     };
     let arr = RustArray::open(s, "/").or_else(|x| utils::err(x.to_string()))?;
-    Ok(array::ZarrsPythonArray { arr })
+    let threadpool = rayon::ThreadPoolBuilder::new()
+        .num_threads(if n_threads > 0 {
+            n_threads
+        } else {
+            std::thread::available_parallelism().unwrap().get()
+        })
+        .build()
+        .unwrap();
+    Ok(array::ZarrsPythonArray::new(arr, threadpool))
 }
 
 /// A Python module implemented in Rust.

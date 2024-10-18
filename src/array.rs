@@ -58,10 +58,18 @@ impl Display for NdArrayChunk<'_> {
 #[pyclass]
 pub struct ZarrsPythonArray {
     pub arr: RustArray<dyn ReadableStorageTraits + 'static>,
+    threadpool: rayon::ThreadPool,
 }
 
 // First some extraction utilities for going from python to rust
 impl ZarrsPythonArray {
+    pub fn new(
+        arr: RustArray<dyn ReadableStorageTraits + 'static>,
+        threadpool: rayon::ThreadPool,
+    ) -> ZarrsPythonArray {
+        ZarrsPythonArray { arr, threadpool }
+    }
+
     fn maybe_convert_u64(&self, ind: i32, axis: usize) -> PyResult<u64> {
         let mut ind_u64: u64 = ind as u64;
         if ind < 0 {
@@ -258,7 +266,6 @@ impl ZarrsPythonArray {
         data_type_size: usize,
         coords_extracted: &[Vec<u64>],
         out_selections_extracted: &[ArraySubset],
-        chunks_concurrent_limit: usize,
         codec_concurrent_target: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
@@ -298,12 +305,9 @@ impl ZarrsPythonArray {
                     selection,
                     out_selection,
                 });
-            iter_concurrent_limit!(
-                chunks_concurrent_limit,
-                zipped_iterator.collect::<Vec<Chunk>>(),
-                try_for_each,
-                retrieve_chunk
-            )?;
+            zipped_iterator.for_each(|x| {
+                let _ = self.threadpool.install(|| retrieve_chunk(x));
+            });
         }
         unsafe { output.set_len(size_output) };
         Ok(ManagerCtx::new(PyZarrArr {
@@ -321,7 +325,6 @@ impl ZarrsPythonArray {
         data_type_size: usize,
         coords_extracted: &[Vec<u64>],
         out_selections_extracted: &Vec<ArraySubset>,
-        chunks_concurrent_limit: usize,
         codec_concurrent_target: usize,
         size_output: usize,
         dtype: zarrs::array::DataType,
@@ -377,12 +380,9 @@ impl ZarrsPythonArray {
                     selection,
                     out_selection,
                 });
-            iter_concurrent_limit!(
-                chunks_concurrent_limit,
-                zipped_iterator.collect::<Vec<NdArrayChunk>>(),
-                try_for_each,
-                retrieve_chunk
-            )?;
+            zipped_iterator.for_each(|x| {
+                let _ = self.threadpool.install(|| retrieve_chunk(x));
+            });
         }
         unsafe { output.set_len(size_output) };
         Ok(ManagerCtx::new(PyZarrArr {
@@ -425,22 +425,12 @@ impl ZarrsPythonArray {
             &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
         let chunks = ArraySubset::new_with_shape(self.arr.chunk_grid_shape().unwrap());
         let concurrent_target = std::thread::available_parallelism().unwrap().get();
-        let (chunks_concurrent_limit, codec_concurrent_target) =
-            zarrs::array::concurrency::calc_concurrency_outer_inner(
-                concurrent_target,
-                &{
-                    let concurrent_chunks = std::cmp::min(
-                        chunks.num_elements_usize(),
-                        global_config().chunk_concurrent_minimum(),
-                    );
-                    RecommendedConcurrency::new_minimum(concurrent_chunks)
-                },
-                &self
-                    .arr
-                    .codecs()
-                    .recommended_concurrency(&chunk_representation)
-                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
-            );
+        let codec_concurrent_target = &self
+            .arr
+            .codecs()
+            .recommended_concurrency(&chunk_representation)
+            .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
+
         let size_output = out_shape_extracted.iter().product::<u64>() as usize;
         let dtype = chunk_representation.data_type().clone();
         if ZarrsPythonArray::is_selection_numpy_array(chunk_coords_and_selections, 1) {
@@ -450,7 +440,6 @@ impl ZarrsPythonArray {
                 data_type_size,
                 &coords_extracted,
                 out_selections_extracted,
-                chunks_concurrent_limit,
                 codec_concurrent_target,
                 size_output,
                 dtype,
@@ -462,7 +451,6 @@ impl ZarrsPythonArray {
                 data_type_size,
                 &coords_extracted,
                 out_selections_extracted,
-                chunks_concurrent_limit,
                 codec_concurrent_target,
                 size_output,
                 dtype,
