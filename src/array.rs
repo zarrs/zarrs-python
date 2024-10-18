@@ -261,7 +261,7 @@ impl ZarrsPythonArray {
     #[allow(clippy::too_many_arguments)]
     fn get_data_from_primitive_selection(
         &self,
-        chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
+        selections_extracted: Vec<ArraySubset>,
         out_shape_extracted: Vec<u64>,
         data_type_size: usize,
         coords_extracted: &[Vec<u64>],
@@ -274,8 +274,6 @@ impl ZarrsPythonArray {
         let codec_options = CodecOptionsBuilder::new()
             .concurrent_target(codec_concurrent_target)
             .build();
-        let selections_extracted =
-            self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
         let borrowed_selections = &selections_extracted;
         {
             let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
@@ -320,7 +318,7 @@ impl ZarrsPythonArray {
     #[allow(clippy::too_many_arguments)]
     fn get_data_from_numpy_selection(
         &self,
-        chunk_coords_and_selections: &pyo3::Bound<'_, PyList>,
+        selections_extracted: Vec<Vec<Vec<i64>>>,
         out_shape_extracted: Vec<u64>,
         data_type_size: usize,
         coords_extracted: &[Vec<u64>],
@@ -330,8 +328,6 @@ impl ZarrsPythonArray {
         dtype: zarrs::array::DataType,
     ) -> PyResult<ManagerCtx<PyZarrArr>> {
         let mut output = Vec::with_capacity(size_output * data_type_size);
-        let selections_extracted: Vec<Vec<Vec<i64>>> =
-            ZarrsPythonArray::extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
         let codec_options = CodecOptionsBuilder::new()
             .concurrent_target(codec_concurrent_target)
             .build();
@@ -443,8 +439,10 @@ impl ZarrsPythonArray {
         let size_output = out_shape_extracted.iter().product::<u64>() as usize;
         let dtype = chunk_representation.data_type().clone();
         if ZarrsPythonArray::is_selection_numpy_array(chunk_coords_and_selections, 1) {
+            let selections_extracted: Vec<Vec<Vec<i64>>> =
+                ZarrsPythonArray::extract_selection_to_vec_indices(chunk_coords_and_selections, 1)?;
             self.get_data_from_numpy_selection(
-                chunk_coords_and_selections,
+                selections_extracted,
                 out_shape_extracted,
                 data_type_size,
                 &coords_extracted,
@@ -454,8 +452,10 @@ impl ZarrsPythonArray {
                 dtype,
             )
         } else {
+            let selections_extracted =
+                self.extract_selection_to_array_subset(chunk_coords_and_selections, 1)?;
             self.get_data_from_primitive_selection(
-                chunk_coords_and_selections,
+                selections_extracted,
                 out_shape_extracted,
                 data_type_size,
                 &coords_extracted,
