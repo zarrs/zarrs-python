@@ -425,12 +425,21 @@ impl ZarrsPythonArray {
             &self.extract_selection_to_array_subset(chunk_coords_and_selections, 2)?;
         let chunks = ArraySubset::new_with_shape(self.arr.chunk_grid_shape().unwrap());
         let concurrent_target = std::thread::available_parallelism().unwrap().get();
-        let codec_concurrent_target = &self
-            .arr
-            .codecs()
-            .recommended_concurrency(&chunk_representation)
-            .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?;
-
+        let (_, codec_concurrent_target) = zarrs::array::concurrency::calc_concurrency_outer_inner(
+            concurrent_target,
+            &{
+                let concurrent_chunks = std::cmp::min(
+                    chunks.num_elements_usize(),
+                    global_config().chunk_concurrent_minimum(),
+                );
+                RecommendedConcurrency::new_minimum(concurrent_chunks)
+            },
+            &self
+                .arr
+                .codecs()
+                .recommended_concurrency(&chunk_representation)
+                .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
+        );
         let size_output = out_shape_extracted.iter().product::<u64>() as usize;
         let dtype = chunk_representation.data_type().clone();
         if ZarrsPythonArray::is_selection_numpy_array(chunk_coords_and_selections, 1) {
