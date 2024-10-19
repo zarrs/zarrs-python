@@ -2071,9 +2071,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "zarrs"
-version = "0.17.0-beta.3"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0148cd20cf559ee0d9ded698ed11ec44a9d462f874ccb19a4c0fec692da31642"
+checksum = "a644e518687434d8c9368f40d85983bb9809a70d9521b6b8adf1b5247f58901a"
 dependencies = [
  "blosc-src",
  "bytemuck",
@@ -2167,9 +2167,9 @@ dependencies = [
 
 [[package]]
 name = "zarrs_storage"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9edd30d0781dab48665e309e8097220b1ad9e32ab594f0871856e05291de72c"
+checksum = "8fdc26926d431e466c95ace0c84b2a544e227e6e57886ea12c3724e40120379b"
 dependencies = [
  "bytes",
  "derive_more",

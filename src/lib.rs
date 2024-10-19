@@ -19,15 +19,7 @@ fn open_array(path: &str, n_threads: usize) -> PyResult<array::ZarrsPythonArray>
         Arc::new(FilesystemStore::new(path).or_else(|x| utils::err(x.to_string()))?)
     };
     let arr = RustArray::open(s, "/").or_else(|x| utils::err(x.to_string()))?;
-    let threadpool = rayon::ThreadPoolBuilder::new()
-        .num_threads(if n_threads > 0 {
-            n_threads
-        } else {
-            std::thread::available_parallelism().unwrap().get()
-        })
-        .build()
-        .unwrap();
-    Ok(array::ZarrsPythonArray::new(arr, threadpool))
+    Ok(array::ZarrsPythonArray { arr, n_threads })
 }
 
 /// A Python module implemented in Rust.
