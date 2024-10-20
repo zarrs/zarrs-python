@@ -43,13 +43,6 @@ impl ZarrsPythonArray {
                     .recommended_concurrency(&chunk_representation)
                     .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?,
             );
-        println!("chunks num_elems: {:?}", chunks.num_elements_usize());
-        println!(
-            "global_config().chunk_concurrent_minimum(): {:?}",
-            global_config().chunk_concurrent_minimum()
-        );
-        println!("codec_concurrent_target: {:?}", codec_concurrent_target);
-        println!("n_threads: {:?}", chunks_concurrent_limit);
         let codec_options = CodecOptionsBuilder::new()
             .concurrent_target(codec_concurrent_target)
             .build();
