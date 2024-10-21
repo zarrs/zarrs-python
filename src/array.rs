@@ -7,7 +7,6 @@ use std::ffi::c_void;
 use zarrs::array::codec::CodecOptionsBuilder;
 use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency};
 use zarrs::array_subset::ArraySubset;
-use zarrs::config::global_config;
 use zarrs::storage::ReadableStorageTraits;
 
 #[allow(clippy::module_name_repetitions)]
@@ -47,19 +46,18 @@ impl ZarrsPythonArray {
             .concurrent_target(codec_concurrent_target)
             .build();
         let dtype = chunk_representation.data_type().clone();
-        let retrieve_chunk = |chunk_index: &Vec<u64>| -> Result<std::borrow::Cow<[u8]>, PyErr> {
+        let retrieve_chunk = |chunk_index: &Vec<u64>| -> Result<Vec<u8>, PyErr> {
             Ok(self
                 .arr
                 .retrieve_chunk_opt(chunk_index, &codec_options)
                 .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?
                 .into_fixed()
-                .expect("zarrs-python does not support variable-sized data types"))
+                .expect("zarrs-python does not support variable-sized data types")
+                .into_owned())
         };
-        let bytes_vec =
-            iter_concurrent_limit!(chunks_concurrent_limit, &chunk_coords, map, retrieve_chunk)
-                .map(|chunk_bytes| -> Vec<u8> { chunk_bytes.unwrap().into_owned() })
-                .collect::<Vec<Vec<u8>>>();
-        bytes_vec
+        iter_concurrent_limit!(chunks_concurrent_limit, &chunk_coords, map, retrieve_chunk)
+            .map(|x| x.unwrap())
+            .collect::<Vec<Vec<u8>>>()
             .into_iter()
             .zip(&chunk_coords)
             .map(|(bytes, chunk_index)| {
