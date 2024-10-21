@@ -1,9 +1,8 @@
-use dlpark::prelude::*;
+use numpy::{IntoPyArray, PyArray};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
-use std::ffi::c_void;
 use zarrs::array::codec::CodecOptionsBuilder;
 use zarrs::array::{Array as RustArray, ArrayCodecTraits, RecommendedConcurrency};
 use zarrs::array_subset::ArraySubset;
@@ -18,10 +17,11 @@ pub struct ZarrsPythonArray {
 
 #[pymethods]
 impl ZarrsPythonArray {
-    pub fn retrieve_chunks(
+    pub fn retrieve_chunks<'py>(
         &self,
+        py: Python<'py>,
         chunk_coords: Vec<Vec<u64>>,
-    ) -> PyResult<Vec<ManagerCtx<PyZarrArr>>> {
+    ) -> PyResult<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>> {
         let chunks = ArraySubset::new_with_shape(self.arr.chunk_grid_shape().unwrap());
         let chunk_representation = self
             .arr
@@ -45,7 +45,6 @@ impl ZarrsPythonArray {
         let codec_options = CodecOptionsBuilder::new()
             .concurrent_target(codec_concurrent_target)
             .build();
-        let dtype = chunk_representation.data_type().clone();
         let retrieve_chunk = |chunk_index: &Vec<u64>| -> Result<Vec<u8>, PyErr> {
             Ok(self
                 .arr
@@ -59,65 +58,10 @@ impl ZarrsPythonArray {
             .map(|x| x.unwrap())
             .collect::<Vec<Vec<u8>>>()
             .into_iter()
-            .zip(&chunk_coords)
-            .map(|(bytes, chunk_index)| {
-                let chunk_size: Vec<u64> = self
-                    .arr
-                    .chunk_shape(chunk_index)
-                    .map_err(|x| PyErr::new::<PyTypeError, _>(x.to_string()))?
-                    .to_array_shape();
-                Ok(ManagerCtx::new(PyZarrArr {
-                    arr: bytes,
-                    shape: chunk_size,
-                    dtype: dtype.clone(),
-                }))
+            .map(|bytes| {
+                let pyarray = bytes.into_pyarray_bound(py);
+                Ok(pyarray)
             })
-            .collect::<PyResult<Vec<ManagerCtx<PyZarrArr>>>>()
-    }
-}
-
-pub struct PyZarrArr {
-    arr: Vec<u8>,
-    shape: Vec<u64>,
-    dtype: zarrs::array::DataType,
-}
-
-impl ToTensor for PyZarrArr {
-    fn data_ptr(&self) -> *mut std::ffi::c_void {
-        self.arr.as_ptr() as *const c_void as *mut c_void
-    }
-    fn shape_and_strides(&self) -> ShapeAndStrides {
-        ShapeAndStrides::new_contiguous_with_strides(
-            self.shape
-                .iter()
-                .map(|x| *x as i64)
-                .collect::<Vec<i64>>()
-                .iter(),
-        )
-    }
-
-    fn byte_offset(&self) -> u64 {
-        0
-    }
-
-    fn device(&self) -> Device {
-        Device::CPU
-    }
-
-    fn dtype(&self) -> DataType {
-        match self.dtype {
-            zarrs::array::DataType::Int16 => DataType::I16,
-            zarrs::array::DataType::Int32 => DataType::I32,
-            zarrs::array::DataType::Int64 => DataType::I64,
-            zarrs::array::DataType::Int8 => DataType::I8,
-            zarrs::array::DataType::UInt16 => DataType::U16,
-            zarrs::array::DataType::UInt32 => DataType::U32,
-            zarrs::array::DataType::UInt64 => DataType::U64,
-            zarrs::array::DataType::UInt8 => DataType::U8,
-            zarrs::array::DataType::Float32 => DataType::F32,
-            zarrs::array::DataType::Float64 => DataType::F64,
-            zarrs::array::DataType::Bool => DataType::BOOL,
-            _ => panic!("Unsupported data type"),
-        }
+            .collect::<PyResult<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>>>()
     }
 }
