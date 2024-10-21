@@ -1,13 +1,14 @@
 #![warn(clippy::pedantic)]
 
 use pyo3::prelude::*;
-use std::num::NonZeroU64;
+use std::num::{NonZero, NonZeroU64};
 use std::sync::Arc;
 use zarrs::array::codec::{ArrayToBytesCodecTraits, CodecOptions};
 use zarrs::array::{
     Array as RustArray, ArrayBytes, ChunkRepresentation, CodecChain, DataType, FillValue,
 };
 use zarrs::filesystem::FilesystemStore;
+use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::store::MemoryStore;
 use zarrs::storage::{ReadableStorage, ReadableWritableListableStorageTraits, StoreKey};
@@ -96,16 +97,21 @@ impl CodecPipelineImpl {
     fn retrieve_chunk_subset(
         &mut self, // TODO: Interior mut?
         chunk_path: &str,
+        chunk_shape: Vec<u64>,
+        dtype: &str,
+        fill_value: Vec<u8>,
         // TODO: Chunk selection
-        // TODO: Chunk representation
     ) -> PyResult<Vec<u8>> {
-        let chunk_representation = ChunkRepresentation::new(
-            // FIXME
-            vec![NonZeroU64::new(10).unwrap()],
-            DataType::UInt8,
-            FillValue::from(0u8),
-        )
-        .unwrap();
+        let data_type =
+            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
+                .unwrap(); // yikes
+        let chunk_shape = chunk_shape
+            .into_iter()
+            .map(|x| NonZeroU64::new(x).unwrap())
+            .collect();
+
+        let chunk_representation =
+            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
 
         let (store, chunk_path) = self.get_store_and_path(chunk_path);
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
@@ -133,23 +139,35 @@ impl CodecPipelineImpl {
     fn store_chunk_subset(
         &mut self, // TODO: Interior mut?
         chunk_path: &str,
+        chunk_shape: Vec<u64>,
+        dtype: &str,
+        fill_value: Vec<u8>,
         // TODO: Chunk selection
-        // TODO: Chunk representation
         // TODO: value...
     ) -> PyResult<()> {
+        let value_decoded = // FIXME
+            vec![
+                42u8;
+                usize::try_from(chunk_shape.iter().product::<u64>()).unwrap()
+            ];
+        let data_type =
+            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
+                .unwrap(); // yikes
+        let chunk_shape = chunk_shape
+            .into_iter()
+            .map(|x| NonZeroU64::new(x).unwrap())
+            .collect();
         let chunk_representation = ChunkRepresentation::new(
             // FIXME
-            vec![NonZeroU64::new(10).unwrap()],
-            DataType::UInt8,
-            FillValue::from(0u8),
+            chunk_shape,
+            data_type,
+            FillValue::new(fill_value),
         )
         .unwrap();
 
         // TODO: Review array.store_chunk_subset
         let (store, chunk_path) = self.get_store_and_path(chunk_path);
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
-
-        let value_decoded = vec![42u8; 10]; // FIXME
 
         let value_encoded = self
             .codec_chain
