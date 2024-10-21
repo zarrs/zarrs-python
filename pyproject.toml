@@ -22,7 +22,8 @@ dependencies = [
     'typing_extensions',
     'donfig',
     'pytest',
-    'universal_pathlib>=0.2.0'
+    'universal_pathlib>=0.2.0',
+    'zarr>=3.0.0b1',
 ]
 
 [project.optional-dependencies]
@@ -44,7 +45,8 @@ test = [
 dev = ["maturin"]
 
 [tool.maturin]
-module-name = "zarrs_python.zarrs_python_internal"
+python-source = "python"
+module-name = "zarrs_python._internal"
 features = ["pyo3/extension-module"]
 
 

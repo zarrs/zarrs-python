@@ -20,3 +20,10 @@ This may *not* be the best way to achieve parallelization.  No profiling has bee
 ## Testing
 
 At the moment, we rely on the python tests for correctness, so `pytest zarrs_python/tests/v3` should run the relevant tests within `zarr-python` that hit the rust-based codepaths.  These tests should all pass, although some have been xfailed for good reasons (like object equality).
+
+
+## `ld/codec_pipeline` branch
+```
+maturin develop -r
+./examples/simple.py
+```
