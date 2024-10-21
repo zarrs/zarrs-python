@@ -96,7 +96,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_getter)
             print(chunk_path, chunk_selection, out_selection)
-            out[out_selection] = self.impl.retrieve_chunk_subset(chunk_path) # TODO: Pass in chunk_selection, chunk rep, etc
+            out[out_selection] = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes()) # TODO: Pass in chunk_selection rep, etc
 
     async def write(
         self,
@@ -113,7 +113,8 @@ class ZarrsCodecPipeline(CodecPipeline):
         for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_setter)
             print(chunk_path, chunk_selection, out_selection)
-            self.impl.store_chunk_subset(chunk_path) # TODO: Pass in values, chunk_selection, chunk rep, etc
+            print(chunk_spec)
+            self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes()) # TODO: Pass in values, chunk_selection, etc
 
 
 register_pipeline(ZarrsCodecPipeline)
