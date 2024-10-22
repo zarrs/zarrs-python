@@ -97,7 +97,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_getter)
             np_array_chunk = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
-            out[out_selection] = np_array_chunk.view(chunk_spec.dtype)[chunk_selection]
+            out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)[chunk_selection]
 
     async def write(
         self,
