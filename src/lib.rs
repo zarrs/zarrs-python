@@ -134,7 +134,7 @@ impl CodecPipelineImpl {
             Ok(value_decoded.into_pyarray_bound(py))
         } else {
             // Review zarrs::Array::retrieve_chunk_subset
-            todo!()
+            todo!("retrieve_chunk_subset partial chunk")
         }
     }
 
@@ -195,7 +195,8 @@ impl CodecPipelineImpl {
             Ok(())
         } else {
             // TODO: Review zarrs::Array::store_chunk_subset
-            todo!()
+            // Need to retrieve te chunk, update it, and store it
+            todo!("store_chunk_subset partial chunk")
         }
     }
 }
