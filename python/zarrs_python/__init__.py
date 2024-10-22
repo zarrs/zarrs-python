@@ -110,12 +110,14 @@ class ZarrsCodecPipeline(CodecPipeline):
         print("ZarrsCodecPipeline.write")
         print("value", value)
         print("drop_axes", drop_axes)
+        value = value.as_ndarray_like()
+
         # TODO: Instead of iterating here: add store_chunk_subsets to CodecPipelineImpl
         for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_setter)
             print(chunk_path, chunk_selection, out_selection)
             print(chunk_spec)
-            self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes()) # TODO: Pass in values, chunk_selection, etc
+            self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), value[out_selection])
 
 
 register_pipeline(ZarrsCodecPipeline)
