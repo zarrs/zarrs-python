@@ -20,3 +20,12 @@ print(arr[:])
 # arr[:] = 42 # This is actually a special case that needs to be handled
 arr[:] = np.arange(16).reshape(4,4)
 print(arr[:])
+
+# Partial decoding
+# TODO: Works but decodes each chunk entirely
+print(arr[0:1,1:2])
+print(arr[1:3,1:3])
+
+# Partial encoding
+# TODO
+arr[1:3,1:3] = np.array([[-1, -2], [-3, -4]])
