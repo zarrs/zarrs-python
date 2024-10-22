@@ -63,6 +63,9 @@ pub struct ZarrsPythonArray {
 // First some extraction utilities for going from python to rust
 impl ZarrsPythonArray {
     fn maybe_convert_u64(&self, ind: i64, axis: usize) -> PyResult<u64> {
+        if ind >= 0 {
+            return Ok(ind.try_into()?);
+        }
         match self.arr.shape()[axis].checked_add_signed(ind) {
             Some(x) => Ok(x),
             None => Err(PyIndexError::new_err(format!("{ind} out of bounds"))),
