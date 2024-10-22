@@ -13,17 +13,6 @@ use zarrs::storage::store::MemoryStore;
 use zarrs::storage::{ReadableWritableListableStorageTraits, StoreKey};
 
 mod utils;
-// #[pyfunction]
-// fn open_array(path: &str) -> PyResult<array::ZarrsPythonArray> {
-//     #![allow(deprecated)] // HTTPStore is moved to an independent crate in zarrs 0.17 and undeprecated
-//     let s: ReadableStorage = if path.starts_with("http://") | path.starts_with("https://") {
-//         Arc::new(HTTPStore::new(path).or_else(|x| utils::err(x.to_string()))?)
-//     } else {
-//         Arc::new(FilesystemStore::new(path).or_else(|x| utils::err(x.to_string()))?)
-//     };
-//     let arr = RustArray::open(s, "/").or_else(|x| utils::err(x.to_string()))?;
-//     Ok(array::ZarrsPythonArray { arr })
-// }
 
 pub enum CodecPipelineStore {
     Memory(Arc<MemoryStore>),
@@ -180,24 +169,11 @@ impl CodecPipelineImpl {
         store.set(&key, value_encoded.into()).unwrap(); // FIXME: Error handling
         Ok(())
     }
-
-    // fn encode_chunk(&self, decoded_chunk: &[u8]) -> PyResult<Vec<u8>> {
-    //     let decoded_representation: ChunkRepresentation = todo!("pass the chunk representation");
-    //     let options = CodecOptions::default();
-    //     let bytes = ArrayBytes::new_flen(decoded_chunk);
-    //     let encoded = self
-    //         .codec_chain
-    //         .encode(bytes, &decoded_representation, &options)
-    //         .or_else(|x| utils::err(x.to_string()))?;
-    //     Ok(encoded.into_owned())
-    // }
 }
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CodecPipelineImpl>()?;
-    // m.add_function(wrap_pyfunction!(open_array, m)?)?;
-    // m.add_class::<array::ZarrsPythonArray>()?;
     Ok(())
 }
