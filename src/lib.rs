@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use zarrs::array::codec::{ArrayToBytesCodecTraits, CodecOptions};
-use zarrs::array::{ArrayBytes, ChunkRepresentation, CodecChain, DataType, FillValue};
+use zarrs::array::{ArrayBytes, ArraySize, ChunkRepresentation, CodecChain, DataType, FillValue};
 use zarrs::filesystem::FilesystemStore;
 use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
@@ -90,6 +90,14 @@ impl CodecPipelineImpl {
         fill_value: Vec<u8>,
         // TODO: Chunk selection
     ) -> PyResult<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>> {
+        // Get the store and chunk key
+        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
+        let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+
+        // Check if the entire chunk is being stored
+        let is_entire_chunk = true; // FIXME
+
+        // Get the chunk representation
         let data_type =
             DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
                 .unwrap(); // yikes
@@ -97,31 +105,37 @@ impl CodecPipelineImpl {
             .into_iter()
             .map(|x| NonZeroU64::new(x).unwrap())
             .collect();
-
         let chunk_representation =
             ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
 
-        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-        let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
-
-        // TODO: Use partial decoder, rather than getting all bytes, see Array::retrieve_chunk_subset
-        let value_encoded = store.get(&key).unwrap(); // FIXME: Error handling
-                                                      // TODO: Decode the value
-        let value_encoded: Vec<u8> = value_encoded.unwrap().into();
-
-        let value_decoded = self
-            .codec_chain
-            .decode(
-                value_encoded.into(),
-                &chunk_representation,
-                &CodecOptions::default(),
-            )
-            .map(ArrayBytes::into_owned)
-            .unwrap()
-            .into_fixed()
-            .unwrap()
-            .into_owned();
-        Ok(value_decoded.into_pyarray_bound(py))
+        if is_entire_chunk {
+            let value_encoded = store.get(&key).unwrap(); // FIXME: Error handling
+            let value_decoded = if let Some(value_encoded) = value_encoded {
+                let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
+                self.codec_chain
+                    .decode(
+                        value_encoded.into(),
+                        &chunk_representation,
+                        &CodecOptions::default(),
+                    )
+                    .unwrap() // FIXME: Error handling
+            } else {
+                let array_size = ArraySize::new(
+                    chunk_representation.data_type().size(),
+                    chunk_representation.num_elements(),
+                );
+                ArrayBytes::new_fill_value(array_size, chunk_representation.fill_value())
+            };
+            let value_decoded = value_decoded
+                .into_owned()
+                .into_fixed()
+                .expect("zarrs-python and zarr only support fixed length types")
+                .into_owned();
+            Ok(value_decoded.into_pyarray_bound(py))
+        } else {
+            // Review zarrs::Array::retrieve_chunk_subset
+            todo!()
+        }
     }
 
     fn store_chunk_subset(
@@ -137,13 +151,7 @@ impl CodecPipelineImpl {
         let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
 
-        // Get the chunk representation
-        let data_type =
-            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
-                .unwrap(); // yikes
-
         // Check if the entire chunk is being stored
-        // let value = value.extract::<&PyArray<u8, numpy::ndarray::IxDyn>>()?;
         let is_entire_chunk = value
             .shape()
             .iter()
@@ -152,6 +160,9 @@ impl CodecPipelineImpl {
             .all(|x| x);
 
         // Get the chunk representation
+        let data_type =
+            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
+                .unwrap(); // yikes
         let chunk_shape = chunk_shape
             .into_iter()
             .map(|x| NonZeroU64::new(x).unwrap())
@@ -183,7 +194,7 @@ impl CodecPipelineImpl {
 
             Ok(())
         } else {
-            // TODO: Review array.store_chunk_subset
+            // TODO: Review zarrs::Array::store_chunk_subset
             todo!()
         }
     }

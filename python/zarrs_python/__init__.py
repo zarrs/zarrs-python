@@ -110,7 +110,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         print("ZarrsCodecPipeline.write")
         print("value", value)
         print("drop_axes", drop_axes)
-        value = value.as_ndarray_like()
+        value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
 
         # TODO: Instead of iterating here: add store_chunk_subsets to CodecPipelineImpl
         for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info:

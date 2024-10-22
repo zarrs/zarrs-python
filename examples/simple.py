@@ -16,6 +16,7 @@ arr = zarr.zeros(shape, store=LocalStore(root=tmp.name, mode='w'), chunks=chunks
 
 # arr = zarr.zeros(shape, store=MemoryStore(mode='w'), chunks=chunks, dtype=np.uint8, codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()])
 
+print(arr[:])
 # arr[:] = 42 # This is actually a special case that needs to be handled
 arr[:] = np.arange(16).reshape(4,4)
 print(arr[:])
