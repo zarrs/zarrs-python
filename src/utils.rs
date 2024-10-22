@@ -74,19 +74,3 @@ pub fn update_bytes_flen(
         decoded_offset += length;
     }
 }
-
-pub fn cartesian_product<T: Clone>(vecs: &[Vec<T>]) -> Vec<Vec<T>> {
-    vecs.iter().fold(vec![vec![]], |acc, vec| {
-        acc.into_iter()
-            .flat_map(|prefix| {
-                vec.iter()
-                    .map(move |elem| {
-                        let mut new_prefix = prefix.clone();
-                        new_prefix.push(elem.clone());
-                        new_prefix
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    })
-}

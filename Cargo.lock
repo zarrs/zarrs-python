@@ -2113,6 +2113,7 @@ name = "zarrs-python"
 version = "0.1.0"
 dependencies = [
  "dlpark",
+ "itertools",
  "numpy",
  "openssl",
  "paste",

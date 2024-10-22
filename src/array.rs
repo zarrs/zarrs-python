@@ -1,5 +1,6 @@
-use crate::utils::{cartesian_product, update_bytes_flen, update_bytes_flen_with_indexer};
+use crate::utils::{update_bytes_flen, update_bytes_flen_with_indexer};
 use dlpark::prelude::*;
+use itertools::Itertools;
 use numpy::{PyArray2, PyArrayDyn, PyArrayMethods};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -335,8 +336,10 @@ impl ZarrsPythonArray {
             let output = UnsafeCellSlice::new_from_vec_with_spare_capacity(&mut output);
             let retrieve_chunk = |chunk: NdArrayChunk| {
                 let chunk_shape = self.arr.chunk_shape(chunk.index).unwrap();
-                let indices: Vec<_> = cartesian_product(chunk.selection)
-                    .into_iter()
+                let indices: Vec<_> = chunk
+                    .selection
+                    .iter()
+                    .multi_cartesian_product()
                     .map(|x| {
                         x.into_iter().enumerate().fold(0, |acc: u64, (ind, x)| {
                             let factor = if ind + 1 == chunk.selection.len() {

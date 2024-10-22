@@ -21,6 +21,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 numpy = "0.21"
 static_assertions = "1.1.0"
 unsafe_cell_slice = "0.1.0"
+itertools = "0.13.0"
 
 [profile.release]
 lto = true
