@@ -8,8 +8,8 @@ import numpy as np
 
 zarr.config.set(codec_pipeline={"path": "zarrs_python.ZarrsCodecPipeline",})
 
-chunks = (2,) # FIXME: nd
-shape = (4,)
+chunks = (2,2)
+shape = (4,4)
 
 tmp = tempfile.TemporaryDirectory()
 arr = zarr.zeros(shape, store=LocalStore(root=tmp.name, mode='w'), chunks=chunks, dtype=np.uint8, codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()])
