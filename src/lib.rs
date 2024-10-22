@@ -41,7 +41,7 @@ impl CodecPipelineImpl {
             } else if let Some(CodecPipelineStore::Memory(store)) = &self.store {
                 store
             } else {
-                panic!()
+                utils::err("the store type changed".to_string())?
             };
             Ok((store.clone(), chunk_path))
         } else if let Some(chunk_path) = chunk_path.strip_prefix("file:///") {
@@ -57,7 +57,7 @@ impl CodecPipelineImpl {
             } else if let Some(CodecPipelineStore::Filesystem(store)) = &self.store {
                 store
             } else {
-                panic!()
+                utils::err("the store type changed".to_string())?
             };
             Ok((store.clone(), chunk_path))
         } else {
