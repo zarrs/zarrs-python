@@ -339,12 +339,17 @@ impl ZarrsPythonArray {
                     .into_iter()
                     .map(|x| {
                         x.into_iter().enumerate().fold(0, |acc: u64, (ind, x)| {
-                            acc.saturating_add_signed(x)
-                                * if ind + 1 == chunk.selection.len() {
-                                    1
-                                } else {
-                                    chunk_shape[(ind + 1)..].iter().map(|x| x.get()).product()
-                                }
+                            let factor = if ind + 1 == chunk.selection.len() {
+                                1
+                            } else {
+                                chunk_shape[(ind + 1)..]
+                                    .iter()
+                                    .map(|x| x.get())
+                                    .product::<u64>()
+                                    .try_into()
+                                    .unwrap()
+                            };
+                            acc.saturating_add_signed(x * factor)
                         })
                     })
                     .collect();
