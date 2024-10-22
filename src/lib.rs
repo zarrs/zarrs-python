@@ -116,7 +116,7 @@ impl CodecPipelineImpl {
                 &chunk_representation,
                 &CodecOptions::default(),
             )
-            .map(|x| x.into_owned())
+            .map(ArrayBytes::into_owned)
             .unwrap()
             .into_fixed()
             .unwrap()
@@ -124,14 +124,14 @@ impl CodecPipelineImpl {
         Ok(value_decoded.into_pyarray_bound(py))
     }
 
-    fn store_chunk_subset<'py>(
+    fn store_chunk_subset(
         &mut self, // TODO: Interior mut?
         chunk_path: &str,
         chunk_shape: Vec<u64>,
         dtype: &str,
         fill_value: Vec<u8>,
         // TODO: Chunk selection
-        value: &Bound<'py, PyArray<u8, numpy::ndarray::IxDyn>>,
+        value: &Bound<'_, PyArray<u8, numpy::ndarray::IxDyn>>,
     ) -> PyResult<()> {
         // Get the store and chunk key
         let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
@@ -146,7 +146,7 @@ impl CodecPipelineImpl {
         // let value = value.extract::<&PyArray<u8, numpy::ndarray::IxDyn>>()?;
         let is_entire_chunk = value
             .shape()
-            .into_iter()
+            .iter()
             .zip(chunk_shape.as_slice())
             .map(|(sv, sc)| *sv as u64 == *sc)
             .all(|x| x);
@@ -175,7 +175,7 @@ impl CodecPipelineImpl {
                     &chunk_representation,
                     &CodecOptions::default(),
                 )
-                .map(|x| x.into_owned())
+                .map(Cow::into_owned)
                 .unwrap();
 
             // Store the encoded chunk
