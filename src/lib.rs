@@ -1,22 +1,18 @@
 #![warn(clippy::pedantic)]
 
+use numpy::{IntoPyArray, PyArray};
 use pyo3::prelude::*;
-use std::num::{NonZero, NonZeroU64};
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use zarrs::array::codec::{ArrayToBytesCodecTraits, CodecOptions};
-use zarrs::array::{
-    Array as RustArray, ArrayBytes, ChunkRepresentation, CodecChain, DataType, FillValue,
-};
+use zarrs::array::{ArrayBytes, ChunkRepresentation, CodecChain, DataType, FillValue};
 use zarrs::filesystem::FilesystemStore;
 use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::store::MemoryStore;
-use zarrs::storage::{ReadableStorage, ReadableWritableListableStorageTraits, StoreKey};
-use zarrs_http::HTTPStore;
+use zarrs::storage::{ReadableWritableListableStorageTraits, StoreKey};
 
-mod array;
 mod utils;
-
 // #[pyfunction]
 // fn open_array(path: &str) -> PyResult<array::ZarrsPythonArray> {
 //     #![allow(deprecated)] // HTTPStore is moved to an independent crate in zarrs 0.17 and undeprecated
@@ -94,14 +90,15 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunk_subset(
+    fn retrieve_chunk_subset<'py>(
         &mut self, // TODO: Interior mut?
+        py: Python<'py>,
         chunk_path: &str,
         chunk_shape: Vec<u64>,
         dtype: &str,
         fill_value: Vec<u8>,
         // TODO: Chunk selection
-    ) -> PyResult<Vec<u8>> {
+    ) -> PyResult<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>> {
         let data_type =
             DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
                 .unwrap(); // yikes
@@ -133,7 +130,7 @@ impl CodecPipelineImpl {
             .into_fixed()
             .unwrap()
             .into_owned();
-        Ok(value_decoded)
+        Ok(value_decoded.into_pyarray_bound(py))
     }
 
     fn store_chunk_subset(

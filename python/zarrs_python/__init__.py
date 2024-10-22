@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
+import numpy as np
 import json
 
 from zarr.abc.codec import (
@@ -95,8 +96,8 @@ class ZarrsCodecPipeline(CodecPipeline):
         # TODO: Instead of iterating here: add read_chunk_subsets to CodecPipelineImpl
         for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_getter)
-            print(chunk_path, chunk_selection, out_selection)
-            out[out_selection] = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes()) # TODO: Pass in chunk_selection rep, etc
+            np_array_chunk = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
+            out[out_selection] = np_array_chunk.view(chunk_spec.dtype)[chunk_selection]
 
     async def write(
         self,
