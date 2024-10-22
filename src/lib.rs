@@ -29,7 +29,7 @@ impl CodecPipelineImpl {
     fn get_store_and_path<'a>(
         &mut self,
         chunk_path: &'a str,
-    ) -> (Arc<dyn ReadableWritableListableStorageTraits>, &'a str) {
+    ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, &'a str)> {
         if let Some(chunk_path) = chunk_path.strip_prefix("memory://") {
             let store = if self.store.is_none() {
                 self.store = Some(CodecPipelineStore::Memory(Arc::new(MemoryStore::default())));
@@ -42,7 +42,7 @@ impl CodecPipelineImpl {
             } else {
                 panic!()
             };
-            (store.clone(), chunk_path)
+            Ok((store.clone(), chunk_path))
         } else if let Some(chunk_path) = chunk_path.strip_prefix("file:///") {
             // NOTE: Extra / is intentional, then chunk_path is relative to root
             let store = if self.store.is_none() {
@@ -58,9 +58,10 @@ impl CodecPipelineImpl {
             } else {
                 panic!()
             };
-            (store.clone(), chunk_path)
+            Ok((store.clone(), chunk_path))
         } else {
-            todo!("raise error unsupported store")
+            // TODO: Add support for more stores
+            utils::err("unsupported store".to_string())
         }
     }
 }
@@ -99,7 +100,7 @@ impl CodecPipelineImpl {
         let chunk_representation =
             ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
 
-        let (store, chunk_path) = self.get_store_and_path(chunk_path);
+        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
 
         // TODO: Use partial decoder, rather than getting all bytes, see Array::retrieve_chunk_subset
@@ -152,7 +153,7 @@ impl CodecPipelineImpl {
         .unwrap();
 
         // TODO: Review array.store_chunk_subset
-        let (store, chunk_path) = self.get_store_and_path(chunk_path);
+        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
 
         let value_encoded = self
