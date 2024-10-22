@@ -63,10 +63,10 @@ pub struct ZarrsPythonArray {
 // First some extraction utilities for going from python to rust
 impl ZarrsPythonArray {
     fn maybe_convert_u64(&self, ind: i64, axis: usize) -> PyResult<u64> {
-        if self.arr.shape()[axis].checked_add_signed(ind).is_none() {
-            return Err(PyIndexError::new_err(format!("{ind} out of bounds")));
+        match self.arr.shape()[axis].checked_add_signed(ind) {
+            Some(x) => Ok(x),
+            None => Err(PyIndexError::new_err(format!("{ind} out of bounds"))),
         }
-        u64::try_from(ind).map_err(|_| PyIndexError::new_err("Failed to extract start"))
     }
 
     fn bound_slice(&self, slice: &Bound<PySlice>, axis: usize) -> PyResult<Range<u64>> {
