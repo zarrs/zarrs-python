@@ -1,7 +1,8 @@
 #![warn(clippy::pedantic)]
 
-use numpy::{IntoPyArray, PyArray};
+use numpy::{IntoPyArray, PyArray, PyArrayMethods, PyUntypedArrayMethods};
 use pyo3::prelude::*;
+use std::borrow::Cow;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use zarrs::array::codec::{ArrayToBytesCodecTraits, CodecOptions};
@@ -123,52 +124,68 @@ impl CodecPipelineImpl {
         Ok(value_decoded.into_pyarray_bound(py))
     }
 
-    fn store_chunk_subset(
+    fn store_chunk_subset<'py>(
         &mut self, // TODO: Interior mut?
         chunk_path: &str,
         chunk_shape: Vec<u64>,
         dtype: &str,
         fill_value: Vec<u8>,
         // TODO: Chunk selection
-        // TODO: value...
+        value: &Bound<'py, PyArray<u8, numpy::ndarray::IxDyn>>,
     ) -> PyResult<()> {
-        let value_decoded = // FIXME
-            vec![
-                42u8;
-                usize::try_from(chunk_shape.iter().product::<u64>()).unwrap()
-            ];
+        // Get the store and chunk key
+        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
+        let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+
+        // Get the chunk representation
         let data_type =
             DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
                 .unwrap(); // yikes
+
+        // Check if the entire chunk is being stored
+        // let value = value.extract::<&PyArray<u8, numpy::ndarray::IxDyn>>()?;
+        let is_entire_chunk = value
+            .shape()
+            .into_iter()
+            .zip(chunk_shape.as_slice())
+            .map(|(sv, sc)| *sv as u64 == *sc)
+            .all(|x| x);
+
+        // Get the chunk representation
         let chunk_shape = chunk_shape
             .into_iter()
             .map(|x| NonZeroU64::new(x).unwrap())
             .collect();
-        let chunk_representation = ChunkRepresentation::new(
-            // FIXME
-            chunk_shape,
-            data_type,
-            FillValue::new(fill_value),
-        )
-        .unwrap();
+        let chunk_representation =
+            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
 
-        // TODO: Review array.store_chunk_subset
-        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-        let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+        if is_entire_chunk {
+            // Get the decoded bytes
+            let array = unsafe { value.as_array() };
+            let value_decoded = if let Some(value_decoded) = array.to_slice() {
+                Cow::Borrowed(value_decoded)
+            } else {
+                Cow::Owned(array.as_standard_layout().into_owned().into_raw_vec())
+            };
 
-        let value_encoded = self
-            .codec_chain
-            .encode(
-                ArrayBytes::new_flen(&value_decoded),
-                &chunk_representation,
-                &CodecOptions::default(),
-            )
-            .map(|x| x.into_owned())
-            .unwrap();
+            let value_encoded = self
+                .codec_chain
+                .encode(
+                    ArrayBytes::new_flen(value_decoded),
+                    &chunk_representation,
+                    &CodecOptions::default(),
+                )
+                .map(|x| x.into_owned())
+                .unwrap();
 
-        // Store the encoded chunk
-        store.set(&key, value_encoded.into()).unwrap(); // FIXME: Error handling
-        Ok(())
+            // Store the encoded chunk
+            store.set(&key, value_encoded.into()).unwrap(); // FIXME: Error handling
+
+            Ok(())
+        } else {
+            // TODO: Review array.store_chunk_subset
+            todo!()
+        }
     }
 }
 
