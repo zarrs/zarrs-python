@@ -22,7 +22,7 @@ dependencies = [
     'typing_extensions',
     'donfig',
     'pytest',
-    'universal_pathlib>=0.2.0'
+    'universal_pathlib>=0.2.0',
 ]
 
 [project.optional-dependencies]
@@ -39,7 +39,7 @@ test = [
     "flask",
     "requests",
     "mypy",
-    "hypothesis"
+    "hypothesis",
 ]
 dev = ["maturin"]
 
@@ -47,6 +47,9 @@ dev = ["maturin"]
 module-name = "zarrs_python.zarrs_python_internal"
 features = ["pyo3/extension-module"]
 
+[tool.hatch.envs.hatch-test]
+default-args = ["zarrs_python/tests/v3"]
+features = ["test"]
 
 [tool.pytest.ini_options]
 minversion = "7"
@@ -59,9 +62,7 @@ doctest_optionflags = [
     "ELLIPSIS",
     "IGNORE_EXCEPTION_DETAIL",
 ]
-addopts = [
-    "--durations=10", "-ra", "--strict-config", "--strict-markers",
-]
+addopts = ["--durations=10", "-ra", "--strict-config", "--strict-markers"]
 filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",

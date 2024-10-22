@@ -21,7 +21,8 @@ pub fn update_bytes_flen_with_indexer(
         unsafe { subset.contiguous_linearised_indices_unchecked(output_shape) };
     // TODO: Par iteration?
     let mut indexer_index = 0;
-    for (array_subset_element_index, num_elements) in &contiguous_indices {
+    let num_elements = contiguous_indices.contiguous_elements_usize();
+    for array_subset_element_index in &contiguous_indices {
         let mut output_offset = array_subset_element_index as usize * data_type_size;
         for _num_elem in 0..num_elements {
             let decoded_offset: usize = indexer[indexer_index] as usize * data_type_size;
@@ -64,7 +65,7 @@ pub fn update_bytes_flen(
     let length = contiguous_indices.contiguous_elements_usize() * data_type_size;
     let mut decoded_offset = 0;
     // TODO: Par iteration?
-    for (array_subset_element_index, _num_elements) in &contiguous_indices {
+    for array_subset_element_index in &contiguous_indices {
         let output_offset = usize::try_from(array_subset_element_index).unwrap() * data_type_size;
         debug_assert!((output_offset + length) <= output_bytes.len());
         debug_assert!((decoded_offset + length) <= subset_bytes.len());
