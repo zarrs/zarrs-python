@@ -45,12 +45,19 @@ impl CodecPipelineImpl {
                 utils::err("the store type changed".to_string())?
             };
             Ok((store.clone(), chunk_path))
-        } else if let Some(chunk_path) = chunk_path.strip_prefix("file:///") {
-            // NOTE: Extra / is intentional, then chunk_path is relative to root
+        } else if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
             let store = if self.store.is_none() {
-                self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
-                    FilesystemStore::new("/").unwrap(),
-                )));
+                if chunk_path.starts_with('/') {
+                    // Absolute path
+                    self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
+                        FilesystemStore::new("/").unwrap(),
+                    )));
+                } else {
+                    // Relative path
+                    self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
+                        FilesystemStore::new(std::env::current_dir().unwrap()).unwrap(),
+                    )));
+                }
                 let Some(CodecPipelineStore::Filesystem(store)) = self.store.as_ref() else {
                     unreachable!()
                 };
@@ -63,7 +70,7 @@ impl CodecPipelineImpl {
             Ok((store.clone(), chunk_path))
         } else {
             // TODO: Add support for more stores
-            utils::err("unsupported store".to_string())
+            utils::err(format!("unsupported store for {chunk_path}"))
         }
     }
 
