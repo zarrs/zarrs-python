@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 
 use numpy::{IntoPyArray, PyArray};
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::borrow::Cow;
@@ -50,12 +51,17 @@ impl CodecPipelineImpl {
                 if chunk_path.starts_with('/') {
                     // Absolute path
                     self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
-                        FilesystemStore::new("/").unwrap(),
+                        FilesystemStore::new("/")
+                            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
                     )));
                 } else {
                     // Relative path
                     self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
-                        FilesystemStore::new(std::env::current_dir().unwrap()).unwrap(),
+                        FilesystemStore::new(
+                            std::env::current_dir()
+                                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
+                        )
+                        .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
                     )));
                 }
                 let Some(CodecPipelineStore::Filesystem(store)) = self.store.as_ref() else {
@@ -82,32 +88,35 @@ impl CodecPipelineImpl {
         // Get the chunk representation
         let data_type =
             DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
-                .unwrap(); // yikes
+                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
         let chunk_shape = chunk_shape
             .into_iter()
-            .map(|x| NonZeroU64::new(x).unwrap())
+            .map(|x| NonZeroU64::new(x).expect("chunk shapes should always be non-zero"))
             .collect();
         let chunk_representation =
-            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
+            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value))
+                .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
         Ok(chunk_representation)
     }
 
-    fn retrieve_chunk_bytes<'py>(
+    fn retrieve_chunk_bytes(
         store: &dyn ReadableWritableListableStorageTraits,
         key: &StoreKey,
         codec_chain: &CodecChain,
         chunk_representation: &ChunkRepresentation,
     ) -> PyResult<Vec<u8>> {
-        let value_encoded = store.get(key).unwrap(); // FIXME: Error handling
+        let value_encoded = store
+            .get(key)
+            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
                 .decode(
                     value_encoded.into(),
-                    &chunk_representation,
+                    chunk_representation,
                     &CodecOptions::default(),
                 )
-                .unwrap() // FIXME: Error handling
+                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?
         } else {
             let array_size = ArraySize::new(
                 chunk_representation.data_type().size(),
@@ -133,16 +142,16 @@ impl CodecPipelineImpl {
         let value_encoded = codec_chain
             .encode(
                 value_decoded,
-                &chunk_representation,
+                chunk_representation,
                 &CodecOptions::default(),
             )
             .map(Cow::into_owned)
-            .unwrap();
+            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
 
         // Store the encoded chunk
-        store.set(key, value_encoded.into()).unwrap(); // FIXME: Error handling
-
-        Ok(())
+        store
+            .set(key, value_encoded.into())
+            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))
     }
 }
 
@@ -169,7 +178,8 @@ impl CodecPipelineImpl {
         fill_value: Vec<u8>,
     ) -> PyResult<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>> {
         let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-        let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+        let key = StoreKey::new(chunk_path)
+            .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
         let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
 
         Ok(Self::retrieve_chunk_bytes(
@@ -207,7 +217,8 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyBytes>,
     ) -> PyResult<()> {
         let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-        let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+        let key = StoreKey::new(chunk_path)
+            .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
         let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
 
         let value_decoded = Cow::Borrowed(value.as_bytes());
