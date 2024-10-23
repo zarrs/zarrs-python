@@ -1,7 +1,8 @@
 #![warn(clippy::pedantic)]
 
-use numpy::{IntoPyArray, PyArray, PyArrayMethods, PyUntypedArrayMethods};
+use numpy::{IntoPyArray, PyArray};
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 use std::borrow::Cow;
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -65,6 +66,77 @@ impl CodecPipelineImpl {
             utils::err("unsupported store".to_string())
         }
     }
+
+    fn get_chunk_representation(
+        chunk_shape: Vec<u64>,
+        dtype: &str,
+        fill_value: Vec<u8>,
+    ) -> PyResult<ChunkRepresentation> {
+        // Get the chunk representation
+        let data_type =
+            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
+                .unwrap(); // yikes
+        let chunk_shape = chunk_shape
+            .into_iter()
+            .map(|x| NonZeroU64::new(x).unwrap())
+            .collect();
+        let chunk_representation =
+            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
+        Ok(chunk_representation)
+    }
+
+    fn retrieve_chunk_bytes<'py>(
+        store: &dyn ReadableWritableListableStorageTraits,
+        key: &StoreKey,
+        codec_chain: &CodecChain,
+        chunk_representation: &ChunkRepresentation,
+    ) -> PyResult<Vec<u8>> {
+        let value_encoded = store.get(key).unwrap(); // FIXME: Error handling
+        let value_decoded = if let Some(value_encoded) = value_encoded {
+            let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
+            codec_chain
+                .decode(
+                    value_encoded.into(),
+                    &chunk_representation,
+                    &CodecOptions::default(),
+                )
+                .unwrap() // FIXME: Error handling
+        } else {
+            let array_size = ArraySize::new(
+                chunk_representation.data_type().size(),
+                chunk_representation.num_elements(),
+            );
+            ArrayBytes::new_fill_value(array_size, chunk_representation.fill_value())
+        };
+        let value_decoded = value_decoded
+            .into_owned()
+            .into_fixed()
+            .expect("zarrs-python and zarr only support fixed length types")
+            .into_owned();
+        Ok(value_decoded)
+    }
+
+    fn store_chunk_bytes(
+        store: &dyn ReadableWritableListableStorageTraits,
+        key: &StoreKey,
+        codec_chain: &CodecChain,
+        chunk_representation: &ChunkRepresentation,
+        value_decoded: ArrayBytes,
+    ) -> PyResult<()> {
+        let value_encoded = codec_chain
+            .encode(
+                value_decoded,
+                &chunk_representation,
+                &CodecOptions::default(),
+            )
+            .map(Cow::into_owned)
+            .unwrap();
+
+        // Store the encoded chunk
+        store.set(key, value_encoded.into()).unwrap(); // FIXME: Error handling
+
+        Ok(())
+    }
 }
 
 #[pymethods]
@@ -81,124 +153,115 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunk_subset<'py>(
-        &mut self, // TODO: Interior mut?
+    fn retrieve_chunk<'py>(
+        &mut self,
         py: Python<'py>,
         chunk_path: &str,
         chunk_shape: Vec<u64>,
         dtype: &str,
         fill_value: Vec<u8>,
-        // TODO: Chunk selection
     ) -> PyResult<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>> {
-        // Get the store and chunk key
         let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+        let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
 
-        // Check if the entire chunk is being stored
-        let is_entire_chunk = true; // FIXME
-
-        // Get the chunk representation
-        let data_type =
-            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
-                .unwrap(); // yikes
-        let chunk_shape = chunk_shape
-            .into_iter()
-            .map(|x| NonZeroU64::new(x).unwrap())
-            .collect();
-        let chunk_representation =
-            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
-
-        if is_entire_chunk {
-            let value_encoded = store.get(&key).unwrap(); // FIXME: Error handling
-            let value_decoded = if let Some(value_encoded) = value_encoded {
-                let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
-                self.codec_chain
-                    .decode(
-                        value_encoded.into(),
-                        &chunk_representation,
-                        &CodecOptions::default(),
-                    )
-                    .unwrap() // FIXME: Error handling
-            } else {
-                let array_size = ArraySize::new(
-                    chunk_representation.data_type().size(),
-                    chunk_representation.num_elements(),
-                );
-                ArrayBytes::new_fill_value(array_size, chunk_representation.fill_value())
-            };
-            let value_decoded = value_decoded
-                .into_owned()
-                .into_fixed()
-                .expect("zarrs-python and zarr only support fixed length types")
-                .into_owned();
-            Ok(value_decoded.into_pyarray_bound(py))
-        } else {
-            // Review zarrs::Array::retrieve_chunk_subset
-            todo!("retrieve_chunk_subset partial chunk")
-        }
+        Ok(Self::retrieve_chunk_bytes(
+            store.as_ref(),
+            &key,
+            &self.codec_chain,
+            &chunk_representation,
+        )?
+        .into_pyarray_bound(py))
     }
 
-    fn store_chunk_subset(
-        &mut self, // TODO: Interior mut?
+    // fn retrieve_chunk_subset<'py>(
+    //     &mut self,
+    //     py: Python<'py>,
+    //     chunk_path: &str,
+    //     chunk_shape: Vec<u64>,
+    //     dtype: &str,
+    //     fill_value: Vec<u8>,
+    //     // TODO: Chunk selection
+    // ) -> PyResult<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>> {
+    //     let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
+    //     let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+    //     let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
+
+    //     // Review zarrs::Array::retrieve_chunk_subset
+    //     todo!("retrieve_chunk_subset")
+    // }
+
+    fn store_chunk(
+        &mut self,
         chunk_path: &str,
         chunk_shape: Vec<u64>,
         dtype: &str,
         fill_value: Vec<u8>,
-        // TODO: Chunk selection
-        value: &Bound<'_, PyArray<u8, numpy::ndarray::IxDyn>>,
+        value: &Bound<'_, PyBytes>,
     ) -> PyResult<()> {
-        // Get the store and chunk key
         let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
         let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+        let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
 
-        // Check if the entire chunk is being stored
-        let is_entire_chunk = value
-            .shape()
-            .iter()
-            .zip(chunk_shape.as_slice())
-            .map(|(sv, sc)| *sv as u64 == *sc)
-            .all(|x| x);
-
-        // Get the chunk representation
-        let data_type =
-            DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
-                .unwrap(); // yikes
-        let chunk_shape = chunk_shape
-            .into_iter()
-            .map(|x| NonZeroU64::new(x).unwrap())
-            .collect();
-        let chunk_representation =
-            ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value)).unwrap();
-
-        if is_entire_chunk {
-            // Get the decoded bytes
-            let array = unsafe { value.as_array() };
-            let value_decoded = if let Some(value_decoded) = array.to_slice() {
-                Cow::Borrowed(value_decoded)
-            } else {
-                Cow::Owned(array.as_standard_layout().into_owned().into_raw_vec())
-            };
-
-            let value_encoded = self
-                .codec_chain
-                .encode(
-                    ArrayBytes::new_flen(value_decoded),
-                    &chunk_representation,
-                    &CodecOptions::default(),
-                )
-                .map(Cow::into_owned)
-                .unwrap();
-
-            // Store the encoded chunk
-            store.set(&key, value_encoded.into()).unwrap(); // FIXME: Error handling
-
-            Ok(())
-        } else {
-            // TODO: Review zarrs::Array::store_chunk_subset
-            // Need to retrieve te chunk, update it, and store it
-            todo!("store_chunk_subset partial chunk")
-        }
+        let value_decoded = Cow::Borrowed(value.as_bytes());
+        Self::store_chunk_bytes(
+            store.as_ref(),
+            &key,
+            &self.codec_chain,
+            &chunk_representation,
+            ArrayBytes::new_flen(value_decoded),
+        )
     }
+
+    // fn store_chunk_subset(
+    //     &mut self,
+    //     chunk_path: &str,
+    //     chunk_shape: Vec<u64>,
+    //     dtype: &str,
+    //     fill_value: Vec<u8>,
+    //     // out_selection: &Bound<PyTuple>, // FIXME: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
+    //     chunk_selection: &Bound<PyTuple>, // FIXME: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
+    //     value: &Bound<'_, PyBytes>,
+    // ) -> PyResult<()> {
+    //     let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
+    //     let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
+    //     let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
+
+    //     // Retrieve the chunk
+    //     let value_decoded = Self::retrieve_chunk_bytes(
+    //         store.as_ref(),
+    //         &key,
+    //         &self.codec_chain,
+    //         &chunk_representation,
+    //     )?;
+
+    //     // Update the chunk
+    //     let slices = chunk_selection
+    //         .iter()
+    //         .zip(chunk_representation.shape())
+    //         .map(|(selection, shape)| {
+    //             // FIXME: BasicSelector | ArrayOfIntOrBool
+    //             // FIXME: BasicSelector = int | slice | EllipsisType
+    //             // FIXME: ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+    //             let selection = selection.downcast::<PySlice>()?;
+    //             selection.indices(shape.get() as i64)
+    //         })
+    //         .collect::<Result<Vec<_>, _>>()?;
+    //     todo!(
+    //         "Update the chunk with slices: {:?} from value: {:?}",
+    //         slices,
+    //         value
+    //     );
+
+    //     // Store the updated chunk
+    //     Self::store_chunk_bytes(
+    //         store.as_ref(),
+    //         &key,
+    //         &self.codec_chain,
+    //         &chunk_representation,
+    //         ArrayBytes::new_flen(value_decoded),
+    //     )
+    // }
 }
 
 /// A Python module implemented in Rust.
