@@ -91,13 +91,21 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        print("ZarrsCodecPipeline.read")
-        print("drop_axes", drop_axes)
+        # FIXME: use drop_axes
         # TODO: Instead of iterating here: add read_chunk_subsets to CodecPipelineImpl
         for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_getter)
-            np_array_chunk = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
-            out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)[chunk_selection]
+
+            if all(is_total_slice(sel, chunk_spec.shape) for sel in chunk_selection):
+                np_array_chunk = self.impl.retrieve_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
+                out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)
+            else:
+                # FIXME: This does not do partial decoding
+                np_array_chunk = self.impl.retrieve_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
+                out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)[chunk_selection]
+
+                # np_array_chunk = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_selection, chunk_spec.fill_value.tobytes())
+                # out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)
 
     async def write(
         self,
@@ -107,17 +115,33 @@ class ZarrsCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        print("ZarrsCodecPipeline.write")
-        print("value", value)
-        print("drop_axes", drop_axes)
+        # FIXME: use drop_axes
         value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
 
         # TODO: Instead of iterating here: add store_chunk_subsets to CodecPipelineImpl
         for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info:
             chunk_path = str(byte_setter)
-            print(chunk_path, chunk_selection, out_selection)
-            print(chunk_spec)
-            self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), value[out_selection])
 
+            # FIXME: Could pass bytes(value.data) directly to store_chunk_subset with out_selection to avoid copying, but all the indexing has to be handled on the rust side
+            if all(is_total_slice(sel, value.shape) for sel in chunk_selection):
+                if value.flags.c_contiguous:
+                    chunk_bytes = bytes(value.data) # 0-copy
+                else:
+                    chunk_bytes = value.tobytes() # copies
+                self.impl.store_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_bytes)
+            elif all(is_total_slice(sel, chunk_spec.shape) for sel in chunk_selection):
+                chunk_bytes = value[out_selection].tobytes() # copies
+                self.impl.store_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_bytes)
+            else:
+                # FIXME: Probably better to do this on the rust side, but then have to handle indexing
+                chunk = self.impl.retrieve_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes()).view(chunk_spec.dtype).reshape(chunk_spec.shape)
+                chunk[chunk_selection] = value[out_selection]
+                self.impl.store_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk.tobytes())
+
+                # value_selection = value[out_selection]
+                # if drop_axes != ():
+                #     value_selection = np.squeeze(value_selection, axis=drop_axes)
+                # chunk_bytes = value_selection.tobytes() # copies
+                # self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_selection, chunk_bytes)
 
 register_pipeline(ZarrsCodecPipeline)
