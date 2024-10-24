@@ -21,7 +21,9 @@ print(arr[:])
 assert np.all(arr[:] == 0)
 
 # Store a constant
-# arr[:] = 42 # This is actually a special case that needs to be handled
+arr[:] = 42
+print(arr[:])
+assert np.all(arr[:] == 42)
 
 # Store a numpy array
 arr[:] = np.arange(16).reshape(4,4)
