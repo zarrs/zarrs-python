@@ -20,13 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          path: 'zarrs-python'
-
-      - uses: actions/checkout@v4
-        with:
-          repo: 'zarr-developers/zarr-python'
-          path: 'zarrs-python/tests/zarr-python'
+          submodules: 'true'
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -36,11 +30,10 @@ jobs:
       - name: Install UV
         uses: hynek/setup-cached-uv@v2
         with:
-          cache-dependency-path: zarrs-python/pyproject.toml
+          cache-dependency-path: pyproject.toml
       
       - name: Install python deps + Build
         run: |
-          cd zarrs-python
           uv pip install --system -e ".[test]" maturin --verbose
 
       - name: Test
