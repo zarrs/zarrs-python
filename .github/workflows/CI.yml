@@ -42,12 +42,6 @@ jobs:
         run: |
           cd zarrs-python
           uv pip install --system -e ".[test]" maturin --verbose
-      
-      - name: Extract tests
-        run: |
-          cd zarrs-python/tests
-          mkdir test_zarr_python
-          mv zarr-python/tests/** test_zarr_python
 
       - name: Use our codec pipeline
       - name: Test python using zarr
