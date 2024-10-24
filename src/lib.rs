@@ -47,33 +47,36 @@ impl CodecPipelineImpl {
             };
             Ok((store.clone(), chunk_path))
         } else if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
-            let store = if self.store.is_none() {
-                if chunk_path.starts_with('/') {
+            if self.store.is_none() {
+                if let Some(chunk_path) = chunk_path.strip_prefix('/') {
                     // Absolute path
-                    self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
+                    let store = Arc::new(
                         FilesystemStore::new("/")
                             .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
-                    )));
+                    );
+                    self.store = Some(CodecPipelineStore::Filesystem(store.clone()));
+                    Ok((store, chunk_path))
                 } else {
                     // Relative path
-                    self.store = Some(CodecPipelineStore::Filesystem(Arc::new(
+                    let store = Arc::new(
                         FilesystemStore::new(
                             std::env::current_dir()
                                 .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
                         )
                         .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
-                    )));
+                    );
+                    self.store = Some(CodecPipelineStore::Filesystem(store.clone()));
+                    Ok((store, chunk_path))
                 }
-                let Some(CodecPipelineStore::Filesystem(store)) = self.store.as_ref() else {
-                    unreachable!()
-                };
-                store
             } else if let Some(CodecPipelineStore::Filesystem(store)) = &self.store {
-                store
+                if let Some(chunk_path) = chunk_path.strip_prefix('/') {
+                    Ok((store.clone(), chunk_path))
+                } else {
+                    Ok((store.clone(), chunk_path))
+                }
             } else {
                 utils::err("the store type changed".to_string())?
-            };
-            Ok((store.clone(), chunk_path))
+            }
         } else {
             // TODO: Add support for more stores
             utils::err(format!("unsupported store for {chunk_path}"))
