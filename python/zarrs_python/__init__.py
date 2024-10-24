@@ -145,3 +145,5 @@ class ZarrsCodecPipeline(CodecPipeline):
                 # self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_selection, chunk_bytes)
 
 register_pipeline(ZarrsCodecPipeline)
+
+__all__ = ["ZarrsCodecPipeline"]
