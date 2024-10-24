@@ -124,7 +124,9 @@ class ZarrsCodecPipeline(CodecPipeline):
 
             # FIXME: Could pass bytes(value.data) directly to store_chunk_subset with out_selection to avoid copying, but all the indexing has to be handled on the rust side
             if all(is_total_slice(sel, value.shape) for sel in chunk_selection):
-                if value.flags.c_contiguous:
+                if value.ndim == 0:
+                    chunk_bytes = np.broadcast_to(value, chunk_spec.shape).tobytes() # copies
+                elif value.flags.c_contiguous:
                     chunk_bytes = bytes(value.data) # 0-copy
                 else:
                     chunk_bytes = value.tobytes() # copies
