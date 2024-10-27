@@ -1,24 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar
-from warnings import warn
+from typing import TYPE_CHECKING, Any
 import numpy as np
 import json
+import threading
+import asyncio
 
 from zarr.abc.codec import (
-    ArrayArrayCodec,
-    ArrayBytesCodec,
-    ArrayBytesCodecPartialDecodeMixin,
-    ArrayBytesCodecPartialEncodeMixin,
-    BytesBytesCodec,
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import ChunkCoords
 from zarr.core.config import config
-from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
+from zarr.core.indexing import SelectorTuple, is_total_slice
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -29,7 +24,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
 
 from ._internal import CodecPipelineImpl
@@ -49,7 +44,12 @@ class ZarrsCodecPipeline(CodecPipeline):
         codec_metadata_json = json.dumps(codec_metadata)
         return cls(
             codecs=tuple(codecs),
-            impl=CodecPipelineImpl(codec_metadata_json),
+            impl=CodecPipelineImpl(
+                codec_metadata_json,
+                config.get("codec_pipeline.validate_checksums", None),
+                config.get("codec_pipeline.store_empty_chunks", None),
+                config.get("codec_pipeline.concurrent_target", None),
+            ),
         )
 
     @property
@@ -89,23 +89,34 @@ class ZarrsCodecPipeline(CodecPipeline):
             tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]
         ],
         out: NDBuffer,
-        drop_axes: tuple[int, ...] = (),
+        drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-        # FIXME: use drop_axes
-        # TODO: Instead of iterating here: add read_chunk_subsets to CodecPipelineImpl
-        for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
+        # NOTE: In dask, this is always called from a single thread with batch_info of length 1
+        # print(
+        #     "Reading batch of length",
+        #     len(batch_info),
+        #     "on thread",
+        #     threading.get_ident(),
+        # )
+
+        out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
+
+        chunks_desc = [None] * len(batch_info)
+        for i, (byte_getter, chunk_spec, chunk_selection, out_selection) in enumerate(
+            batch_info
+        ):
             chunk_path = str(byte_getter)
+            chunks_desc[i] = (
+                chunk_path,
+                chunk_spec.shape,
+                str(chunk_spec.dtype),
+                chunk_spec.fill_value.tobytes(),
+                out_selection,
+                chunk_selection,
+            )
 
-            if all(is_total_slice(sel, chunk_spec.shape) for sel in chunk_selection):
-                np_array_chunk = self.impl.retrieve_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
-                out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)
-            else:
-                # FIXME: This does not do partial decoding
-                np_array_chunk = self.impl.retrieve_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes())
-                out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)[chunk_selection]
-
-                # np_array_chunk = self.impl.retrieve_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_selection, chunk_spec.fill_value.tobytes())
-                # out[out_selection] = np_array_chunk.view(chunk_spec.dtype).reshape(chunk_spec.shape)
+        # return self.impl.retrieve_chunks(chunks_desc, out)
+        return await asyncio.to_thread( self.impl.retrieve_chunks, chunks_desc, out)
 
     async def write(
         self,
