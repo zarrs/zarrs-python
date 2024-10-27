@@ -115,8 +115,7 @@ class ZarrsCodecPipeline(CodecPipeline):
                 chunk_selection,
             )
 
-        # return self.impl.retrieve_chunks(chunks_desc, out)
-        return await asyncio.to_thread( self.impl.retrieve_chunks, chunks_desc, out)
+        return await asyncio.to_thread(self.impl.retrieve_chunks, chunks_desc, out)
 
     async def write(
         self,
@@ -129,32 +128,20 @@ class ZarrsCodecPipeline(CodecPipeline):
         # FIXME: use drop_axes
         value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
 
-        # TODO: Instead of iterating here: add store_chunk_subsets to CodecPipelineImpl
-        for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info:
+        chunks_desc = [None] * len(batch_info)
+        for i, (byte_setter, chunk_spec, chunk_selection, out_selection) in enumerate(
+            batch_info
+        ):
             chunk_path = str(byte_setter)
+            chunks_desc[i] = (
+                chunk_path,
+                chunk_spec.shape,
+                str(chunk_spec.dtype),
+                chunk_spec.fill_value.tobytes(),
+                out_selection,
+                chunk_selection,
+            )
 
-            # FIXME: Could pass bytes(value.data) directly to store_chunk_subset with out_selection to avoid copying, but all the indexing has to be handled on the rust side
-            if all(is_total_slice(sel, value.shape) for sel in chunk_selection):
-                if value.ndim == 0:
-                    chunk_bytes = np.broadcast_to(value, chunk_spec.shape).tobytes() # copies
-                elif value.flags.c_contiguous:
-                    chunk_bytes = bytes(value.data) # 0-copy
-                else:
-                    chunk_bytes = value.tobytes() # copies
-                self.impl.store_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_bytes)
-            elif all(is_total_slice(sel, chunk_spec.shape) for sel in chunk_selection):
-                chunk_bytes = value[out_selection].tobytes() # copies
-                self.impl.store_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_bytes)
-            else:
-                # FIXME: Probably better to do this on the rust side, but then have to handle indexing
-                chunk = self.impl.retrieve_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes()).view(chunk_spec.dtype).reshape(chunk_spec.shape)
-                chunk[chunk_selection] = value[out_selection]
-                self.impl.store_chunk(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk.tobytes())
-
-                # value_selection = value[out_selection]
-                # if drop_axes != ():
-                #     value_selection = np.squeeze(value_selection, axis=drop_axes)
-                # chunk_bytes = value_selection.tobytes() # copies
-                # self.impl.store_chunk_subset(chunk_path, chunk_spec.shape, str(chunk_spec.dtype), chunk_spec.fill_value.tobytes(), chunk_selection, chunk_bytes)
+        return await asyncio.to_thread(self.impl.store_chunks, chunks_desc, value)
 
 register_pipeline(ZarrsCodecPipeline)
