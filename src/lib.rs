@@ -166,7 +166,7 @@ impl CodecPipelineImpl {
         key: &StoreKey,
         codec_chain: &CodecChain,
         chunk_representation: &ChunkRepresentation,
-        chunk_subset_bytes: ArrayBytes,
+        chunk_subset_bytes: &ArrayBytes,
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
@@ -514,7 +514,7 @@ impl CodecPipelineImpl {
                     &key,
                     &self.codec_chain,
                     &chunk_representation,
-                    chunk_subset_bytes,
+                    &chunk_subset_bytes,
                     &chunk_subset,
                     codec_options,
                 )
