@@ -127,6 +127,8 @@ class ZarrsCodecPipeline(CodecPipeline):
     ) -> None:
         # FIXME: use drop_axes
         value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
+        if not value.flags.c_contiguous:
+            value = np.ascontiguousarray(value)
 
         chunks_desc = [None] * len(batch_info)
         for i, (byte_setter, chunk_spec, chunk_selection, out_selection) in enumerate(
