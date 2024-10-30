@@ -100,6 +100,8 @@ class ZarrsCodecPipeline(CodecPipeline):
         # )
 
         out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
+        if not out.dtype.isnative:
+            raise RuntimeError("Non-native byte order not supported")
 
         chunks_desc = [None] * len(batch_info)
         for i, (byte_getter, chunk_spec, chunk_selection, out_selection) in enumerate(
@@ -127,7 +129,9 @@ class ZarrsCodecPipeline(CodecPipeline):
     ) -> None:
         # FIXME: use drop_axes
         value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
-        if not value.flags.c_contiguous:
+        if not value.dtype.isnative:
+            value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
+        elif not value.flags.c_contiguous:
             value = np.ascontiguousarray(value)
 
         chunks_desc = [None] * len(batch_info)
