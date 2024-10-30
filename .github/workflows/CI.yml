@@ -36,5 +36,5 @@ jobs:
         run: |
           uv pip install --system -e ".[test]" maturin --verbose
 
-      - name: Test python using zarr
-        run: pytest zarrs_python/tests/v3              
+      - name: Test
+        run: pytest     

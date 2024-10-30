@@ -4,7 +4,7 @@ use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray, PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PySlice, PyTuple};
+use pyo3::types::{PyBytes, PyInt, PySlice, PyTuple};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
@@ -22,13 +22,11 @@ use zarrs::array_subset::ArraySubset;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
-use zarrs::storage::store::MemoryStore;
 use zarrs::storage::{ReadableWritableListableStorageTraits, StorageHandle, StoreKey};
 
 mod utils;
 
 pub enum CodecPipelineStore {
-    Memory(Arc<MemoryStore>),
     Filesystem(Arc<FilesystemStore>),
 }
 
@@ -45,18 +43,7 @@ impl CodecPipelineImpl {
         chunk_path: &'a str,
     ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, &'a str)> {
         let mut gstore = self.store.lock().unwrap();
-        if let Some(chunk_path) = chunk_path.strip_prefix("memory://") {
-            let store = if gstore.is_none() {
-                let store = Arc::new(MemoryStore::default());
-                *gstore = Some(CodecPipelineStore::Memory(store.clone()));
-                store
-            } else if let Some(CodecPipelineStore::Memory(store)) = gstore.as_ref() {
-                store.clone()
-            } else {
-                utils::err("the store type changed".to_string())?
-            };
-            Ok((store.clone(), chunk_path))
-        } else if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
+        if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
             if gstore.is_none() {
                 if let Some(chunk_path) = chunk_path.strip_prefix('/') {
                     // Absolute path
@@ -209,24 +196,39 @@ impl CodecPipelineImpl {
                 // FIXME: BasicSelector | ArrayOfIntOrBool
                 // FIXME: BasicSelector = int | slice | EllipsisType
                 // FIXME: ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
-                let selection = selection.downcast::<PySlice>()?;
-                let indices = selection.indices(i64::try_from(shape).unwrap())?;
-                assert!(indices.start >= 0); // FIXME
-                assert!(indices.stop >= 0); // FIXME
-                assert!(indices.step == 1);
-                let start = u64::try_from(indices.start).unwrap();
-                let stop = u64::try_from(indices.stop).unwrap();
-                Ok(start..stop)
+                if let Ok(selection_slice) = selection.downcast::<PySlice>() {
+                    let indices = selection_slice.indices(i64::try_from(shape).unwrap())?;
+                    assert!(indices.start >= 0); // FIXME
+                    assert!(indices.stop >= 0); // FIXME
+                    assert!(indices.step == 1);
+                    let start = u64::try_from(indices.start).unwrap();
+                    let stop = u64::try_from(indices.stop).unwrap();
+                    Ok(start..stop)
+                } else if let Ok(selection_int) = selection.downcast::<PyInt>() {
+                    let selection_int_owned = selection_int.extract::<u64>().unwrap();
+                    Ok(selection_int_owned..(selection_int_owned + 1))
+                } else {
+                    Err(PyValueError::new_err(format!(
+                        "Cannot take {selection}, must be int or slice"
+                    )))
+                }
             })
             .collect::<PyResult<Vec<_>>>()?;
         Ok(ArraySubset::new_with_ranges(&chunk_ranges))
     }
 
     fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+        // TODO: is this and the below a bug? why doesn't .itemsize() work?
+        let itemsize = value
+            .dtype()
+            .getattr("itemsize")
+            .unwrap()
+            .extract::<usize>()
+            .unwrap();
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
+        let array_len = value.len() * itemsize;
         let slice = unsafe { std::slice::from_raw_parts(array_data, array_len) };
         slice
     }
@@ -234,10 +236,16 @@ impl CodecPipelineImpl {
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> UnsafeCellSlice<'a, u8> {
+        let itemsize = value
+            .dtype()
+            .getattr("itemsize")
+            .unwrap()
+            .extract::<usize>()
+            .unwrap();
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
+        let array_len = value.len() * itemsize;
         let output = unsafe { std::slice::from_raw_parts_mut(array_data, array_len) };
         UnsafeCellSlice::new(output)
     }

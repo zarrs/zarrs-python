@@ -12,7 +12,6 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.21.0", features = ["extension-module"] }
 zarrs = { version = "0.18.0-dev", git = "https://github.com/LDeakin/zarrs.git" }
 paste = "1.0"
-dlpark = { version = "0.4.1", features = ["pyo3"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
