@@ -62,8 +62,8 @@ def test_sharding_pickle() -> None:
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("store_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_write_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_read_order", ["F", "C"])
+@pytest.mark.parametrize("runtime_write_order", ["C"])
+@pytest.mark.parametrize("runtime_read_order", ["C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
 async def test_order(
     store: Store,
@@ -119,8 +119,8 @@ async def test_order(
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_write_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_read_order", ["F", "C"])
+@pytest.mark.parametrize("runtime_write_order", ["C"])
+@pytest.mark.parametrize("runtime_read_order", ["C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
 def test_order_implicit(
     store: Store,

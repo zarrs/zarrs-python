@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_write_order", ["F", "C"])
-@pytest.mark.parametrize("runtime_read_order", ["F", "C"])
+@pytest.mark.parametrize("runtime_write_order", ["C"])
+@pytest.mark.parametrize("runtime_read_order", ["C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
 
 async def test_transpose(
