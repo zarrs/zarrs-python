@@ -137,15 +137,18 @@ impl CodecPipelineImpl {
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        let value_encoded = codec_chain
-            .encode(value_decoded, chunk_representation, codec_options)
-            .map(Cow::into_owned)
-            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
+        if value_decoded.is_fill_value(&chunk_representation.fill_value()) {
+            store.erase(&key)
+        } else {
+            let value_encoded = codec_chain
+                .encode(value_decoded, chunk_representation, codec_options)
+                .map(Cow::into_owned)
+                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
 
-        // Store the encoded chunk
-        store
-            .set(key, value_encoded.into())
-            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))
+            // Store the encoded chunk
+            store.set(key, value_encoded.into())
+        }
+        .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))
     }
 
     fn store_chunk_subset_bytes(
@@ -499,6 +502,17 @@ impl CodecPipelineImpl {
                 ChunkRepresentation,
             )| {
                 let chunk_subset_bytes = if input_subset.dimensionality() == 0 {
+                    // Fast path for setting entire chunks to the fill value
+                    let is_entire_chunk = input_subset.start().iter().all(|&o| o == 0)
+                        && input_subset.shape() == chunk_representation.shape_u64();
+                    if is_entire_chunk
+                        && input_slice.to_vec() == chunk_representation.fill_value().as_ne_bytes()
+                    {
+                        return store
+                            .erase(&key)
+                            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()));
+                    }
+
                     // The input is a constant value
                     ArrayBytes::new_fill_value(
                         ArraySize::new(
