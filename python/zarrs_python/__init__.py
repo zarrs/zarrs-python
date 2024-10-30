@@ -147,3 +147,5 @@ class ZarrsCodecPipeline(CodecPipeline):
         return await asyncio.to_thread(self.impl.store_chunks, chunks_desc, value)
 
 register_pipeline(ZarrsCodecPipeline)
+
+__all__ = ["ZarrsCodecPipeline"]

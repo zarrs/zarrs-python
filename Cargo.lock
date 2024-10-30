@@ -168,15 +168,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dlpark"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "649275d5d22ce5cb79411683147c39c3c97803d2bf941de2a1266d4e3cd11c8c"
-dependencies = [
- "pyo3",
-]
-
-[[package]]
 name = "either"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1239,7 +1230,6 @@ dependencies = [
 name = "zarrs-python"
 version = "0.1.0"
 dependencies = [
- "dlpark",
  "numpy",
  "openssl",
  "paste",
