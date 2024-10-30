@@ -12,13 +12,11 @@ use zarrs::array::{ArrayBytes, ArraySize, ChunkRepresentation, CodecChain, DataT
 use zarrs::filesystem::FilesystemStore;
 use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
-use zarrs::storage::store::MemoryStore;
 use zarrs::storage::{ReadableWritableListableStorageTraits, StoreKey};
 
 mod utils;
 
 pub enum CodecPipelineStore {
-    Memory(Arc<MemoryStore>),
     Filesystem(Arc<FilesystemStore>),
 }
 
@@ -33,20 +31,7 @@ impl CodecPipelineImpl {
         &mut self,
         chunk_path: &'a str,
     ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, &'a str)> {
-        if let Some(chunk_path) = chunk_path.strip_prefix("memory://") {
-            let store = if self.store.is_none() {
-                self.store = Some(CodecPipelineStore::Memory(Arc::new(MemoryStore::default())));
-                let Some(CodecPipelineStore::Memory(store)) = self.store.as_ref() else {
-                    unreachable!()
-                };
-                store
-            } else if let Some(CodecPipelineStore::Memory(store)) = &self.store {
-                store
-            } else {
-                utils::err("the store type changed".to_string())?
-            };
-            Ok((store.clone(), chunk_path))
-        } else if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
+        if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
             if self.store.is_none() {
                 if let Some(chunk_path) = chunk_path.strip_prefix('/') {
                     // Absolute path
