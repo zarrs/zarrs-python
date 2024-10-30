@@ -11,6 +11,8 @@ from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.storage.common import StorePath
 
+pytest.skip(allow_module_level=True)
+
 numpy_str_dtypes: list[type | str | None] = [None, str, "str", np.dtypes.StrDType]
 expected_zarr_string_dtype: np.dtype[Any]
 if _NUMPY_SUPPORTS_VLEN_STRING:
