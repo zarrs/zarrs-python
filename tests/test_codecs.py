@@ -274,19 +274,20 @@ async def test_dimension_names(store: Store) -> None:
 
 
 def test_invalid_metadata(store: Store) -> None:
-    spath2 = StorePath(store, "invalid_endian")
-    with pytest.raises(TypeError):
-        Array.create(
-            spath2,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                BytesCodec(endian="big"),
-                TransposeCodec(order=order_from_dim("F", 2)),
-            ],
-        )
+    # LD: Disabled for `zarrs`. Including endianness for a single-byte data type is not invalid.
+    # spath2 = StorePath(store, "invalid_endian")
+    # with pytest.raises(TypeError):
+    #     Array.create(
+    #         spath2,
+    #         shape=(16, 16),
+    #         chunk_shape=(16, 16),
+    #         dtype=np.dtype("uint8"),
+    #         fill_value=0,
+    #         codecs=[
+    #             BytesCodec(endian="big"),
+    #             TransposeCodec(order=order_from_dim("F", 2)),
+    #         ],
+    #     )
     spath3 = StorePath(store, "invalid_order")
     with pytest.raises(TypeError):
         Array.create(
@@ -336,19 +337,21 @@ def test_invalid_metadata(store: Store) -> None:
                 ShardingCodec(chunk_shape=(8, 7)),
             ],
         )
-    spath7 = StorePath(store, "warning_inefficient_codecs")
-    with pytest.warns(UserWarning):
-        Array.create(
-            spath7,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 8)),
-                GzipCodec(),
-            ],
-        )
+    # LD: Disabled for `zarrs`. Such checks do not exist.
+    #     Also this is not invalid metadata, should be a separate test.
+    # spath7 = StorePath(store, "warning_inefficient_codecs")
+    # with pytest.warns(UserWarning):
+    #     Array.create(
+    #         spath7,
+    #         shape=(16, 16),
+    #         chunk_shape=(16, 16),
+    #         dtype=np.dtype("uint8"),
+    #         fill_value=0,
+    #         codecs=[
+    #             ShardingCodec(chunk_shape=(8, 8)),
+    #             GzipCodec(),
+    #         ],
+    #     )
 
 
 
