@@ -210,10 +210,17 @@ impl CodecPipelineImpl {
     }
 
     fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+        // TODO: is this and the below a bug? why doesn't .itemsize() work?
+        let itemsize = value
+            .dtype()
+            .getattr("itemsize")
+            .unwrap()
+            .extract::<usize>()
+            .unwrap();
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
+        let array_len = value.len() * itemsize;
         let slice = unsafe { std::slice::from_raw_parts(array_data, array_len) };
         slice
     }
@@ -221,10 +228,16 @@ impl CodecPipelineImpl {
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> UnsafeCellSlice<'a, u8> {
+        let itemsize = value
+            .dtype()
+            .getattr("itemsize")
+            .unwrap()
+            .extract::<usize>()
+            .unwrap();
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
+        let array_len = value.len() * itemsize;
         let output = unsafe { std::slice::from_raw_parts_mut(array_data, array_len) };
         UnsafeCellSlice::new(output)
     }
