@@ -4,7 +4,7 @@ use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray, PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PySlice, PyTuple};
+use pyo3::types::{PyBytes, PyInt, PySlice, PyTuple};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
@@ -196,14 +196,22 @@ impl CodecPipelineImpl {
                 // FIXME: BasicSelector | ArrayOfIntOrBool
                 // FIXME: BasicSelector = int | slice | EllipsisType
                 // FIXME: ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
-                let selection = selection.downcast::<PySlice>()?;
-                let indices = selection.indices(i64::try_from(shape).unwrap())?;
-                assert!(indices.start >= 0); // FIXME
-                assert!(indices.stop >= 0); // FIXME
-                assert!(indices.step == 1);
-                let start = u64::try_from(indices.start).unwrap();
-                let stop = u64::try_from(indices.stop).unwrap();
-                Ok(start..stop)
+                if let Ok(selection_slice) = selection.downcast::<PySlice>() {
+                    let indices = selection_slice.indices(i64::try_from(shape).unwrap())?;
+                    assert!(indices.start >= 0); // FIXME
+                    assert!(indices.stop >= 0); // FIXME
+                    assert!(indices.step == 1);
+                    let start = u64::try_from(indices.start).unwrap();
+                    let stop = u64::try_from(indices.stop).unwrap();
+                    Ok(start..stop)
+                } else if let Ok(selection_int) = selection.downcast::<PyInt>() {
+                    let selection_int_owned = selection_int.extract::<u64>().unwrap();
+                    Ok(selection_int_owned..(selection_int_owned + 1))
+                } else {
+                    Err(PyValueError::new_err(format!(
+                        "Cannot take {selection}, must be int or slice"
+                    )))
+                }
             })
             .collect::<PyResult<Vec<_>>>()?;
         Ok(ArraySubset::new_with_ranges(&chunk_ranges))
