@@ -1,10 +1,10 @@
 #![warn(clippy::pedantic)]
 
 use numpy::npyffi::PyArrayObject;
-use numpy::{IntoPyArray, PyArray, PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyInt, PySlice, PyTuple};
+use pyo3::types::{PyInt, PySlice, PyTuple};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
@@ -290,29 +290,6 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunk<'py>(
-        &self,
-        py: Python<'py>,
-        chunk_path: &str,
-        chunk_shape: Vec<u64>,
-        dtype: &str,
-        fill_value: Vec<u8>,
-    ) -> PyResult<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>> {
-        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-        let key = StoreKey::new(chunk_path)
-            .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
-        let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
-
-        Ok(Self::retrieve_chunk_bytes(
-            store.as_ref(),
-            &key,
-            &self.codec_chain,
-            &chunk_representation,
-            &self.codec_options,
-        )?
-        .into_pyarray_bound(py))
-    }
-
     fn retrieve_chunks(
         &self,
         py: Python,
@@ -430,30 +407,6 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn store_chunk(
-        &self,
-        chunk_path: &str,
-        chunk_shape: Vec<u64>,
-        dtype: &str,
-        fill_value: Vec<u8>,
-        value: &Bound<'_, PyBytes>,
-    ) -> PyResult<()> {
-        let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-        let key = StoreKey::new(chunk_path)
-            .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
-        let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
-
-        let value_decoded = Cow::Borrowed(value.as_bytes());
-        Self::store_chunk_bytes(
-            store.as_ref(),
-            &key,
-            &self.codec_chain,
-            &chunk_representation,
-            ArrayBytes::new_flen(value_decoded),
-            &self.codec_options,
-        )
-    }
-
     fn store_chunks(
         &self,
         py: Python,
@@ -552,56 +505,6 @@ impl CodecPipelineImpl {
             Ok(())
         })
     }
-
-    // fn store_chunk_subset(
-    //     &self,
-    //     chunk_path: &str,
-    //     chunk_shape: Vec<u64>,
-    //     dtype: &str,
-    //     fill_value: Vec<u8>,
-    //     // out_selection: &Bound<PyTuple>, // FIXME: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
-    //     chunk_selection: &Bound<PyTuple>, // FIXME: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
-    //     value: &Bound<'_, PyBytes>,
-    // ) -> PyResult<()> {
-    //     let (store, chunk_path) = self.get_store_and_path(chunk_path)?;
-    //     let key = StoreKey::new(chunk_path).unwrap(); // FIXME: Error handling
-    //     let chunk_representation = Self::get_chunk_representation(chunk_shape, dtype, fill_value)?;
-
-    //     // Retrieve the chunk
-    //     let value_decoded = Self::retrieve_chunk_bytes(
-    //         store.as_ref(),
-    //         &key,
-    //         &self.codec_chain,
-    //         &chunk_representation,
-    //     )?;
-
-    //     // Update the chunk
-    //     let slices = chunk_selection
-    //         .iter()
-    //         .zip(chunk_representation.shape())
-    //         .map(|(selection, shape)| {
-    //             // FIXME: BasicSelector | ArrayOfIntOrBool
-    //             // FIXME: BasicSelector = int | slice | EllipsisType
-    //             // FIXME: ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
-    //             let selection = selection.downcast::<PySlice>()?;
-    //             selection.indices(shape.get() as i64)
-    //         })
-    //         .collect::<Result<Vec<_>, _>>()?;
-    //     todo!(
-    //         "Update the chunk with slices: {:?} from value: {:?}",
-    //         slices,
-    //         value
-    //     );
-
-    //     // Store the updated chunk
-    //     Self::store_chunk_bytes(
-    //         store.as_ref(),
-    //         &key,
-    //         &self.codec_chain,
-    //         &chunk_representation,
-    //         ArrayBytes::new_flen(value_decoded),
-    //     )
-    // }
 }
 
 /// A Python module implemented in Rust.
