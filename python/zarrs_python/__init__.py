@@ -13,7 +13,7 @@ from zarr.abc.codec import (
 )
 from zarr.core.common import ChunkCoords
 from zarr.core.config import config
-from zarr.core.indexing import SelectorTuple, is_total_slice
+from zarr.core.indexing import SelectorTuple, make_slice_selection
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -107,6 +107,8 @@ class ZarrsCodecPipeline(CodecPipeline):
         for i, (byte_getter, chunk_spec, chunk_selection, out_selection) in enumerate(
             batch_info
         ):
+            out_selection = make_slice_selection(out_selection)
+            chunk_selection = make_slice_selection(chunk_selection)
             chunk_path = str(byte_getter)
             chunks_desc[i] = (
                 chunk_path,
@@ -138,6 +140,8 @@ class ZarrsCodecPipeline(CodecPipeline):
         for i, (byte_setter, chunk_spec, chunk_selection, out_selection) in enumerate(
             batch_info
         ):
+            out_selection = make_slice_selection(out_selection)
+            chunk_selection = make_slice_selection(chunk_selection)
             chunk_path = str(byte_setter)
             chunks_desc[i] = (
                 chunk_path,

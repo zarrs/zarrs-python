@@ -4,7 +4,7 @@ use numpy::npyffi::PyArrayObject;
 use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyInt, PySlice, PyTuple};
+use pyo3::types::PySlice;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
@@ -191,30 +191,18 @@ impl CodecPipelineImpl {
         )
     }
 
-    fn selection_to_array_subset(selection: &PyTuple, shape: &[u64]) -> PyResult<ArraySubset> {
+    fn selection_to_array_subset(selection: &[&PySlice], shape: &[u64]) -> PyResult<ArraySubset> {
         let chunk_ranges = selection
             .iter()
             .zip(shape)
             .map(|(selection, &shape)| {
-                // FIXME: BasicSelector | ArrayOfIntOrBool
-                // FIXME: BasicSelector = int | slice | EllipsisType
-                // FIXME: ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
-                if let Ok(selection_slice) = selection.downcast::<PySlice>() {
-                    let indices = selection_slice.indices(i64::try_from(shape).unwrap())?;
-                    assert!(indices.start >= 0); // FIXME
-                    assert!(indices.stop >= 0); // FIXME
-                    assert!(indices.step == 1);
-                    let start = u64::try_from(indices.start).unwrap();
-                    let stop = u64::try_from(indices.stop).unwrap();
-                    Ok(start..stop)
-                } else if let Ok(selection_int) = selection.downcast::<PyInt>() {
-                    let selection_int_owned = selection_int.extract::<u64>().unwrap();
-                    Ok(selection_int_owned..(selection_int_owned + 1))
-                } else {
-                    Err(PyValueError::new_err(format!(
-                        "Cannot take {selection}, must be int or slice"
-                    )))
-                }
+                let indices = selection.indices(i64::try_from(shape).unwrap())?;
+                assert!(indices.start >= 0); // FIXME
+                assert!(indices.stop >= 0); // FIXME
+                assert!(indices.step == 1);
+                let start = u64::try_from(indices.start).unwrap();
+                let stop = u64::try_from(indices.stop).unwrap();
+                Ok(start..stop)
             })
             .collect::<PyResult<Vec<_>>>()?;
         Ok(ArraySubset::new_with_ranges(&chunk_ranges))
@@ -254,9 +242,23 @@ impl CodecPipelineImpl {
     }
 }
 
-type RetrieveChunksItem<'a> = (String, Vec<u64>, String, Vec<u8>, &'a PyTuple, &'a PyTuple);
+type RetrieveChunksItem<'a> = (
+    String,
+    Vec<u64>,
+    String,
+    Vec<u8>,
+    Vec<&'a PySlice>,
+    Vec<&'a PySlice>,
+);
 
-type StoreChunksItem<'a> = (String, Vec<u64>, String, Vec<u8>, &'a PyTuple, &'a PyTuple);
+type StoreChunksItem<'a> = (
+    String,
+    Vec<u64>,
+    String,
+    Vec<u8>,
+    Vec<&'a PySlice>,
+    Vec<&'a PySlice>,
+);
 
 #[pymethods]
 impl CodecPipelineImpl {
@@ -314,8 +316,8 @@ impl CodecPipelineImpl {
                     Ok((
                         store,
                         path.to_string(),
-                        Self::selection_to_array_subset(chunk_selection, &chunk_shape)?,
-                        Self::selection_to_array_subset(out_selection, &output_shape)?,
+                        Self::selection_to_array_subset(&chunk_selection, &chunk_shape)?,
+                        Self::selection_to_array_subset(&out_selection, &output_shape)?,
                         Self::get_chunk_representation(chunk_shape, &dtype, fill_value)?,
                     ))
                 },
@@ -434,8 +436,8 @@ impl CodecPipelineImpl {
                     Ok((
                         store,
                         key,
-                        Self::selection_to_array_subset(chunk_selection, &chunk_shape)?,
-                        Self::selection_to_array_subset(out_selection, &input_shape)?,
+                        Self::selection_to_array_subset(&chunk_selection, &chunk_shape)?,
+                        Self::selection_to_array_subset(&out_selection, &input_shape)?,
                         Self::get_chunk_representation(chunk_shape, &dtype, fill_value)?,
                     ))
                 },
