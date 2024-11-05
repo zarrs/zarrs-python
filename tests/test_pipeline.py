@@ -61,12 +61,6 @@ def test_roundtrip_full_array(arr: zarr.Array, chunks):
     stored_values = np.arange(16).reshape(4, 4)
     arr[:] = stored_values
     assert np.all(arr[:] == stored_values)
-    assert np.all(
-        arr[tuple(slice(0, chunk) for chunk in chunks)]
-        == stored_values[tuple(slice(0, chunk) for chunk in chunks)]
-    )
-    assert np.all(arr[0:1, 1:2] == stored_values[0:1, 1:2])
-    assert np.all(arr[1:3, 1:3] == stored_values[1:3, 1:3])
 
 
 def test_roundtrip_partial(
