@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import TYPE_CHECKING, Any
 import numpy as np
 import json
@@ -28,6 +29,10 @@ if TYPE_CHECKING:
     from zarr.core.chunk_grids import ChunkGrid
 
 from ._internal import CodecPipelineImpl
+
+# adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
+def get_max_threads() -> int:
+    return (os.cpu_count() or 1) + 4
 
 
 @dataclass(frozen=True)
@@ -91,7 +96,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-
+        chunk_concurrent_limit = config.get("threads.max_workers", get_max_threads())
         out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
@@ -107,8 +112,10 @@ class ZarrsCodecPipeline(CodecPipeline):
             )
             for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
         )
-        return await asyncio.to_thread(self.impl.retrieve_chunks, chunks_desc, out)
-
+        res = await asyncio.to_thread(self.impl.retrieve_chunks, chunks_desc, out, chunk_concurrent_limit)
+        if drop_axes != ():
+            res = res.squeeze(axis=drop_axes)
+        return res
     async def write(
         self,
         batch_info: Iterable[
@@ -118,6 +125,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         # FIXME: use drop_axes
+        chunk_concurrent_limit = config.get("threads.max_workers", get_max_threads())
         value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
         if not value.dtype.isnative:
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
@@ -134,7 +142,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             )
             for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
         )
-        return await asyncio.to_thread(self.impl.store_chunks, chunks_desc, value)
+        return await asyncio.to_thread(self.impl.store_chunks, chunks_desc, value, chunk_concurrent_limit)
 
 register_pipeline(ZarrsCodecPipeline)
 
