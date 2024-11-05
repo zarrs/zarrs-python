@@ -110,7 +110,9 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-        chunk_concurrent_limit = config.get("threading.max_workers", get_max_threads())
+        chunk_concurrent_limit = (
+            config.get("threading.max_workers") or get_max_threads()
+        )
         out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
@@ -132,7 +134,9 @@ class ZarrsCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         # FIXME: use drop_axes
-        chunk_concurrent_limit = config.get("threading.max_workers", get_max_threads())
+        chunk_concurrent_limit = (
+            config.get("threading.max_workers") or get_max_threads()
+        )
         value = value.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not value.dtype.isnative:
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
