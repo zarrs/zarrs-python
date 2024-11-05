@@ -1,3 +1,0 @@
-[submodule "tests/zarr-python"]
-	path = tests/zarr-python
-	url = https://github.com/zarr-developers/zarr-python.git

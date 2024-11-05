@@ -1,17 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-import numpy as np
-import json
-import threading
-import asyncio
 
+import numpy as np
 from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import ChunkCoords
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, make_slice_selection
 from zarr.registry import register_pipeline
@@ -20,14 +19,34 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import Self
 
-    import numpy as np
-
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.common import ChunkCoords
 
 from ._internal import CodecPipelineImpl
+
+
+# adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
+def get_max_threads() -> int:
+    return (os.cpu_count() or 1) + 4
+
+
+def make_chunk_info_for_rust(
+    batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
+) -> list[tuple[str, ChunkCoords, str, Any, list[slice], list[slice]]]:
+    return list(
+        (
+            str(byte_getter),
+            chunk_spec.shape,
+            str(chunk_spec.dtype),
+            chunk_spec.fill_value.tobytes(),
+            make_slice_selection(out_selection),
+            make_slice_selection(chunk_selection),
+        )
+        for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
+    )
 
 
 @dataclass(frozen=True)
@@ -91,35 +110,20 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-        # NOTE: In dask, this is always called from a single thread with batch_info of length 1
-        # print(
-        #     "Reading batch of length",
-        #     len(batch_info),
-        #     "on thread",
-        #     threading.get_ident(),
-        # )
-
+        chunk_concurrent_limit = (
+            config.get("threading.max_workers") or get_max_threads()
+        )
         out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
 
-        chunks_desc = [None] * len(batch_info)
-        for i, (byte_getter, chunk_spec, chunk_selection, out_selection) in enumerate(
-            batch_info
-        ):
-            out_selection = make_slice_selection(out_selection)
-            chunk_selection = make_slice_selection(chunk_selection)
-            chunk_path = str(byte_getter)
-            chunks_desc[i] = (
-                chunk_path,
-                chunk_spec.shape,
-                str(chunk_spec.dtype),
-                chunk_spec.fill_value.tobytes(),
-                out_selection,
-                chunk_selection,
-            )
-
-        return await asyncio.to_thread(self.impl.retrieve_chunks, chunks_desc, out)
+        chunks_desc = make_chunk_info_for_rust(batch_info)
+        res = await asyncio.to_thread(
+            self.impl.retrieve_chunks, chunks_desc, out, chunk_concurrent_limit
+        )
+        if drop_axes != ():
+            res = res.squeeze(axis=drop_axes)
+        return res
 
     async def write(
         self,
@@ -130,29 +134,19 @@ class ZarrsCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         # FIXME: use drop_axes
-        value = value.as_ndarray_like() # FIXME: Error if array is not in host memory
+        chunk_concurrent_limit = (
+            config.get("threading.max_workers") or get_max_threads()
+        )
+        value = value.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not value.dtype.isnative:
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
         elif not value.flags.c_contiguous:
             value = np.ascontiguousarray(value)
+        chunks_desc = make_chunk_info_for_rust(batch_info)
+        return await asyncio.to_thread(
+            self.impl.store_chunks, chunks_desc, value, chunk_concurrent_limit
+        )
 
-        chunks_desc = [None] * len(batch_info)
-        for i, (byte_setter, chunk_spec, chunk_selection, out_selection) in enumerate(
-            batch_info
-        ):
-            out_selection = make_slice_selection(out_selection)
-            chunk_selection = make_slice_selection(chunk_selection)
-            chunk_path = str(byte_setter)
-            chunks_desc[i] = (
-                chunk_path,
-                chunk_spec.shape,
-                str(chunk_spec.dtype),
-                chunk_spec.fill_value.tobytes(),
-                out_selection,
-                chunk_selection,
-            )
-
-        return await asyncio.to_thread(self.impl.store_chunks, chunks_desc, value)
 
 register_pipeline(ZarrsCodecPipeline)
 
