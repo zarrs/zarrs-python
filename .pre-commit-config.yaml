@@ -7,3 +7,16 @@ repos:
         entry: cargo fmt --all -- --color always
         language: system
         pass_filenames: false
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.2
+    hooks:
+    -   id: ruff
+        types_or: [python, pyi, jupyter]
+        args: ["--fix"]
+    -   id: ruff-format
+        types_or: [python, pyi, jupyter]
+    # The following can be removed once PLR0917 is out of preview
+    -   name: ruff preview rules
+        id: ruff
+        types_or: [python, pyi, jupyter]
+        args: ["--preview", "--select=PLR0917"]

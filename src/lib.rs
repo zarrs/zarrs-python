@@ -297,6 +297,7 @@ impl CodecPipelineImpl {
         py: Python,
         chunk_descriptions: Vec<RetrieveChunksItem>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
+        chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
         // Get input array
         if !value.is_c_contiguous() {
@@ -325,8 +326,6 @@ impl CodecPipelineImpl {
             .collect::<PyResult<Vec<_>>>()?;
 
         py.allow_threads(move || {
-            // FIXME: Proper chunk/codec concurrency setup
-            let chunk_concurrent_limit = self.codec_options.concurrent_target();
             let codec_options = &self.codec_options;
 
             let update_chunk_subset =
@@ -414,6 +413,7 @@ impl CodecPipelineImpl {
         py: Python,
         chunk_descriptions: Vec<StoreChunksItem>,
         value: &Bound<'_, PyUntypedArray>,
+        chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
         // Get input array
         if !value.is_c_contiguous() {
@@ -445,8 +445,6 @@ impl CodecPipelineImpl {
             .collect::<PyResult<Vec<_>>>()?;
 
         py.allow_threads(move || {
-            // FIXME: Proper chunk/codec concurrency setup
-            let chunk_concurrent_limit = self.codec_options.concurrent_target();
             let codec_options = &self.codec_options;
 
             let store_chunk = |(store, key, chunk_subset, input_subset, chunk_representation): (

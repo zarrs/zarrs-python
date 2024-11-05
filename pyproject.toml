@@ -74,3 +74,36 @@ filterwarnings = [
 markers = [
     "gpu: mark a test as requiring CuPy and GPU"
 ]
+
+[tool.ruff]
+src = ["src"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E",       # Error detected by Pycodestyle
+    "F",       # Errors detected by Pyflakes
+    "W",       # Warning detected by Pycodestyle
+    "UP",      # pyupgrade
+    "I",       # isort
+    "TCH",     # manage type checking blocks
+    "TID251",  # Banned imports
+    "ICN",     # Follow import conventions
+    "PTH",     # Pathlib instead of os.path
+    "PLR0917", # Ban APIs with too many positional parameters
+    "FBT",     # No positional boolean parameters
+    "PT",      # Pytest style
+    "SIM",     # Simplify control flow
+]
+ignore = [
+    # line too long -> we accept long comment lines; black gets rid of long code lines
+    "E501",
+    # module level import not at top of file -> required to circumvent circular imports for Scanpys API
+    "E402",
+    # E266 too many leading '#' for block comment -> Scanpy allows them for comments into sections
+    "E262",
+    # allow I, O, l as variable names -> I is the identity matrix, i, j, k, l is reasonable indexing notation
+    "E741",
+]
