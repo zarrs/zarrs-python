@@ -88,7 +88,7 @@ def test_encode_partial(
                 [fill_value] * arr.shape[0],
                 [fill_value, -1, -2, fill_value],
                 [fill_value, -3, -4, fill_value],
-                [fill_value] * arr.shape[-1],
+                [fill_value] * arr.shape[0],
             ]
         ),
     ), res
