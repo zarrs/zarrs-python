@@ -445,7 +445,6 @@ impl CodecPipelineImpl {
             .collect::<PyResult<Vec<_>>>()?;
 
         py.allow_threads(move || {
-            // FIXME: Proper chunk/codec concurrency setup
             let codec_options = &self.codec_options;
 
             let store_chunk = |(store, key, chunk_subset, input_subset, chunk_representation): (
