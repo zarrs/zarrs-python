@@ -42,8 +42,8 @@ def make_chunk_info_for_rust(
             chunk_spec.shape,
             str(chunk_spec.dtype),
             chunk_spec.fill_value.tobytes(),
-            make_slice_selection(out_selection),
-            make_slice_selection(chunk_selection),
+            [out_selection] if isinstance(out_selection, slice) else make_slice_selection(out_selection),
+            [chunk_selection] if isinstance(chunk_selection, slice) else make_slice_selection(chunk_selection),
         )
         for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
     )
