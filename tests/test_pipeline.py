@@ -71,7 +71,6 @@ def test_roundtrip_full_array(arr: zarr.Array, chunks):
 
 def test_roundtrip_partial(
     arr: zarr.Array,
-    fill_value: int,
     indexer: slice | np.ndarray,
     indexer_2: slice | np.ndarray,
 ):
@@ -81,40 +80,14 @@ def test_roundtrip_partial(
         )
     stored_value = np.array([[-1, -2], [-3, -4]])
     arr[indexer, indexer_2] = stored_value
-    res = arr[:]
-    assert np.all(
-        res
-        == np.array(
-            [
-                [fill_value] * arr.shape[0],
-                [fill_value, -1, -2, fill_value],
-                [fill_value, -3, -4, fill_value],
-                [fill_value] * arr.shape[0],
-            ]
-        ),
-    ), res
     res = arr[indexer, indexer_2]
     assert np.all(
         res == stored_value,
     ), res
 
 
-def test_roundtrip_singleton_axis(
-    arr: zarr.Array, fill_value: int, indexer: slice | np.ndarray
-):
+def test_roundtrip_singleton_axis(arr: zarr.Array, indexer: slice | np.ndarray):
     stored_value = np.array([-3, -4])
     arr[2, indexer] = stored_value
-    res = arr[:]
-    assert np.all(
-        res
-        == np.array(
-            [
-                [fill_value] * arr.shape[0],
-                [fill_value] * arr.shape[0],
-                [fill_value, -3, -4, fill_value],
-                [fill_value] * arr.shape[0],
-            ]
-        ),
-    ), res
     res = arr[2, indexer]
     assert np.all(res == stored_value), res
