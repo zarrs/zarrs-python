@@ -116,6 +116,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         if drop_axes != ():
             res = res.squeeze(axis=drop_axes)
         return res
+
     async def write(
         self,
         batch_info: Iterable[
@@ -137,8 +138,8 @@ class ZarrsCodecPipeline(CodecPipeline):
                 chunk_spec.shape,
                 str(chunk_spec.dtype),
                 chunk_spec.fill_value.tobytes(),
-                out_selection,
-                chunk_selection,
+                make_slice_selection(out_selection),
+                make_slice_selection(chunk_selection),
             )
             for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
         )
