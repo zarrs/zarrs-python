@@ -76,7 +76,7 @@ markers = [
 ]
 
 [tool.ruff]
-src = ["src"]
+src = ["src", "tests"]
 
 [tool.ruff.format]
 docstring-code-format = true
