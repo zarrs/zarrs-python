@@ -90,10 +90,6 @@ def test_roundtrip_1d_axis(arr: zarr.Array, indexer: slice | np.ndarray):
 def test_roundtrip_orthogonal_indexing(
     arr: zarr.Array, indexer: slice | np.ndarray, indexer_2: np.ndarray | slice
 ):
-    if isinstance(indexer, np.ndarray) and isinstance(indexer_2, np.ndarray):
-        pytest.skip(
-            "indexing across two axes with arrays seems to have strange behavior even in normal zarr"
-        )
     stored_value = np.array([[-1, -2], [-3, -4]])
     arr.oindex[indexer, indexer_2] = stored_value
     res = arr.oindex[indexer, indexer_2]
