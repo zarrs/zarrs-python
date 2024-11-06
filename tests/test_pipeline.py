@@ -96,7 +96,7 @@ def test_roundtrip_orthogonal_indexing(
         )
     stored_value = np.array([[-1, -2], [-3, -4]])
     arr.oindex[indexer, indexer_2] = stored_value
-    res = arr[indexer, indexer_2]
+    res = arr.oindex[indexer, indexer_2]
     assert np.all(res == stored_value), res
 
 
@@ -105,5 +105,5 @@ def test_roundtrip_orthogonal_indexing_1d_axis(
 ):
     stored_value = np.array([-3, -4])
     arr.oindex[2, indexer] = stored_value
-    res = arr[2, indexer]
+    res = arr.oindex[2, indexer]
     assert np.all(res == stored_value), res
