@@ -103,3 +103,27 @@ def test_roundtrip_orthogonal_indexing_1d_axis(
     arr.oindex[2, indexer] = stored_value
     res = arr.oindex[2, indexer]
     assert np.all(res == stored_value), res
+
+
+def test_roundtrip_ellipsis_indexing_2d(arr: zarr.Array):
+    stored_value = np.arange(arr.size).reshape(arr.shape)
+    arr[...] = stored_value
+    res = arr[...]
+    assert np.all(res == stored_value), res
+
+
+def test_roundtrip_ellipsis_indexing_1d(arr: zarr.Array):
+    stored_value = np.array([1, 2, 3, 4])
+    arr[2, ...] = stored_value
+    res = arr[2, ...]
+    assert np.all(res == stored_value), res
+
+
+def test_roundtrip_ellipsis_indexing_1d_invalid(arr: zarr.Array):
+    stored_value = np.array([1, 2, 3])
+    with pytest.raises(
+        BaseException  # TODO: ValueError, but this raises pyo3_runtime.PanicException
+    ):
+        # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
+        # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
+        arr[2, ...] = stored_value
