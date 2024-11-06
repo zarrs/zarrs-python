@@ -12,7 +12,7 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.core.config import config
-from zarr.core.indexing import SelectorTuple, make_slice_selection
+from zarr.core.indexing import SelectorTuple, is_integer, ArrayIndexError
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -33,6 +33,32 @@ def get_max_threads() -> int:
     return (os.cpu_count() or 1) + 4
 
 
+# This is a copy of the function from zarr.core.indexing that fixes:
+#   DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated
+# TODO: Upstream this fix
+def make_slice_selection(selection: Any) -> list[slice]:
+    ls: list[slice] = []
+    for dim_selection in selection:
+        if is_integer(dim_selection):
+            ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
+        elif isinstance(dim_selection, np.ndarray):
+            if len(dim_selection) == 1:
+                ls.append(slice(int(dim_selection.item()), int(dim_selection.item()) + 1, 1))
+            else:
+                raise ArrayIndexError
+        else:
+            ls.append(dim_selection)
+    return ls
+
+
+def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[slice]:
+    return (
+        [selector_tuple]
+        if isinstance(selector_tuple, slice)
+        else make_slice_selection(selector_tuple)
+    )
+
+
 def make_chunk_info_for_rust(
     batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
 ) -> list[tuple[str, ChunkCoords, str, Any, list[slice], list[slice]]]:
@@ -42,8 +68,8 @@ def make_chunk_info_for_rust(
             chunk_spec.shape,
             str(chunk_spec.dtype),
             chunk_spec.fill_value.tobytes(),
-            make_slice_selection(out_selection),
-            make_slice_selection(chunk_selection),
+            selector_tuple_to_slice_selection(out_selection),
+            selector_tuple_to_slice_selection(chunk_selection),
         )
         for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
     )
