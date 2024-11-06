@@ -12,7 +12,7 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.core.config import config
-from zarr.core.indexing import SelectorTuple, is_integer, ArrayIndexError
+from zarr.core.indexing import ArrayIndexError, SelectorTuple, is_integer
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -43,7 +43,9 @@ def make_slice_selection(selection: Any) -> list[slice]:
             ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
         elif isinstance(dim_selection, np.ndarray):
             if len(dim_selection) == 1:
-                ls.append(slice(int(dim_selection.item()), int(dim_selection.item()) + 1, 1))
+                ls.append(
+                    slice(int(dim_selection.item()), int(dim_selection.item()) + 1, 1)
+                )
             else:
                 raise ArrayIndexError
         else:
@@ -144,12 +146,10 @@ class ZarrsCodecPipeline(CodecPipeline):
             raise RuntimeError("Non-native byte order not supported")
 
         chunks_desc = make_chunk_info_for_rust(batch_info)
-        res = await asyncio.to_thread(
+        await asyncio.to_thread(
             self.impl.retrieve_chunks, chunks_desc, out, chunk_concurrent_limit
         )
-        if drop_axes != ():
-            res = res.squeeze(axis=drop_axes)
-        return res
+        return None
 
     async def write(
         self,
@@ -159,7 +159,6 @@ class ZarrsCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        # FIXME: use drop_axes
         chunk_concurrent_limit = (
             config.get("threading.max_workers") or get_max_threads()
         )
@@ -169,9 +168,10 @@ class ZarrsCodecPipeline(CodecPipeline):
         elif not value.flags.c_contiguous:
             value = np.ascontiguousarray(value)
         chunks_desc = make_chunk_info_for_rust(batch_info)
-        return await asyncio.to_thread(
+        await asyncio.to_thread(
             self.impl.store_chunks, chunks_desc, value, chunk_concurrent_limit
         )
+        return None
 
 
 register_pipeline(ZarrsCodecPipeline)
