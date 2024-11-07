@@ -291,11 +291,17 @@ impl CodecPipelineImpl {
 }
 
 type ChunksItemRaw<'a> = (
+    // path
     String,
+    // shape
     Vec<u64>,
+    // data type
     String,
+    // fill value bytes
     Vec<u8>,
+    // out selection
     Vec<Bound<'a, PySlice>>,
+    // chunk selection
     Vec<Bound<'a, PySlice>>,
 );
 
