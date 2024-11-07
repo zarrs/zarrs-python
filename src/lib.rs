@@ -2,7 +2,7 @@
 
 use numpy::npyffi::PyArrayObject;
 use numpy::{PyUntypedArray, PyUntypedArrayMethods};
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PySlice;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -26,6 +26,8 @@ use zarrs::storage::{ReadableWritableListableStorageTraits, StorageHandle, Store
 
 mod utils;
 
+use utils::PyErrExt;
+
 pub enum CodecPipelineStore {
     Filesystem(Arc<FilesystemStore>),
 }
@@ -47,20 +49,16 @@ impl CodecPipelineImpl {
             if gstore.is_none() {
                 if let Some(chunk_path) = chunk_path.strip_prefix('/') {
                     // Absolute path
-                    let store = Arc::new(
-                        FilesystemStore::new("/")
-                            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
-                    );
+                    let store = Arc::new(FilesystemStore::new("/").map_py_err::<PyRuntimeError>()?);
                     *gstore = Some(CodecPipelineStore::Filesystem(store.clone()));
                     Ok((store, chunk_path))
                 } else {
                     // Relative path
                     let store = Arc::new(
                         FilesystemStore::new(
-                            std::env::current_dir()
-                                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
+                            std::env::current_dir().map_py_err::<PyRuntimeError>()?,
                         )
-                        .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?,
+                        .map_py_err::<PyRuntimeError>()?,
                     );
                     *gstore = Some(CodecPipelineStore::Filesystem(store.clone()));
                     Ok((store, chunk_path))
@@ -72,11 +70,15 @@ impl CodecPipelineImpl {
                     Ok((store.clone(), chunk_path))
                 }
             } else {
-                utils::err("the store type changed".to_string())?
+                Err(PyErr::new::<PyTypeError, _>(
+                    "the store type changed".to_string(),
+                ))
             }
         } else {
             // TODO: Add support for more stores
-            utils::err(format!("unsupported store for {chunk_path}"))
+            Err(PyErr::new::<PyTypeError, _>(format!(
+                "unsupported store for {chunk_path}"
+            )))
         }
     }
 
@@ -88,14 +90,14 @@ impl CodecPipelineImpl {
         // Get the chunk representation
         let data_type =
             DataType::from_metadata(&DataTypeMetadataV3::from_metadata(&MetadataV3::new(dtype)))
-                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
+                .map_py_err::<PyRuntimeError>()?;
         let chunk_shape = chunk_shape
             .into_iter()
             .map(|x| NonZeroU64::new(x).expect("chunk shapes should always be non-zero"))
             .collect();
         let chunk_representation =
             ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value))
-                .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
+                .map_py_err::<PyValueError>()?;
         Ok(chunk_representation)
     }
 
@@ -106,14 +108,12 @@ impl CodecPipelineImpl {
         chunk_representation: &ChunkRepresentation,
         codec_options: &CodecOptions,
     ) -> PyResult<Vec<u8>> {
-        let value_encoded = store
-            .get(key)
-            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
+        let value_encoded = store.get(key).map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
                 .decode(value_encoded.into(), chunk_representation, codec_options)
-                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?
+                .map_py_err::<PyRuntimeError>()?
         } else {
             let array_size = ArraySize::new(
                 chunk_representation.data_type().size(),
@@ -143,12 +143,12 @@ impl CodecPipelineImpl {
             let value_encoded = codec_chain
                 .encode(value_decoded, chunk_representation, codec_options)
                 .map(Cow::into_owned)
-                .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
+                .map_py_err::<PyRuntimeError>()?;
 
             // Store the encoded chunk
             store.set(key, value_encoded.into())
         }
-        .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))
+        .map_py_err::<PyRuntimeError>()
     }
 
     fn store_chunk_subset_bytes(
@@ -270,9 +270,9 @@ impl CodecPipelineImpl {
         concurrent_target: Option<usize>,
     ) -> PyResult<Self> {
         let metadata: Vec<MetadataV3> =
-            serde_json::from_str(metadata).or_else(|x| utils::err(x.to_string()))?;
+            serde_json::from_str(metadata).map_py_err::<PyTypeError>()?;
         let codec_chain =
-            Arc::new(CodecChain::from_metadata(&metadata).or_else(|x| utils::err(x.to_string()))?);
+            Arc::new(CodecChain::from_metadata(&metadata).map_py_err::<PyTypeError>()?);
         let mut codec_options = CodecOptionsBuilder::new();
         if let Some(validate_checksums) = validate_checksums {
             codec_options = codec_options.validate_checksums(validate_checksums);
@@ -336,17 +336,14 @@ impl CodecPipelineImpl {
                     ArraySubset,
                     ChunkRepresentation,
                 )| {
-                    let key = StoreKey::new(chunk_path)
-                        .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
+                    let key = StoreKey::new(chunk_path).map_py_err::<PyValueError>()?;
 
                     // See zarrs::array::Array::retrieve_chunk_subset_into
                     if chunk_subset.start().iter().all(|&o| o == 0)
                         && chunk_subset.shape() == chunk_representation.shape_u64()
                     {
                         // See zarrs::array::Array::retrieve_chunk_into
-                        let chunk_encoded = store
-                            .get(&key)
-                            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
+                        let chunk_encoded = store.get(&key).map_py_err::<PyRuntimeError>()?;
                         if let Some(chunk_encoded) = chunk_encoded {
                             // Decode the encoded data into the output buffer
                             let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -383,7 +380,7 @@ impl CodecPipelineImpl {
                             .codec_chain
                             .clone()
                             .partial_decoder(input_handle, &chunk_representation, codec_options)
-                            .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
+                            .map_py_err::<PyValueError>()?;
                         unsafe {
                             partial_decoder.partial_decode_into(
                                 &chunk_subset,
@@ -394,7 +391,7 @@ impl CodecPipelineImpl {
                             )
                         }
                     }
-                    .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))
+                    .map_py_err::<PyValueError>()
                 };
 
             iter_concurrent_limit!(
@@ -431,8 +428,7 @@ impl CodecPipelineImpl {
             .map(
                 |(chunk_path, chunk_shape, dtype, fill_value, out_selection, chunk_selection)| {
                     let (store, path) = self.get_store_and_path(&chunk_path)?;
-                    let key = StoreKey::new(path)
-                        .map_err(|err| PyErr::new::<PyValueError, _>(err.to_string()))?;
+                    let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
                     Ok((
                         store,
                         key,
@@ -461,9 +457,7 @@ impl CodecPipelineImpl {
                     if is_entire_chunk
                         && input_slice.to_vec() == chunk_representation.fill_value().as_ne_bytes()
                     {
-                        return store
-                            .erase(&key)
-                            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()));
+                        return store.erase(&key).map_py_err::<PyRuntimeError>();
                     }
 
                     // The input is a constant value
@@ -481,7 +475,7 @@ impl CodecPipelineImpl {
                             &input_shape,
                             chunk_representation.data_type(),
                         )
-                        .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?
+                        .map_py_err::<PyRuntimeError>()?
                 };
 
                 Self::store_chunk_subset_bytes(

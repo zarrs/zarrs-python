@@ -1,5 +1,13 @@
-use pyo3::{exceptions::PyTypeError, PyErr};
+use std::fmt::Display;
 
-pub fn err<T>(msg: String) -> Result<T, PyErr> {
-    Err(PyErr::new::<PyTypeError, _>(msg))
+use pyo3::{PyErr, PyResult, PyTypeInfo};
+
+pub(crate) trait PyErrExt<T> {
+    fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T>;
+}
+
+impl<T, E: Display> PyErrExt<T> for Result<T, E> {
+    fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T> {
+        self.map_err(|e| PyErr::new::<PE, _>(format!("{e}")))
+    }
 }
