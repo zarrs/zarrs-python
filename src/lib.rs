@@ -251,25 +251,41 @@ impl CodecPipelineImpl {
             .unwrap()
     }
 
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
-        let itemsize = Self::pyarray_itemsize(value);
+    fn py_untyped_array_to_array_object<'a>(
+        value: &Bound<'a, PyUntypedArray>,
+    ) -> &'a PyArrayObject {
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
+        unsafe {
+            // SAFETY: array_object_ptr cannot be null
+            &*array_object_ptr
+        }
+    }
+
+    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * itemsize;
-        let slice = unsafe { std::slice::from_raw_parts(array_data, array_len) };
+        let array_len = value.len() * Self::pyarray_itemsize(value);
+        let slice = unsafe {
+            // SAFETY: array_data is a valid pointer to a u8 array of length array_len
+            // TODO: Verify that empty arrays have non-null data. Otherwise, this function needs to return Option or be unsafe with a non-empty invariant
+            debug_assert!(!array_data.is_null());
+            std::slice::from_raw_parts(array_data, array_len)
+        };
         slice
     }
 
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> UnsafeCellSlice<'a, u8> {
-        let itemsize = Self::pyarray_itemsize(value);
-        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
+        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * itemsize;
-        let output = unsafe { std::slice::from_raw_parts_mut(array_data, array_len) };
+        let array_len = value.len() * Self::pyarray_itemsize(value);
+        let output = unsafe {
+            // SAFETY: array_data is a valid pointer to a u8 array of length array_len
+            // TODO: Verify that empty arrays have non-null data. Otherwise, this function needs to return Option or be unsafe with a non-empty invariant
+            debug_assert!(!array_data.is_null());
+            std::slice::from_raw_parts_mut(array_data, array_len)
+        };
         UnsafeCellSlice::new(output)
     }
 }
