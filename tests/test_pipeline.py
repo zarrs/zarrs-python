@@ -5,8 +5,9 @@ import tempfile
 import numpy as np
 import pytest
 import zarr
-import zarrs_python  # noqa: F401
 from zarr.storage import LocalStore
+
+import zarrs_python  # noqa: F401
 
 
 @pytest.fixture
