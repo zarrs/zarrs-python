@@ -1,3 +1,0 @@
-[envs.hatch-test]
-default-args = []
-features = ["test"]
