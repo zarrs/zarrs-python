@@ -191,12 +191,15 @@ impl CodecPipelineImpl {
         )
     }
 
-    fn selection_to_array_subset(selection: &[&PySlice], shape: &[u64]) -> PyResult<ArraySubset> {
+    fn selection_to_array_subset(
+        selection: &[Bound<'_, PySlice>],
+        shape: &[u64],
+    ) -> PyResult<ArraySubset> {
         let chunk_ranges = selection
             .iter()
             .zip(shape)
             .map(|(selection, &shape)| {
-                let indices = selection.indices(i64::try_from(shape).unwrap())?;
+                let indices = selection.indices(isize::try_from(shape).unwrap())?;
                 assert!(indices.start >= 0); // FIXME
                 assert!(indices.stop >= 0); // FIXME
                 assert!(indices.step == 1);
@@ -247,8 +250,8 @@ type RetrieveChunksItem<'a> = (
     Vec<u64>,
     String,
     Vec<u8>,
-    Vec<&'a PySlice>,
-    Vec<&'a PySlice>,
+    Vec<Bound<'a, PySlice>>,
+    Vec<Bound<'a, PySlice>>,
 );
 
 type StoreChunksItem<'a> = (
@@ -256,12 +259,13 @@ type StoreChunksItem<'a> = (
     Vec<u64>,
     String,
     Vec<u8>,
-    Vec<&'a PySlice>,
-    Vec<&'a PySlice>,
+    Vec<Bound<'a, PySlice>>,
+    Vec<Bound<'a, PySlice>>,
 );
 
 #[pymethods]
 impl CodecPipelineImpl {
+    #[pyo3(signature = (metadata, validate_checksums=None, store_empty_chunks=None, concurrent_target=None))]
     #[new]
     fn new(
         metadata: &str,
