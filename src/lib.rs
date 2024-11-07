@@ -241,14 +241,18 @@ impl CodecPipelineImpl {
         Ok(ArraySubset::new_with_ranges(&chunk_ranges))
     }
 
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+    fn pyarray_itemsize(value: &Bound<'_, PyUntypedArray>) -> usize {
         // TODO: is this and the below a bug? why doesn't .itemsize() work?
-        let itemsize = value
+        value
             .dtype()
             .getattr("itemsize")
             .unwrap()
             .extract::<usize>()
-            .unwrap();
+            .unwrap()
+    }
+
+    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+        let itemsize = Self::pyarray_itemsize(value);
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
         let array_data = array_object.data.cast::<u8>();
@@ -260,12 +264,7 @@ impl CodecPipelineImpl {
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> UnsafeCellSlice<'a, u8> {
-        let itemsize = value
-            .dtype()
-            .getattr("itemsize")
-            .unwrap()
-            .extract::<usize>()
-            .unwrap();
+        let itemsize = Self::pyarray_itemsize(value);
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &mut PyArrayObject = unsafe { array_object_ptr.as_mut().unwrap() };
         let array_data = array_object.data.cast::<u8>();
