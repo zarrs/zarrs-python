@@ -82,6 +82,36 @@ impl CodecPipelineImpl {
         }
     }
 
+    fn collect_chunk_descriptions(
+        &self,
+        chunk_descriptions: Vec<ChunksItemRaw>,
+        shape: &[u64],
+    ) -> PyResult<Vec<ChunksItem>> {
+        chunk_descriptions
+            .into_iter()
+            .map(
+                |(chunk_path, chunk_shape, dtype, fill_value, selection, chunk_selection)| {
+                    let (store, path) = self.get_store_and_path(&chunk_path)?;
+                    let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
+                    Ok(ChunksItem {
+                        store,
+                        key,
+                        chunk_subset: Self::selection_to_array_subset(
+                            &chunk_selection,
+                            &chunk_shape,
+                        )?,
+                        subset: Self::selection_to_array_subset(&selection, shape)?,
+                        representation: Self::get_chunk_representation(
+                            chunk_shape,
+                            &dtype,
+                            fill_value,
+                        )?,
+                    })
+                },
+            )
+            .collect()
+    }
+
     fn get_chunk_representation(
         chunk_shape: Vec<u64>,
         dtype: &str,
@@ -191,12 +221,15 @@ impl CodecPipelineImpl {
         )
     }
 
-    fn selection_to_array_subset(selection: &[&PySlice], shape: &[u64]) -> PyResult<ArraySubset> {
+    fn selection_to_array_subset(
+        selection: &[Bound<'_, PySlice>],
+        shape: &[u64],
+    ) -> PyResult<ArraySubset> {
         let chunk_ranges = selection
             .iter()
             .zip(shape)
             .map(|(selection, &shape)| {
-                let indices = selection.indices(i64::try_from(shape).unwrap())?;
+                let indices = selection.indices(isize::try_from(shape).unwrap())?;
                 assert!(indices.start >= 0); // FIXME
                 assert!(indices.stop >= 0); // FIXME
                 assert!(indices.step == 1);
@@ -242,26 +275,26 @@ impl CodecPipelineImpl {
     }
 }
 
-type RetrieveChunksItem<'a> = (
+type ChunksItemRaw<'a> = (
     String,
     Vec<u64>,
     String,
     Vec<u8>,
-    Vec<&'a PySlice>,
-    Vec<&'a PySlice>,
+    Vec<Bound<'a, PySlice>>,
+    Vec<Bound<'a, PySlice>>,
 );
 
-type StoreChunksItem<'a> = (
-    String,
-    Vec<u64>,
-    String,
-    Vec<u8>,
-    Vec<&'a PySlice>,
-    Vec<&'a PySlice>,
-);
+struct ChunksItem {
+    store: Arc<dyn ReadableWritableListableStorageTraits>,
+    key: StoreKey,
+    chunk_subset: ArraySubset,
+    subset: ArraySubset,
+    representation: ChunkRepresentation,
+}
 
 #[pymethods]
 impl CodecPipelineImpl {
+    #[pyo3(signature = (metadata, validate_checksums=None, store_empty_chunks=None, concurrent_target=None))]
     #[new]
     fn new(
         metadata: &str,
@@ -295,7 +328,7 @@ impl CodecPipelineImpl {
     fn retrieve_chunks(
         &self,
         py: Python,
-        chunk_descriptions: Vec<RetrieveChunksItem>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<ChunksItemRaw>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
         chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
@@ -308,91 +341,68 @@ impl CodecPipelineImpl {
         let output = Self::nparray_to_unsafe_cell_slice(value);
         let output_shape: Vec<u64> = value.shape().iter().map(|&i| i as u64).collect();
 
-        // Collect chunk descriptions
-        let chunk_descriptions = chunk_descriptions
-            .into_iter()
-            .map(
-                |(chunk_path, chunk_shape, dtype, fill_value, out_selection, chunk_selection)| {
-                    let (store, path) = self.get_store_and_path(&chunk_path)?;
-                    Ok((
-                        store,
-                        path.to_string(),
-                        Self::selection_to_array_subset(&chunk_selection, &chunk_shape)?,
-                        Self::selection_to_array_subset(&out_selection, &output_shape)?,
-                        Self::get_chunk_representation(chunk_shape, &dtype, fill_value)?,
-                    ))
-                },
-            )
-            .collect::<PyResult<Vec<_>>>()?;
+        let chunk_descriptions =
+            self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
 
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
 
-            let update_chunk_subset =
-                |(store, chunk_path, chunk_subset, output_subset, chunk_representation): (
-                    Arc<dyn ReadableWritableListableStorageTraits>,
-                    String,
-                    ArraySubset,
-                    ArraySubset,
-                    ChunkRepresentation,
-                )| {
-                    let key = StoreKey::new(chunk_path).map_py_err::<PyValueError>()?;
-
-                    // See zarrs::array::Array::retrieve_chunk_subset_into
-                    if chunk_subset.start().iter().all(|&o| o == 0)
-                        && chunk_subset.shape() == chunk_representation.shape_u64()
-                    {
-                        // See zarrs::array::Array::retrieve_chunk_into
-                        let chunk_encoded = store.get(&key).map_py_err::<PyRuntimeError>()?;
-                        if let Some(chunk_encoded) = chunk_encoded {
-                            // Decode the encoded data into the output buffer
-                            let chunk_encoded: Vec<u8> = chunk_encoded.into();
-                            unsafe {
-                                self.codec_chain.decode_into(
-                                    Cow::Owned(chunk_encoded),
-                                    &chunk_representation,
-                                    &output,
-                                    &output_shape,
-                                    &output_subset,
-                                    codec_options,
-                                )
-                            }
-                        } else {
-                            // The chunk is missing, write the fill value
-                            unsafe {
-                                copy_fill_value_into(
-                                    chunk_representation.data_type(),
-                                    chunk_representation.fill_value(),
-                                    &output,
-                                    &output_shape,
-                                    &output_subset,
-                                )
-                            }
-                        }
-                    } else {
-                        // Partially decode the chunk into the output buffer
-                        let storage_handle = Arc::new(StorageHandle::new(store.clone()));
-                        // NOTE: Normally a storage transformer would exist between the storage handle and the input handle
-                        // but zarr-python does not support them nor forward them to the codec pipeline
-                        let input_handle =
-                            Arc::new(StoragePartialDecoder::new(storage_handle, key));
-                        let partial_decoder = self
-                            .codec_chain
-                            .clone()
-                            .partial_decoder(input_handle, &chunk_representation, codec_options)
-                            .map_py_err::<PyValueError>()?;
+            let update_chunk_subset = |item: ChunksItem| {
+                // See zarrs::array::Array::retrieve_chunk_subset_into
+                if item.chunk_subset.start().iter().all(|&o| o == 0)
+                    && item.chunk_subset.shape() == item.representation.shape_u64()
+                {
+                    // See zarrs::array::Array::retrieve_chunk_into
+                    let chunk_encoded = item.store.get(&item.key).map_py_err::<PyRuntimeError>()?;
+                    if let Some(chunk_encoded) = chunk_encoded {
+                        // Decode the encoded data into the output buffer
+                        let chunk_encoded: Vec<u8> = chunk_encoded.into();
                         unsafe {
-                            partial_decoder.partial_decode_into(
-                                &chunk_subset,
+                            self.codec_chain.decode_into(
+                                Cow::Owned(chunk_encoded),
+                                &item.representation,
                                 &output,
                                 &output_shape,
-                                &output_subset,
+                                &item.subset,
                                 codec_options,
                             )
                         }
+                    } else {
+                        // The chunk is missing, write the fill value
+                        unsafe {
+                            copy_fill_value_into(
+                                item.representation.data_type(),
+                                item.representation.fill_value(),
+                                &output,
+                                &output_shape,
+                                &item.subset,
+                            )
+                        }
                     }
-                    .map_py_err::<PyValueError>()
-                };
+                } else {
+                    // Partially decode the chunk into the output buffer
+                    let storage_handle = Arc::new(StorageHandle::new(item.store.clone()));
+                    // NOTE: Normally a storage transformer would exist between the storage handle and the input handle
+                    // but zarr-python does not support them nor forward them to the codec pipeline
+                    let input_handle =
+                        Arc::new(StoragePartialDecoder::new(storage_handle, item.key));
+                    let partial_decoder = self
+                        .codec_chain
+                        .clone()
+                        .partial_decoder(input_handle, &item.representation, codec_options)
+                        .map_py_err::<PyValueError>()?;
+                    unsafe {
+                        partial_decoder.partial_decode_into(
+                            &item.chunk_subset,
+                            &output,
+                            &output_shape,
+                            &item.subset,
+                            codec_options,
+                        )
+                    }
+                }
+                .map_py_err::<PyValueError>()
+            };
 
             iter_concurrent_limit!(
                 chunk_concurrent_limit,
@@ -408,7 +418,7 @@ impl CodecPipelineImpl {
     fn store_chunks(
         &self,
         py: Python,
-        chunk_descriptions: Vec<StoreChunksItem>,
+        chunk_descriptions: Vec<ChunksItemRaw>,
         value: &Bound<'_, PyUntypedArray>,
         chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
@@ -422,69 +432,48 @@ impl CodecPipelineImpl {
         let input = ArrayBytes::new_flen(Cow::Borrowed(input_slice));
         let input_shape: Vec<u64> = value.shape().iter().map(|&i| i as u64).collect();
 
-        // Collect chunk descriptions
-        let chunk_descriptions = chunk_descriptions
-            .into_iter()
-            .map(
-                |(chunk_path, chunk_shape, dtype, fill_value, out_selection, chunk_selection)| {
-                    let (store, path) = self.get_store_and_path(&chunk_path)?;
-                    let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
-                    Ok((
-                        store,
-                        key,
-                        Self::selection_to_array_subset(&chunk_selection, &chunk_shape)?,
-                        Self::selection_to_array_subset(&out_selection, &input_shape)?,
-                        Self::get_chunk_representation(chunk_shape, &dtype, fill_value)?,
-                    ))
-                },
-            )
-            .collect::<PyResult<Vec<_>>>()?;
+        let chunk_descriptions =
+            self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
 
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
 
-            let store_chunk = |(store, key, chunk_subset, input_subset, chunk_representation): (
-                Arc<dyn ReadableWritableListableStorageTraits>,
-                StoreKey,
-                ArraySubset,
-                ArraySubset,
-                ChunkRepresentation,
-            )| {
-                let chunk_subset_bytes = if input_subset.dimensionality() == 0 {
+            let store_chunk = |item: ChunksItem| {
+                let chunk_subset_bytes = if item.subset.dimensionality() == 0 {
                     // Fast path for setting entire chunks to the fill value
-                    let is_entire_chunk = input_subset.start().iter().all(|&o| o == 0)
-                        && input_subset.shape() == chunk_representation.shape_u64();
+                    let is_entire_chunk = item.subset.start().iter().all(|&o| o == 0)
+                        && item.subset.shape() == item.representation.shape_u64();
                     if is_entire_chunk
-                        && input_slice.to_vec() == chunk_representation.fill_value().as_ne_bytes()
+                        && input_slice.to_vec() == item.representation.fill_value().as_ne_bytes()
                     {
-                        return store.erase(&key).map_py_err::<PyRuntimeError>();
+                        return item.store.erase(&item.key).map_py_err::<PyRuntimeError>();
                     }
 
                     // The input is a constant value
                     ArrayBytes::new_fill_value(
                         ArraySize::new(
-                            chunk_representation.data_type().size(),
-                            chunk_representation.num_elements(),
+                            item.representation.data_type().size(),
+                            item.representation.num_elements(),
                         ),
                         &FillValue::new(input_slice.to_vec()),
                     )
                 } else {
                     input
                         .extract_array_subset(
-                            &input_subset,
+                            &item.subset,
                             &input_shape,
-                            chunk_representation.data_type(),
+                            item.representation.data_type(),
                         )
                         .map_py_err::<PyRuntimeError>()?
                 };
 
                 Self::store_chunk_subset_bytes(
-                    store.as_ref(),
-                    &key,
+                    item.store.as_ref(),
+                    &item.key,
                     &self.codec_chain,
-                    &chunk_representation,
+                    &item.representation,
                     &chunk_subset_bytes,
-                    &chunk_subset,
+                    &item.chunk_subset,
                     codec_options,
                 )
             };
