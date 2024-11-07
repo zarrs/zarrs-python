@@ -1197,7 +1197,7 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 [[package]]
 name = "zarrs"
 version = "0.18.0-dev"
-source = "git+https://github.com/LDeakin/zarrs.git#21e86cb9c2007dcdf86571f52b4390096bb90cf4"
+source = "git+https://github.com/LDeakin/zarrs.git#8c1391f569f7cef9e5def8bbb897eb4349ec0f40"
 dependencies = [
  "blosc-src",
  "bytemuck",
@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "zarrs_filesystem"
 version = "0.1.0"
-source = "git+https://github.com/LDeakin/zarrs.git#21e86cb9c2007dcdf86571f52b4390096bb90cf4"
+source = "git+https://github.com/LDeakin/zarrs.git#8c1391f569f7cef9e5def8bbb897eb4349ec0f40"
 dependencies = [
  "bytes",
  "derive_more",
@@ -1261,7 +1261,7 @@ dependencies = [
 [[package]]
 name = "zarrs_metadata"
 version = "0.2.0"
-source = "git+https://github.com/LDeakin/zarrs.git#21e86cb9c2007dcdf86571f52b4390096bb90cf4"
+source = "git+https://github.com/LDeakin/zarrs.git#8c1391f569f7cef9e5def8bbb897eb4349ec0f40"
 dependencies = [
  "derive_more",
  "half",
@@ -1276,7 +1276,7 @@ dependencies = [
 [[package]]
 name = "zarrs_storage"
 version = "0.3.0-dev"
-source = "git+https://github.com/LDeakin/zarrs.git#21e86cb9c2007dcdf86571f52b4390096bb90cf4"
+source = "git+https://github.com/LDeakin/zarrs.git#8c1391f569f7cef9e5def8bbb897eb4349ec0f40"
 dependencies = [
  "bytes",
  "derive_more",
