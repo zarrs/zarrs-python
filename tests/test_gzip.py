@@ -1,11 +1,8 @@
 import numpy as np
-import pytest
-
 from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, GzipCodec
 from zarr.storage.common import StorePath
-
 
 
 def test_gzip(store: Store) -> None:
