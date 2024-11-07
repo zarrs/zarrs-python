@@ -6,11 +6,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-
 from zarr import Array, AsyncArray, config
 from zarr.codecs import (
     BytesCodec,
-    GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
@@ -59,13 +57,13 @@ def test_sharding_pickle() -> None:
     pass
 
 
-
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("store_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["C"])
 @pytest.mark.parametrize("runtime_read_order", ["C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
 async def test_order(
+    *,
     store: Store,
     input_order: MemoryOrder,
     store_order: MemoryOrder,
@@ -80,11 +78,17 @@ async def test_order(
         [
             ShardingCodec(
                 chunk_shape=(16, 8),
-                codecs=[TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()],
+                codecs=[
+                    TransposeCodec(order=order_from_dim(store_order, data.ndim)),
+                    BytesCodec(),
+                ],
             )
         ]
         if with_sharding
-        else [TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()]
+        else [
+            TransposeCodec(order=order_from_dim(store_order, data.ndim)),
+            BytesCodec(),
+        ]
     )
 
     with config.set({"array.order": runtime_write_order}):
@@ -117,12 +121,12 @@ async def test_order(
         assert read_data.flags["C_CONTIGUOUS"]
 
 
-
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["C"])
 @pytest.mark.parametrize("runtime_read_order", ["C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
 def test_order_implicit(
+    *,
     store: Store,
     input_order: MemoryOrder,
     runtime_write_order: MemoryOrder,
@@ -132,7 +136,9 @@ def test_order_implicit(
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
     path = "order_implicit"
     spath = StorePath(store, path)
-    codecs_: list[Codec] | None = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
+    codecs_: list[Codec] | None = (
+        [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
+    )
 
     with config.set({"array.order": runtime_write_order}):
         a = Array.create(
@@ -157,7 +163,6 @@ def test_order_implicit(
     else:
         assert not read_data.flags["F_CONTIGUOUS"]
         assert read_data.flags["C_CONTIGUOUS"]
-
 
 
 def test_open(store: Store) -> None:
@@ -205,7 +210,6 @@ def test_morton() -> None:
     ]
 
 
-
 def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
@@ -218,7 +222,6 @@ def test_write_partial_chunks(store: Store) -> None:
     )
     a[0:16, 0:16] = data
     assert np.array_equal(a[0:16, 0:16], data)
-
 
 
 async def test_delete_empty_chunks(store: Store) -> None:
@@ -236,7 +239,6 @@ async def test_delete_empty_chunks(store: Store) -> None:
     await _AsyncArrayProxy(a)[:16, :16].set(data)
     assert np.array_equal(await _AsyncArrayProxy(a)[:16, :16].get(), data)
     assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype()) is None
-
 
 
 async def test_dimension_names(store: Store) -> None:
@@ -267,10 +269,11 @@ async def test_dimension_names(store: Store) -> None:
     )
 
     assert (await AsyncArray.open(spath2)).metadata.dimension_names is None
-    zarr_json_buffer = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
+    zarr_json_buffer = await store.get(
+        f"{path2}/zarr.json", prototype=default_buffer_prototype()
+    )
     assert zarr_json_buffer is not None
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
-
 
 
 def test_invalid_metadata(store: Store) -> None:
@@ -354,7 +357,6 @@ def test_invalid_metadata(store: Store) -> None:
     #     )
 
 
-
 async def test_resize(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
     path = "resize"
@@ -369,14 +371,26 @@ async def test_resize(store: Store) -> None:
     )
 
     await _AsyncArrayProxy(a)[:16, :18].set(data)
-    assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is not None
-    assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
-    assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
-    assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is not None
+    assert (
+        await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is not None
+    )
+    assert (
+        await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
+    )
+    assert (
+        await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
+    )
+    assert (
+        await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is not None
+    )
 
     a = await a.resize((10, 12))
     assert a.metadata.shape == (10, 12)
-    assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
-    assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
+    assert (
+        await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
+    )
+    assert (
+        await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
+    )
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None
     assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is None

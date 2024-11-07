@@ -4,7 +4,6 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import pytest
-
 from zarr import Array, AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -83,7 +82,9 @@ def test_sharding(
     indirect=["array_fixture"],
 )
 def test_sharding_partial(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -125,7 +126,9 @@ def test_sharding_partial(
     indirect=["array_fixture"],
 )
 def test_sharding_partial_readwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -160,7 +163,9 @@ def test_sharding_partial_readwrite(
 )
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_read(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -196,7 +201,9 @@ def test_sharding_partial_read(
 )
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_overwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -263,7 +270,9 @@ def test_nested_sharding(
             ShardingCodec(
                 chunk_shape=(32, 32, 32),
                 codecs=[
-                    ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)
+                    ShardingCodec(
+                        chunk_shape=(16, 16, 16), index_location=inner_index_location
+                    )
                 ],
                 index_location=outer_index_location,
             )
@@ -348,7 +357,9 @@ async def test_delete_empty_shards(store: Store) -> None:
     data = np.ones((16, 16), dtype="uint16")
     data[:8, :8] = 0
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:, :].get())
-    assert await store.get(f"{path}/c/1/0", prototype=default_buffer_prototype()) is None
+    assert (
+        await store.get(f"{path}/c/1/0", prototype=default_buffer_prototype()) is None
+    )
     chunk_bytes = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
     assert chunk_bytes is not None
     assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
@@ -357,7 +368,6 @@ async def test_delete_empty_shards(store: Store) -> None:
 def test_pickle() -> None:
     codec = ShardingCodec(chunk_shape=(8, 8))
     assert pickle.loads(pickle.dumps(codec)) == codec
-
 
 
 @pytest.mark.parametrize(

@@ -2,13 +2,11 @@ import json
 
 import numpy as np
 import pytest
-
 from zarr import AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage.common import StorePath
-
 
 
 @pytest.mark.parametrize("dtype", ["uint8", "uint16"])
@@ -42,12 +40,16 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
         chunk_shape=(16, 16),
         dtype=dtype,
         fill_value=0,
-        codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],
+        codecs=[
+            ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])
+        ],
     )
     buf = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
     assert buf is not None
     zarr_json = json.loads(buf.to_bytes())
-    blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
+    blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1][
+        "configuration"
+    ]
     assert blosc_configuration_json["typesize"] == typesize
     if typesize == 1:
         assert blosc_configuration_json["shuffle"] == "bitshuffle"
