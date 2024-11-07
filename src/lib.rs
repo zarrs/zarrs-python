@@ -221,24 +221,30 @@ impl CodecPipelineImpl {
         )
     }
 
+    fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::ops::Range<u64>> {
+        let indices = slice.indices(length)?;
+        assert!(indices.start >= 0); // FIXME
+        assert!(indices.stop >= 0); // FIXME
+        assert!(indices.step == 1);
+        Ok(u64::try_from(indices.start).unwrap()..u64::try_from(indices.stop).unwrap())
+    }
+
     fn selection_to_array_subset(
         selection: &[Bound<'_, PySlice>],
         shape: &[u64],
     ) -> PyResult<ArraySubset> {
-        let chunk_ranges = selection
-            .iter()
-            .zip(shape)
-            .map(|(selection, &shape)| {
-                let indices = selection.indices(isize::try_from(shape).unwrap())?;
-                assert!(indices.start >= 0); // FIXME
-                assert!(indices.stop >= 0); // FIXME
-                assert!(indices.step == 1);
-                let start = u64::try_from(indices.start).unwrap();
-                let stop = u64::try_from(indices.stop).unwrap();
-                Ok(start..stop)
-            })
-            .collect::<PyResult<Vec<_>>>()?;
-        Ok(ArraySubset::new_with_ranges(&chunk_ranges))
+        if selection.is_empty() {
+            Ok(ArraySubset::new_with_shape(vec![1; shape.len()]))
+        } else {
+            let chunk_ranges = selection
+                .iter()
+                .zip(shape)
+                .map(|(selection, &shape)| {
+                    Self::slice_to_range(selection, isize::try_from(shape).unwrap())
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            Ok(ArraySubset::new_with_ranges(&chunk_ranges))
+        }
     }
 
     fn pyarray_itemsize(value: &Bound<'_, PyUntypedArray>) -> usize {
@@ -360,7 +366,13 @@ impl CodecPipelineImpl {
             ));
         }
         let output = Self::nparray_to_unsafe_cell_slice(value);
-        let output_shape: Vec<u64> = value.shape().iter().map(|&i| i as u64).collect();
+
+        // Get the output shape
+        let output_shape: Vec<u64> = if value.shape().is_empty() {
+            vec![1] // scalar value
+        } else {
+            value.shape().iter().map(|&i| i as u64).collect()
+        };
 
         let chunk_descriptions =
             self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
@@ -443,15 +455,31 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
         chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
+        enum InputValue<'a> {
+            Array(ArrayBytes<'a>),
+            Constant(FillValue),
+        }
+
         // Get input array
         if !value.is_c_contiguous() {
             return Err(PyErr::new::<PyValueError, _>(
                 "input array must be a C contiguous array".to_string(),
             ));
         }
+
         let input_slice = Self::nparray_to_slice(value);
-        let input = ArrayBytes::new_flen(Cow::Borrowed(input_slice));
-        let input_shape: Vec<u64> = value.shape().iter().map(|&i| i as u64).collect();
+        let input = if value.ndim() > 0 {
+            InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
+        } else {
+            InputValue::Constant(FillValue::new(input_slice.to_vec()))
+        };
+
+        // Get the input shape
+        let input_shape: Vec<u64> = if value.shape().is_empty() {
+            vec![1] // scalar value
+        } else {
+            value.shape().iter().map(|&i| i as u64).collect()
+        };
 
         let chunk_descriptions =
             self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
@@ -459,44 +487,44 @@ impl CodecPipelineImpl {
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
 
-            let store_chunk = |item: ChunksItem| {
-                let chunk_subset_bytes = if item.subset.dimensionality() == 0 {
-                    // Fast path for setting entire chunks to the fill value
-                    let is_entire_chunk = item.subset.start().iter().all(|&o| o == 0)
-                        && item.subset.shape() == item.representation.shape_u64();
-                    if is_entire_chunk
-                        && input_slice.to_vec() == item.representation.fill_value().as_ne_bytes()
-                    {
-                        return item.store.erase(&item.key).map_py_err::<PyRuntimeError>();
-                    }
-
-                    // The input is a constant value
-                    ArrayBytes::new_fill_value(
-                        ArraySize::new(
-                            item.representation.data_type().size(),
-                            item.representation.num_elements(),
-                        ),
-                        &FillValue::new(input_slice.to_vec()),
-                    )
-                } else {
-                    input
+            let store_chunk = |item: ChunksItem| match &input {
+                InputValue::Array(input) => {
+                    let chunk_subset_bytes = input
                         .extract_array_subset(
                             &item.subset,
                             &input_shape,
                             item.representation.data_type(),
                         )
-                        .map_py_err::<PyRuntimeError>()?
-                };
+                        .map_py_err::<PyRuntimeError>()?;
+                    Self::store_chunk_subset_bytes(
+                        item.store.as_ref(),
+                        &item.key,
+                        &self.codec_chain,
+                        &item.representation,
+                        &chunk_subset_bytes,
+                        &item.chunk_subset,
+                        codec_options,
+                    )
+                }
+                InputValue::Constant(constant_value) => {
+                    let chunk_subset_bytes = ArrayBytes::new_fill_value(
+                        ArraySize::new(
+                            item.representation.data_type().size(),
+                            item.chunk_subset.num_elements(),
+                        ),
+                        constant_value,
+                    );
 
-                Self::store_chunk_subset_bytes(
-                    item.store.as_ref(),
-                    &item.key,
-                    &self.codec_chain,
-                    &item.representation,
-                    &chunk_subset_bytes,
-                    &item.chunk_subset,
-                    codec_options,
-                )
+                    Self::store_chunk_subset_bytes(
+                        item.store.as_ref(),
+                        &item.key,
+                        &self.codec_chain,
+                        &item.representation,
+                        &chunk_subset_bytes,
+                        &item.chunk_subset,
+                        codec_options,
+                    )
+                }
             };
 
             iter_concurrent_limit!(
