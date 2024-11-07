@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-
 from zarr import Array, AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
@@ -19,8 +18,8 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize("runtime_write_order", ["C"])
 @pytest.mark.parametrize("runtime_read_order", ["C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
-
 async def test_transpose(
+    *,
     store: Store,
     input_order: MemoryOrder,
     runtime_write_order: MemoryOrder,
@@ -69,7 +68,6 @@ async def test_transpose(
         assert read_data.flags["C_CONTIGUOUS"]
 
 
-
 @pytest.mark.parametrize("order", [[1, 2, 0], [1, 2, 3, 0], [3, 2, 4, 0, 1]])
 def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     shape = [i + 3 for i in range(len(order))]
@@ -86,7 +84,6 @@ def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     a[:, :] = data
     read_data = a[:, :]
     assert np.array_equal(data, read_data)
-
 
 
 def test_transpose_invalid(

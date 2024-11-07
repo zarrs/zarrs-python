@@ -137,8 +137,8 @@ impl CodecPipelineImpl {
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        if value_decoded.is_fill_value(&chunk_representation.fill_value()) {
-            store.erase(&key)
+        if value_decoded.is_fill_value(chunk_representation.fill_value()) {
+            store.erase(key)
         } else {
             let value_encoded = codec_chain
                 .encode(value_decoded, chunk_representation, codec_options)

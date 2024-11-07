@@ -2,14 +2,12 @@ from typing import Literal
 
 import numpy as np
 import pytest
-
 from zarr import AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
 from zarr.storage.common import StorePath
 
 from .test_codecs import _AsyncArrayProxy
-
 
 
 @pytest.mark.parametrize("endian", ["big", "little"])
@@ -30,7 +28,6 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     await _AsyncArrayProxy(a)[:, :].set(data)
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, readback_data)
-
 
 
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])

@@ -2,7 +2,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-
 from zarr import Array
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
@@ -25,9 +24,15 @@ else:
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 @pytest.mark.parametrize("dtype", numpy_str_dtypes)
 @pytest.mark.parametrize("as_object_array", [False, True])
-@pytest.mark.parametrize("codecs", [None, [VLenUTF8Codec()], [VLenUTF8Codec(), ZstdCodec()]])
+@pytest.mark.parametrize(
+    "codecs", [None, [VLenUTF8Codec()], [VLenUTF8Codec(), ZstdCodec()]]
+)
 def test_vlen_string(
-    store: Store, dtype: None | np.dtype[Any], as_object_array: bool, codecs: None | list[Codec]
+    *,
+    store: Store,
+    dtype: None | np.dtype[Any],
+    as_object_array: bool,
+    codecs: None | list[Codec],
 ) -> None:
     strings = ["hello", "world", "this", "is", "a", "test"]
     data = np.array(strings, dtype=dtype).reshape((2, 3))
@@ -63,8 +68,12 @@ def test_vlen_string(
 
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 @pytest.mark.parametrize("as_object_array", [False, True])
-@pytest.mark.parametrize("codecs", [None, [VLenBytesCodec()], [VLenBytesCodec(), ZstdCodec()]])
-def test_vlen_bytes(store: Store, as_object_array: bool, codecs: None | list[Codec]) -> None:
+@pytest.mark.parametrize(
+    "codecs", [None, [VLenBytesCodec()], [VLenBytesCodec(), ZstdCodec()]]
+)
+def test_vlen_bytes(
+    *, store: Store, as_object_array: bool, codecs: None | list[Codec]
+) -> None:
     bstrings = [b"hello", b"world", b"this", b"is", b"a", b"test"]
     data = np.array(bstrings).reshape((2, 3))
     assert data.dtype == "|S5"

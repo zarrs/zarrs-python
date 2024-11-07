@@ -40,7 +40,7 @@ test = [
     "flask",
     "requests",
     "mypy",
-    "hypothesis"
+    "hypothesis",
 ]
 dev = ["maturin"]
 
@@ -62,18 +62,20 @@ doctest_optionflags = [
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
-    "--durations=10", "-ra", "--strict-config", "--strict-markers",
+    "--durations=10",
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+    "--import-mode=importlib",
 ]
 filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
     "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
-    "ignore:Duplicate name:UserWarning",  # from ZipFile
+    "ignore:Duplicate name:UserWarning",                                            # from ZipFile
 ]
-markers = [
-    "gpu: mark a test as requiring CuPy and GPU"
-]
+markers = ["gpu: mark a test as requiring CuPy and GPU"]
 
 [tool.ruff]
 src = ["src", "tests"]
@@ -107,3 +109,5 @@ ignore = [
     # allow I, O, l as variable names -> I is the identity matrix, i, j, k, l is reasonable indexing notation
     "E741",
 ]
+[tool.ruff.lint.isort]
+known-first-party = ["zarrs_python"]
