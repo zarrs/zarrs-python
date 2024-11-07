@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
+import operator
 import tempfile
+from functools import reduce
+from types import EllipsisType
+from typing import Callable
 
 import numpy as np
 import pytest
@@ -17,21 +21,88 @@ def fill_value() -> int:
 
 @pytest.fixture
 def chunks() -> tuple[int, ...]:
-    return (2, 2)
-
-
-@pytest.fixture(params=[np.array([1, 2]), slice(1, 3)], ids=["array", "slice"])
-def indexer(request) -> slice | np.ndarray:
-    return request.param
-
-
-indexer_2 = indexer
+    return (5, 5)
 
 
 @pytest.fixture
-def arr(fill_value, chunks) -> zarr.Array:
-    shape = (4, 4)
+def shape() -> tuple[int, ...]:
+    return (10, 10)
 
+
+@pytest.fixture(
+    params=[
+        np.array([1, 2]),
+        np.array([0, 2]),
+        slice(1, 3),
+        slice(1, 7),
+        np.array([0, 6]),
+        slice(None),
+        2,
+        Ellipsis,
+    ],
+    ids=[
+        "contiguous_in_chunk_array",
+        "discontinuous_in_chunk_array",
+        "slice_in_chunk",
+        "slice_across_chunks",
+        "across_chunks_indices_array",
+        "fill_slice",
+        "int",
+        "ellipsis",
+    ],
+)
+def indexer_1d(request) -> slice | np.ndarray | int | EllipsisType:
+    return request.param
+
+
+@pytest.fixture
+def full_array(shape) -> np.ndarray:
+    return np.arange(reduce(operator.mul, shape, 1)).reshape(shape)
+
+
+indexer_1d_2 = indexer_1d
+
+
+@pytest.fixture
+def index(indexer_1d, indexer_1d_2):
+    if isinstance(indexer_1d, EllipsisType) and isinstance(indexer_1d_2, EllipsisType):
+        pytest.skip("Double ellipsis indexing is valid")
+    return indexer_1d, indexer_1d_2
+
+
+@pytest.fixture(
+    params=[lambda x: getattr(x, "oindex"), lambda x: x], ids=["oindex", "vindex"]
+)
+def indexing_method(request) -> Callable:
+    return request.param
+
+
+@pytest.fixture
+def store_values(
+    indexing_method: Callable,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
+    full_array: np.ndarray,
+    shape: tuple[int, ...],
+) -> np.ndarray:
+    class smoke:
+        oindex = None
+
+    if not isinstance(index, EllipsisType) and indexing_method(smoke) == "oindex":
+        index: tuple[int | np.ndarray, ...] = tuple(
+            i
+            if (not isinstance(i, slice))
+            else np.arange(
+                i.start if hasattr(i, "start") else 0,
+                i.stop if hasattr(i, "end") else shape[axis],
+            )
+            for axis, i in enumerate(index)
+        )
+        return full_array[np.ix_(index)]
+    return full_array[index]
+
+
+@pytest.fixture
+def arr(fill_value, chunks, shape) -> zarr.Array:
     tmp = tempfile.TemporaryDirectory()
     return zarr.create(
         shape,
@@ -58,72 +129,35 @@ def test_roundtrip_singleton(arr: zarr.Array):
     assert arr[0, 0] != 42
 
 
-def test_roundtrip_full_array(arr: zarr.Array):
-    stored_values = np.arange(16).reshape(4, 4)
+def test_roundtrip_full_array(arr: zarr.Array, shape: tuple[int, ...]):
+    stored_values = np.arange(reduce(operator.mul, shape, 1)).reshape(shape)
     arr[:] = stored_values
     assert np.all(arr[:] == stored_values)
 
 
-def test_roundtrip_partial(
+def test_roundtrip(
     arr: zarr.Array,
-    indexer: slice | np.ndarray,
-    indexer_2: slice | np.ndarray,
+    store_values: np.ndarray,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
+    indexing_method: Callable,
 ):
-    if isinstance(indexer, np.ndarray) and isinstance(indexer_2, np.ndarray):
+    if not isinstance(index, EllipsisType) and all(
+        isinstance(i, np.ndarray) for i in index
+    ):
         pytest.skip(
             "indexing across two axes with arrays seems to have strange behavior even in normal zarr"
         )
-    stored_value = np.array([[-1, -2], [-3, -4]])
-    arr[indexer, indexer_2] = stored_value
-    res = arr[indexer, indexer_2]
+    indexing_method(arr)[index] = store_values
+    res = indexing_method(arr)[index]
     assert np.all(
-        res == stored_value,
+        res == store_values,
     ), res
-
-
-def test_roundtrip_1d_axis(arr: zarr.Array, indexer: slice | np.ndarray):
-    stored_value = np.array([-3, -4])
-    arr[2, indexer] = stored_value
-    res = arr[2, indexer]
-    assert np.all(res == stored_value), res
-
-
-def test_roundtrip_orthogonal_indexing(
-    arr: zarr.Array, indexer: slice | np.ndarray, indexer_2: np.ndarray | slice
-):
-    stored_value = np.array([[-1, -2], [-3, -4]])
-    arr.oindex[indexer, indexer_2] = stored_value
-    res = arr.oindex[indexer, indexer_2]
-    assert np.all(res == stored_value), res
-
-
-def test_roundtrip_orthogonal_indexing_1d_axis(
-    arr: zarr.Array, indexer: slice | np.ndarray
-):
-    stored_value = np.array([-3, -4])
-    arr.oindex[2, indexer] = stored_value
-    res = arr.oindex[2, indexer]
-    assert np.all(res == stored_value), res
-
-
-def test_roundtrip_ellipsis_indexing_2d(arr: zarr.Array):
-    stored_value = np.arange(arr.size).reshape(arr.shape)
-    arr[...] = stored_value
-    res = arr[...]
-    assert np.all(res == stored_value), res
-
-
-def test_roundtrip_ellipsis_indexing_1d(arr: zarr.Array):
-    stored_value = np.array([1, 2, 3, 4])
-    arr[2, ...] = stored_value
-    res = arr[2, ...]
-    assert np.all(res == stored_value), res
 
 
 def test_roundtrip_ellipsis_indexing_1d_invalid(arr: zarr.Array):
     stored_value = np.array([1, 2, 3])
     with pytest.raises(
-        BaseException  # TODO: ValueError, but this raises pyo3_runtime.PanicException
+        BaseException  # TODO: ValueError, but this raises pyo3_runtime.PanicException  # noqa: PT011
     ):
         # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
         # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
