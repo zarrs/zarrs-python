@@ -9,7 +9,7 @@ name = "zarrs_python"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.22.6", features = ["extension-module"] }
+pyo3 = "0.22.6"
 zarrs = { version = "0.18.0-dev", git = "https://github.com/LDeakin/zarrs.git" }
 paste = "1.0"
 rayon_iter_concurrent_limit = "0.2.0"
@@ -19,6 +19,10 @@ openssl = { version = "0.10", features = ["vendored"] }
 numpy = "0.22.1"
 unsafe_cell_slice = "0.2.0"
 serde_json = "1.0.128"
+
+[features]
+extension-module = ["pyo3/extension-module"]
+#default = ["extension-module"]
 
 [profile.release]
 lto = true
