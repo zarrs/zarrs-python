@@ -187,6 +187,19 @@ impl CodecPipelineImpl {
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
+        // Validate the inputs
+        chunk_subset_bytes
+            .validate(
+                chunk_subset.num_elements(),
+                chunk_representation.data_type().size(),
+            )
+            .map_err(|e| PyErr::new::<PyValueError, _>(e.to_string()))?;
+        if !chunk_subset.inbounds(&chunk_representation.shape_u64()) {
+            return Err(PyErr::new::<PyValueError, _>(
+                "chunk subset is out of bounds".to_string(),
+            ));
+        }
+
         // Retrieve the chunk
         let chunk_bytes_old = Self::retrieve_chunk_bytes(
             store,
@@ -198,6 +211,11 @@ impl CodecPipelineImpl {
 
         // Update the chunk
         let chunk_bytes_new = unsafe {
+            // SAFETY:
+            // - chunk_bytes_old is compatible with the chunk shape and data type size (validated on decoding)
+            // - chunk_subset is compatible with chunk_subset_bytes and the data type size (validated above)
+            // - chunk_subset is within the bounds of the chunk shape (validated above)
+            // - output bytes and output subset bytes are compatible (same data type)
             update_array_bytes(
                 chunk_bytes_old,
                 &chunk_representation.shape_u64(),
@@ -401,6 +419,9 @@ impl CodecPipelineImpl {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
                         unsafe {
+                            // SAFETY:
+                            // - output is an array with output_shape elements of the item.representation data type,
+                            // - item.subset is within the bounds of output_shape.
                             self.codec_chain.decode_into(
                                 Cow::Owned(chunk_encoded),
                                 &item.representation,
@@ -413,6 +434,10 @@ impl CodecPipelineImpl {
                     } else {
                         // The chunk is missing, write the fill value
                         unsafe {
+                            // SAFETY:
+                            // - data type and fill value are confirmed to be compatible when the ChunkRepresentation is created,
+                            // - output is an array with output_shape elements of the item.representation data type,
+                            // - item.subset is within the bounds of output_shape.
                             copy_fill_value_into(
                                 item.representation.data_type(),
                                 item.representation.fill_value(),
@@ -435,6 +460,10 @@ impl CodecPipelineImpl {
                         .partial_decoder(input_handle, &item.representation, codec_options)
                         .map_py_err::<PyValueError>()?;
                     unsafe {
+                        // SAFETY:
+                        // - output is an array with output_shape elements of the item.representation data type,
+                        // - item.subset is within the bounds of output_shape.
+                        // - item.chunk_subset has the same number of elements as item.subset.
                         partial_decoder.partial_decode_into(
                             &item.chunk_subset,
                             &output,
