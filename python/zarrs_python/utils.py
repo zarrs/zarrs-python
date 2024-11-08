@@ -22,29 +22,32 @@ def get_max_threads() -> int:
 # This is a copy of the function from zarr.core.indexing that fixes:
 #   DeprecationWarning: Conversion of an array with ndim > 0 to a scalar is deprecated
 # TODO: Upstream this fix
-def make_slice_selection(selection: Any) -> list[slice]:
+def make_slice_selection(selection: tuple[np.ndarray | float]) -> list[slice]:
     ls: list[slice] = []
     for dim_selection in selection:
         if is_integer(dim_selection):
             ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
         elif isinstance(dim_selection, np.ndarray):
+            dim_selection = dim_selection.ravel()
             if len(dim_selection) == 1:
                 ls.append(
                     slice(int(dim_selection.item()), int(dim_selection.item()) + 1, 1)
                 )
             else:
-                raise ArrayIndexError
+                if not (np.diff(dim_selection) == 1).all():
+                    raise ArrayIndexError
+                ls.append(slice(dim_selection[0], dim_selection[-1] + 1, 1))
         else:
             ls.append(dim_selection)
     return ls
 
 
 def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[slice]:
-    return (
-        [selector_tuple]
-        if isinstance(selector_tuple, slice)
-        else make_slice_selection(selector_tuple)
-    )
+    if isinstance(selector_tuple, slice):
+        return [selector_tuple]
+    if all(isinstance(s, slice) for s in selector_tuple):
+        return list(selector_tuple)
+    return make_slice_selection(selector_tuple)
 
 
 def make_chunk_info_for_rust(
