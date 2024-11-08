@@ -4,12 +4,12 @@ import os
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from zarr.core.indexing import ArrayIndexError, SelectorTuple, is_integer
+from zarr.core.indexing import SelectorTuple, is_integer
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from zarr.abc.store import ByteSetter
+    from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.common import ChunkCoords
 
@@ -17,6 +17,10 @@ if TYPE_CHECKING:
 # adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
 def get_max_threads() -> int:
     return (os.cpu_count() or 1) + 4
+
+
+class DiscontiguousArrayError(BaseException):
+    pass
 
 
 # This is a copy of the function from zarr.core.indexing that fixes:
@@ -35,8 +39,8 @@ def make_slice_selection(selection: tuple[np.ndarray | float]) -> list[slice]:
                 )
             else:
                 diff = np.diff(dim_selection)
-                if not ((diff != 1).all() or (diff != 0).all()):
-                    raise ArrayIndexError
+                if (diff != 1).any() and (diff != 0).any():
+                    raise DiscontiguousArrayError(diff)
                 ls.append(slice(dim_selection[0], dim_selection[-1] + 1, 1))
         else:
             ls.append(dim_selection)
@@ -51,17 +55,36 @@ def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[sli
     return make_slice_selection(selector_tuple)
 
 
-def make_chunk_info_for_rust(
-    batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
+def convert_chunk_to_primitive(
+    byte_getter: ByteGetter | ByteSetter, chunk_spec: ArraySpec
+) -> tuple[str, ChunkCoords, str, Any]:
+    return (
+        str(byte_getter),
+        chunk_spec.shape,
+        str(chunk_spec.dtype),
+        chunk_spec.fill_value.tobytes(),
+    )
+
+
+def make_chunk_info_for_rust_with_indices(
+    batch_info: Iterable[
+        tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+    ],
 ) -> list[tuple[str, ChunkCoords, str, Any, list[slice], list[slice]]]:
     return list(
         (
-            str(byte_getter),
-            chunk_spec.shape,
-            str(chunk_spec.dtype),
-            chunk_spec.fill_value.tobytes(),
+            *convert_chunk_to_primitive(byte_getter, chunk_spec),
             selector_tuple_to_slice_selection(out_selection),
             selector_tuple_to_slice_selection(chunk_selection),
         )
+        for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
+    )
+
+
+def make_chunk_info_for_rust(
+    batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
+) -> list[tuple[str, ChunkCoords, str, Any]]:
+    return list(
+        convert_chunk_to_primitive(byte_getter, chunk_spec)
         for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
     )

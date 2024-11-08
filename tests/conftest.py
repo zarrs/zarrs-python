@@ -74,6 +74,35 @@ zarr_python_default_codec_pipeline_failures = [
     "test_roundtrip[vindex-across_chunks_indices_array-ellipsis]",
     "test_roundtrip[vindex-ellipsis-contiguous_in_chunk_array]",
     "test_roundtrip[vindex-ellipsis-discontinuous_in_chunk_array]",
+    "test_roundtrip_read_only_zarrs[oindex-contiguous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[oindex-discontinuous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-contiguous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-discontinuous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[oindex-across_chunks_indices_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-ellipsis-across_chunks_indices_array]",
+    "test_roundtrip_read_only_zarrs[vindex-across_chunks_indices_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-ellipsis-contiguous_in_chunk_array]",
+    "test_roundtrip_read_only_zarrs[vindex-ellipsis-discontinuous_in_chunk_array]",
+]
+
+zarrs_python_no_discontinuous_writes = [
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-slice_in_chunk]",
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-slice_across_chunks]",
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-fill_slice]",
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-int]",
+    "test_roundtrip[oindex-slice_in_chunk-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-slice_across_chunks-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-fill_slice-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-int-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-ellipsis-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-discontinuous_in_chunk_array-slice_in_chunk]",
+    "test_roundtrip[vindex-discontinuous_in_chunk_array-slice_across_chunks]",
+    "test_roundtrip[vindex-discontinuous_in_chunk_array-fill_slice]",
+    "test_roundtrip[vindex-discontinuous_in_chunk_array-int]",
+    "test_roundtrip[vindex-slice_in_chunk-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-slice_across_chunks-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-fill_slice-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-int-discontinuous_in_chunk_array]",
 ]
 
 
@@ -84,5 +113,9 @@ def pytest_collection_modifyitems(
         reason="This test fails with the zarr-python default codec pipeline."
     )
     for item in items:
-        if item.name in zarr_python_default_codec_pipeline_failures:
+        if (
+            item.name
+            in zarr_python_default_codec_pipeline_failures
+            + zarrs_python_no_discontinuous_writes
+        ):
             item.add_marker(xfail_marker)

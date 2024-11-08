@@ -1,13 +1,15 @@
 #![warn(clippy::pedantic)]
 
 use numpy::npyffi::PyArrayObject;
-use numpy::{PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{IntoPyArray, PyArray, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PySlice;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::vec;
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
+use std::io::{Bytes, Read};
 use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 use unsafe_cell_slice::UnsafeCellSlice;
@@ -73,15 +75,36 @@ impl CodecPipelineImpl {
     fn collect_chunk_descriptions(
         &self,
         chunk_descriptions: Vec<ChunksItemRaw>,
-        shape: &[u64],
     ) -> PyResult<Vec<ChunksItem>> {
+        chunk_descriptions
+            .into_iter()
+            .map(|(store_path, chunk_shape, dtype, fill_value)| {
+                let (store, path) = self.get_store_and_path(&store_path)?;
+                let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
+                Ok(ChunksItem {
+                    store,
+                    key,
+                    representation: Self::get_chunk_representation(
+                        chunk_shape,
+                        &dtype,
+                        fill_value,
+                    )?,
+                })
+            })
+            .collect()
+    }
+    fn collect_chunk_descriptions_with_index(
+        &self,
+        chunk_descriptions: Vec<ChunksItemRawWithIndices>,
+        shape: &[u64],
+    ) -> PyResult<Vec<ChunksItemWithSubset>> {
         chunk_descriptions
             .into_iter()
             .map(
                 |(store_path, chunk_shape, dtype, fill_value, selection, chunk_selection)| {
                     let (store, path) = self.get_store_and_path(&store_path)?;
                     let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
-                    Ok(ChunksItem {
+                    Ok(ChunksItemWithSubset {
                         store,
                         key,
                         chunk_subset: Self::selection_to_array_subset(
@@ -304,7 +327,7 @@ impl CodecPipelineImpl {
     }
 }
 
-type ChunksItemRaw<'a> = (
+type ChunksItemRawWithIndices<'a> = (
     // store path
     String,
     // shape
@@ -319,11 +342,27 @@ type ChunksItemRaw<'a> = (
     Vec<Bound<'a, PySlice>>,
 );
 
-struct ChunksItem {
+type ChunksItemRaw<'a> = (
+    // store path
+    String,
+    // shape
+    Vec<u64>,
+    // data type
+    String,
+    // fill value bytes
+    Vec<u8>,
+);
+
+struct ChunksItemWithSubset {
     store: Arc<dyn ReadableWritableListableStorageTraits>,
     key: StoreKey,
     chunk_subset: ArraySubset,
     subset: ArraySubset,
+    representation: ChunkRepresentation,
+}
+struct ChunksItem {
+    store: Arc<dyn ReadableWritableListableStorageTraits>,
+    key: StoreKey,
     representation: ChunkRepresentation,
 }
 
@@ -360,10 +399,10 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunks(
+    fn retrieve_chunks_and_apply_index(
         &self,
         py: Python,
-        chunk_descriptions: Vec<ChunksItemRaw>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<ChunksItemRawWithIndices>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
         chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
@@ -387,12 +426,12 @@ impl CodecPipelineImpl {
         };
 
         let chunk_descriptions =
-            self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
+            self.collect_chunk_descriptions_with_index(chunk_descriptions, &output_shape)?;
 
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
 
-            let update_chunk_subset = |item: ChunksItem| {
+            let update_chunk_subset = |item: ChunksItemWithSubset| {
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if item.chunk_subset.start().iter().all(|&o| o == 0)
                     && item.chunk_subset.shape() == item.representation.shape_u64()
@@ -471,10 +510,57 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn store_chunks(
+    fn retrieve_chunks<'py>(
+        &self,
+        py: Python<'py>,
+        chunk_descriptions: Vec<ChunksItemRaw>, // FIXME: Ref / iterable?
+        chunk_concurrent_limit: usize,
+    ) -> PyResult<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>> {
+        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions)?;
+
+        let chunk_bytes = py.allow_threads(move || {
+            let codec_options = &self.codec_options;
+
+            let get_chunk_subset = |item: ChunksItem| {
+                // See zarrs::array::Array::retrieve_chunk_into
+                let chunk_encoded = item.store.get(&item.key).map_py_err::<PyRuntimeError>();
+                if let Some(chunk_encoded) = chunk_encoded.unwrap() {
+                    let chunk_encoded: Vec<u8> = chunk_encoded.into();
+                    self.codec_chain.decode(
+                        Cow::Owned(chunk_encoded),
+                        &item.representation,
+                        codec_options,
+                    )
+                } else {
+                    // The chunk is missing so we need to create one.
+                    let num_elements = item.representation.num_elements();
+                    let data_type_size = item.representation.data_type().size();
+                    let chunk_shape = ArraySize::new(data_type_size, num_elements);
+                    let array_bytes =
+                        ArrayBytes::new_fill_value(chunk_shape, item.representation.fill_value());
+                    Ok(array_bytes)
+                }
+            };
+            let chunk_bytes: Vec<Vec<u8>> = iter_concurrent_limit!(
+                chunk_concurrent_limit,
+                chunk_descriptions,
+                map,
+                get_chunk_subset
+            )
+            .map(|x| x.unwrap().into_fixed().unwrap().to_owned().into_owned())
+            .collect::<Vec<Vec<u8>>>();
+            chunk_bytes
+        });
+        Ok(chunk_bytes
+            .into_iter()
+            .map(|x| x.into_pyarray_bound(py))
+            .collect::<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>>())
+    }
+
+    fn store_chunks_with_indices(
         &self,
         py: Python,
-        chunk_descriptions: Vec<ChunksItemRaw>,
+        chunk_descriptions: Vec<ChunksItemRawWithIndices>,
         value: &Bound<'_, PyUntypedArray>,
         chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
@@ -509,12 +595,12 @@ impl CodecPipelineImpl {
         };
 
         let chunk_descriptions =
-            self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
+            self.collect_chunk_descriptions_with_index(chunk_descriptions, &input_shape)?;
 
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
 
-            let store_chunk = |item: ChunksItem| match &input {
+            let store_chunk = |item: ChunksItemWithSubset| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
                         .extract_array_subset(

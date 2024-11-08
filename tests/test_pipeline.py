@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import operator
-import tempfile
+from collections.abc import Callable
+from contextlib import contextmanager
 from functools import reduce
 from types import EllipsisType
-from typing import Callable
 
 import numpy as np
 import pytest
@@ -32,7 +32,7 @@ def shape() -> tuple[int, ...]:
 @pytest.fixture(
     params=[
         np.array([1, 2]),
-        np.array([0, 2]),
+        np.array([0, 3]),
         slice(1, 3),
         slice(1, 7),
         np.array([0, 6]),
@@ -102,11 +102,10 @@ def store_values(
 
 
 @pytest.fixture
-def arr(fill_value, chunks, shape) -> zarr.Array:
-    tmp = tempfile.TemporaryDirectory()
+def arr(fill_value, chunks, shape, tmp_path) -> zarr.Array:
     return zarr.create(
         shape,
-        store=LocalStore(root=tmp.name, mode="w"),
+        store=LocalStore(root=tmp_path / ".zarr", mode="w"),
         chunks=chunks,
         dtype=np.int16,
         fill_value=fill_value,
@@ -148,6 +147,36 @@ def test_roundtrip(
             "indexing across two axes with arrays seems to have strange behavior even in normal zarr"
         )
     indexing_method(arr)[index] = store_values
+    res = indexing_method(arr)[index]
+    assert np.all(
+        res == store_values,
+    ), res
+
+
+@contextmanager
+def use_zarr_default_codec_reader():
+    zarr.config.set(
+        {"codec_pipeline.path": "zarr.codecs.pipeline.BatchedCodecPipeline"}
+    )
+    yield
+    zarr.config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
+
+
+def test_roundtrip_read_only_zarrs(
+    arr,
+    store_values: np.ndarray,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
+    indexing_method: Callable,
+):
+    if not isinstance(index, EllipsisType) and all(
+        isinstance(i, np.ndarray) for i in index
+    ):
+        pytest.skip(
+            "indexing across two axes with arrays seems to have strange behavior even in normal zarr"
+        )
+    with use_zarr_default_codec_reader():
+        arr_default = zarr.open(arr.store, mode="r+")
+        indexing_method(arr_default)[index] = store_values
     res = indexing_method(arr)[index]
     assert np.all(
         res == store_values,
