@@ -283,7 +283,6 @@ impl CodecPipelineImpl {
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let slice = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            // TODO: Verify that empty arrays have non-null data. Otherwise, this function needs to return Option or be unsafe with a non-empty invariant
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts(array_data, array_len)
         };
