@@ -44,7 +44,9 @@ impl CodecPipelineImpl {
         &self,
         chunk_path: &'a str,
     ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, &'a str)> {
-        let mut gstore = self.store.lock().unwrap();
+        let mut gstore = self.store.lock().map_err(|_| {
+            PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
+        })?;
         if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
             if gstore.is_none() {
                 if let Some(chunk_path) = chunk_path.strip_prefix('/') {
@@ -223,10 +225,22 @@ impl CodecPipelineImpl {
 
     fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::ops::Range<u64>> {
         let indices = slice.indices(length)?;
-        assert!(indices.start >= 0); // FIXME
-        assert!(indices.stop >= 0); // FIXME
-        assert!(indices.step == 1);
-        Ok(u64::try_from(indices.start).unwrap()..u64::try_from(indices.stop).unwrap())
+        if indices.start < 0 {
+            return Err(PyErr::new::<PyValueError, _>(
+                "start index must be greater than or equal to 0".to_string(),
+            ));
+        }
+        if indices.stop < 0 {
+            return Err(PyErr::new::<PyValueError, _>(
+                "stop index must be greater than or equal to 0".to_string(),
+            ));
+        }
+        if indices.step != 1 {
+            return Err(PyErr::new::<PyValueError, _>(
+                "step index must be equal to 1".to_string(),
+            ));
+        }
+        Ok(u64::try_from(indices.start)?..u64::try_from(indices.stop)?)
     }
 
     fn selection_to_array_subset(
@@ -239,9 +253,7 @@ impl CodecPipelineImpl {
             let chunk_ranges = selection
                 .iter()
                 .zip(shape)
-                .map(|(selection, &shape)| {
-                    Self::slice_to_range(selection, isize::try_from(shape).unwrap())
-                })
+                .map(|(selection, &shape)| Self::slice_to_range(selection, isize::try_from(shape)?))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(ArraySubset::new_with_ranges(&chunk_ranges))
         }
@@ -371,7 +383,11 @@ impl CodecPipelineImpl {
         let output_shape: Vec<u64> = if value.shape().is_empty() {
             vec![1] // scalar value
         } else {
-            value.shape().iter().map(|&i| i as u64).collect()
+            value
+                .shape()
+                .iter()
+                .map(|&i| u64::try_from(i))
+                .collect::<Result<_, _>>()?
         };
 
         let chunk_descriptions =
@@ -478,7 +494,11 @@ impl CodecPipelineImpl {
         let input_shape: Vec<u64> = if value.shape().is_empty() {
             vec![1] // scalar value
         } else {
-            value.shape().iter().map(|&i| i as u64).collect()
+            value
+                .shape()
+                .iter()
+                .map(|&i| u64::try_from(i))
+                .collect::<Result<_, _>>()?
         };
 
         let chunk_descriptions =
