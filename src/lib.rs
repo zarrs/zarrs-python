@@ -133,13 +133,13 @@ impl CodecPipelineImpl {
         Ok(chunk_representation)
     }
 
-    fn retrieve_chunk_bytes(
+    fn retrieve_chunk_bytes<'a>(
         store: &dyn ReadableWritableListableStorageTraits,
         key: &StoreKey,
         codec_chain: &CodecChain,
         chunk_representation: &ChunkRepresentation,
         codec_options: &CodecOptions,
-    ) -> PyResult<Vec<u8>> {
+    ) -> PyResult<ArrayBytes<'a>> {
         let value_encoded = store.get(key).map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
@@ -153,11 +153,6 @@ impl CodecPipelineImpl {
             );
             ArrayBytes::new_fill_value(array_size, chunk_representation.fill_value())
         };
-        let value_decoded = value_decoded
-            .into_owned()
-            .into_fixed()
-            .expect("zarrs-python and zarr only support fixed length types")
-            .into_owned();
         Ok(value_decoded)
     }
 
@@ -204,7 +199,7 @@ impl CodecPipelineImpl {
         // Update the chunk
         let chunk_bytes_new = unsafe {
             update_array_bytes(
-                ArrayBytes::new_flen(chunk_bytes_old),
+                chunk_bytes_old,
                 &chunk_representation.shape_u64(),
                 chunk_subset,
                 chunk_subset_bytes,
