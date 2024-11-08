@@ -81,7 +81,7 @@ def pytest_collection_modifyitems(
     config: pytest.Config, items: Iterable[pytest.Item]
 ) -> None:
     xfail_marker = pytest.mark.xfail(
-        reason="These tests fail with the zarr-python default codec pipeline."
+        reason="This test fails with the zarr-python default codec pipeline."
     )
     for item in items:
         if item.name in zarr_python_default_codec_pipeline_failures:
