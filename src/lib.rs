@@ -23,12 +23,13 @@ use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::{ReadableWritableListableStorageTraits, StorageHandle, StoreKey};
 
+mod codec_pipeline_store_filesystem;
+#[cfg(test)]
+mod tests;
 mod utils;
 
-use utils::PyErrExt;
-
-mod codec_pipeline_store_filesystem;
 use codec_pipeline_store_filesystem::CodecPipelineStoreFilesystem;
+use utils::PyErrExt;
 
 trait CodecPipelineStore: Send + Sync {
     fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
@@ -282,7 +283,6 @@ impl CodecPipelineImpl {
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let slice = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            // TODO: Verify that empty arrays have non-null data. Otherwise, this function needs to return Option or be unsafe with a non-empty invariant
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts(array_data, array_len)
         };
@@ -297,7 +297,6 @@ impl CodecPipelineImpl {
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let output = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            // TODO: Verify that empty arrays have non-null data. Otherwise, this function needs to return Option or be unsafe with a non-empty invariant
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts_mut(array_data, array_len)
         };
