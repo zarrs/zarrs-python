@@ -32,7 +32,7 @@ use codec_pipeline_store_filesystem::CodecPipelineStoreFilesystem;
 
 trait CodecPipelineStore: Send + Sync {
     fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
-    fn chunk_path<'a>(&self, store_path: &'a str) -> PyResult<&'a str>;
+    fn chunk_path(&self, store_path: &str) -> PyResult<String>;
 }
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
@@ -44,10 +44,10 @@ pub struct CodecPipelineImpl {
 }
 
 impl CodecPipelineImpl {
-    fn get_store_and_path<'a>(
+    fn get_store_and_path(
         &self,
-        store_path: &'a str,
-    ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, &'a str)> {
+        store_path: &str,
+    ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, String)> {
         let mut gstore = self.store.lock().map_err(|_| {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
         })?;
