@@ -520,35 +520,35 @@ impl CodecPipelineImpl {
             let codec_options = &self.codec_options;
 
             let get_chunk_subset = |item: ChunksItem| {
-                // See zarrs::array::Array::retrieve_chunk_into
-                let chunk_encoded = item.store.get(&item.key).map_py_err::<PyRuntimeError>();
-                if let Some(chunk_encoded) = chunk_encoded.unwrap() {
+                let chunk_encoded = item.store.get(&item.key).map_py_err::<PyRuntimeError>()?;
+                Ok(if let Some(chunk_encoded) = chunk_encoded {
                     let chunk_encoded: Vec<u8> = chunk_encoded.into();
-                    self.codec_chain.decode(
-                        Cow::Owned(chunk_encoded),
-                        &item.representation,
-                        codec_options,
-                    )
+                    self.codec_chain
+                        .decode(
+                            Cow::Owned(chunk_encoded),
+                            &item.representation,
+                            codec_options,
+                        )
+                        .map_py_err::<PyRuntimeError>()?
                 } else {
                     // The chunk is missing so we need to create one.
                     let num_elements = item.representation.num_elements();
                     let data_type_size = item.representation.data_type().size();
                     let chunk_shape = ArraySize::new(data_type_size, num_elements);
-                    let array_bytes =
-                        ArrayBytes::new_fill_value(chunk_shape, item.representation.fill_value());
-                    Ok(array_bytes)
+                    ArrayBytes::new_fill_value(chunk_shape, item.representation.fill_value())
                 }
+                .into_fixed()
+                .map_py_err::<PyRuntimeError>()?
+                .into_owned())
             };
-            let chunk_bytes: Vec<Vec<u8>> = iter_concurrent_limit!(
+            iter_concurrent_limit!(
                 chunk_concurrent_limit,
                 chunk_descriptions,
                 map,
                 get_chunk_subset
             )
-            .map(|x| x.unwrap().into_fixed().unwrap().to_owned().into_owned())
-            .collect::<Vec<Vec<u8>>>();
-            chunk_bytes
-        });
+            .collect::<PyResult<Vec<Vec<u8>>>>()
+        })?;
         Ok(chunk_bytes
             .into_iter()
             .map(|x| x.into_pyarray_bound(py))
