@@ -34,7 +34,8 @@ def make_slice_selection(selection: tuple[np.ndarray | float]) -> list[slice]:
                     slice(int(dim_selection.item()), int(dim_selection.item()) + 1, 1)
                 )
             else:
-                if not (np.diff(dim_selection) == 1).all():
+                diff = np.diff(dim_selection)
+                if not ((diff != 1).all() or (diff != 0).all()):
                     raise ArrayIndexError
                 ls.append(slice(dim_selection[0], dim_selection[-1] + 1, 1))
         else:
