@@ -226,21 +226,20 @@ impl CodecPipelineImpl {
     fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::ops::Range<u64>> {
         let indices = slice.indices(length)?;
         if indices.start < 0 {
-            return Err(PyErr::new::<PyValueError, _>(
-                "start index must be greater than or equal to 0".to_string(),
-            ));
+            Err(PyErr::new::<PyValueError, _>(
+                "slice start must be greater than or equal to 0".to_string(),
+            ))
+        } else if indices.stop < 0 {
+            Err(PyErr::new::<PyValueError, _>(
+                "slice stop must be greater than or equal to 0".to_string(),
+            ))
+        } else if indices.step != 1 {
+            Err(PyErr::new::<PyValueError, _>(
+                "slice step must be equal to 1".to_string(),
+            ))
+        } else {
+            Ok(u64::try_from(indices.start)?..u64::try_from(indices.stop)?)
         }
-        if indices.stop < 0 {
-            return Err(PyErr::new::<PyValueError, _>(
-                "stop index must be greater than or equal to 0".to_string(),
-            ));
-        }
-        if indices.step != 1 {
-            return Err(PyErr::new::<PyValueError, _>(
-                "step index must be equal to 1".to_string(),
-            ));
-        }
-        Ok(u64::try_from(indices.start)?..u64::try_from(indices.stop)?)
     }
 
     fn selection_to_array_subset(
