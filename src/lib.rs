@@ -19,7 +19,6 @@ use zarrs::array::{
     CodecChain, DataType, FillValue,
 };
 use zarrs::array_subset::ArraySubset;
-use zarrs::filesystem::FilesystemStore;
 use zarrs::metadata::v3::array::data_type::DataTypeMetadataV3;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::{ReadableWritableListableStorageTraits, StorageHandle, StoreKey};
@@ -28,58 +27,44 @@ mod utils;
 
 use utils::PyErrExt;
 
-pub enum CodecPipelineStore {
-    Filesystem(Arc<FilesystemStore>),
+mod codec_pipeline_store_filesystem;
+use codec_pipeline_store_filesystem::CodecPipelineStoreFilesystem;
+
+trait CodecPipelineStore: Send + Sync {
+    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
+    fn chunk_path<'a>(&self, store_path: &'a str) -> PyResult<&'a str>;
 }
 
+// TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[pyclass]
 pub struct CodecPipelineImpl {
-    pub codec_chain: Arc<CodecChain>,
-    pub store: Arc<Mutex<Option<CodecPipelineStore>>>,
+    codec_chain: Arc<CodecChain>,
+    store: Mutex<Option<Arc<dyn CodecPipelineStore>>>,
     codec_options: CodecOptions,
 }
 
 impl CodecPipelineImpl {
     fn get_store_and_path<'a>(
         &self,
-        chunk_path: &'a str,
+        store_path: &'a str,
     ) -> PyResult<(Arc<dyn ReadableWritableListableStorageTraits>, &'a str)> {
         let mut gstore = self.store.lock().map_err(|_| {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
         })?;
-        if let Some(chunk_path) = chunk_path.strip_prefix("file://") {
-            if gstore.is_none() {
-                if let Some(chunk_path) = chunk_path.strip_prefix('/') {
-                    // Absolute path
-                    let store = Arc::new(FilesystemStore::new("/").map_py_err::<PyRuntimeError>()?);
-                    *gstore = Some(CodecPipelineStore::Filesystem(store.clone()));
-                    Ok((store, chunk_path))
-                } else {
-                    // Relative path
-                    let store = Arc::new(
-                        FilesystemStore::new(
-                            std::env::current_dir().map_py_err::<PyRuntimeError>()?,
-                        )
-                        .map_py_err::<PyRuntimeError>()?,
-                    );
-                    *gstore = Some(CodecPipelineStore::Filesystem(store.clone()));
-                    Ok((store, chunk_path))
-                }
-            } else if let Some(CodecPipelineStore::Filesystem(store)) = gstore.as_ref() {
-                if let Some(chunk_path) = chunk_path.strip_prefix('/') {
-                    Ok((store.clone(), chunk_path))
-                } else {
-                    Ok((store.clone(), chunk_path))
-                }
-            } else {
-                Err(PyErr::new::<PyTypeError, _>(
-                    "the store type changed".to_string(),
-                ))
+
+        #[allow(clippy::collapsible_if)]
+        if gstore.is_none() {
+            if store_path.starts_with("file://") {
+                *gstore = Some(Arc::new(CodecPipelineStoreFilesystem::new()?));
             }
-        } else {
             // TODO: Add support for more stores
+        }
+
+        if let Some(gstore) = gstore.as_ref() {
+            Ok((gstore.store(), gstore.chunk_path(store_path)?))
+        } else {
             Err(PyErr::new::<PyTypeError, _>(format!(
-                "unsupported store for {chunk_path}"
+                "unsupported store for {store_path}"
             )))
         }
     }
@@ -92,8 +77,8 @@ impl CodecPipelineImpl {
         chunk_descriptions
             .into_iter()
             .map(
-                |(chunk_path, chunk_shape, dtype, fill_value, selection, chunk_selection)| {
-                    let (store, path) = self.get_store_and_path(&chunk_path)?;
+                |(store_path, chunk_shape, dtype, fill_value, selection, chunk_selection)| {
+                    let (store, path) = self.get_store_and_path(&store_path)?;
                     let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
                     Ok(ChunksItem {
                         store,
@@ -321,7 +306,7 @@ impl CodecPipelineImpl {
 }
 
 type ChunksItemRaw<'a> = (
-    // path
+    // store path
     String,
     // shape
     Vec<u64>,
@@ -371,7 +356,7 @@ impl CodecPipelineImpl {
 
         Ok(Self {
             codec_chain,
-            store: Arc::new(Mutex::new(None)),
+            store: Mutex::new(None),
             codec_options,
         })
     }
