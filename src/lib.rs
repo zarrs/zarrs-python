@@ -14,7 +14,7 @@ use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
 };
 use zarrs::array::{
-    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize, ChunkRepresentation,
+    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize,
     CodecChain, FillValue,
 };
 use zarrs::array_subset::ArraySubset;
@@ -84,56 +84,50 @@ impl CodecPipelineImpl {
             .collect()
     }
 
-    fn retrieve_chunk_bytes<'a>(
-        store: &dyn ReadableWritableListableStorageTraits,
-        key: &StoreKey,
+    fn retrieve_chunk_bytes<'a, I: ChunksItem>(
+        item: &I,
         codec_chain: &CodecChain,
-        chunk_representation: &ChunkRepresentation,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = store.get(key).map_py_err::<PyRuntimeError>()?;
+        let value_encoded = item.get().map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
-                .decode(value_encoded.into(), chunk_representation, codec_options)
+                .decode(value_encoded.into(), item.representation(), codec_options)
                 .map_py_err::<PyRuntimeError>()?
         } else {
             let array_size = ArraySize::new(
-                chunk_representation.data_type().size(),
-                chunk_representation.num_elements(),
+                item.representation().data_type().size(),
+                item.representation().num_elements(),
             );
-            ArrayBytes::new_fill_value(array_size, chunk_representation.fill_value())
+            ArrayBytes::new_fill_value(array_size, item.representation().fill_value())
         };
         Ok(value_decoded)
     }
 
-    fn store_chunk_bytes(
-        store: &dyn ReadableWritableListableStorageTraits,
-        key: &StoreKey,
+    fn store_chunk_bytes<I: ChunksItem>(
+        item: &I,
         codec_chain: &CodecChain,
-        chunk_representation: &ChunkRepresentation,
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        if value_decoded.is_fill_value(chunk_representation.fill_value()) {
-            store.erase(key)
+        if value_decoded.is_fill_value(item.representation().fill_value()) {
+            item.store().erase(item.key())
         } else {
             let value_encoded = codec_chain
-                .encode(value_decoded, chunk_representation, codec_options)
+                .encode(value_decoded, item.representation(), codec_options)
                 .map(Cow::into_owned)
                 .map_py_err::<PyRuntimeError>()?;
 
             // Store the encoded chunk
-            store.set(key, value_encoded.into())
+            item.store().set(item.key(), value_encoded.into())
         }
         .map_py_err::<PyRuntimeError>()
     }
 
-    fn store_chunk_subset_bytes(
-        store: &dyn ReadableWritableListableStorageTraits,
-        key: &StoreKey,
+    fn store_chunk_subset_bytes<I: ChunksItem>(
+        item: &I,
         codec_chain: &CodecChain,
-        chunk_representation: &ChunkRepresentation,
         chunk_subset_bytes: &ArrayBytes,
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
@@ -142,23 +136,17 @@ impl CodecPipelineImpl {
         chunk_subset_bytes
             .validate(
                 chunk_subset.num_elements(),
-                chunk_representation.data_type().size(),
+                item.representation().data_type().size(),
             )
             .map_py_err::<PyValueError>()?;
-        if !chunk_subset.inbounds(&chunk_representation.shape_u64()) {
+        if !chunk_subset.inbounds(&item.representation().shape_u64()) {
             return Err(PyErr::new::<PyValueError, _>(
                 "chunk subset is out of bounds".to_string(),
             ));
         }
 
         // Retrieve the chunk
-        let chunk_bytes_old = Self::retrieve_chunk_bytes(
-            store,
-            key,
-            codec_chain,
-            chunk_representation,
-            codec_options,
-        )?;
+        let chunk_bytes_old = Self::retrieve_chunk_bytes(item, codec_chain, codec_options)?;
 
         // Update the chunk
         let chunk_bytes_new = unsafe {
@@ -169,22 +157,15 @@ impl CodecPipelineImpl {
             // - output bytes and output subset bytes are compatible (same data type)
             update_array_bytes(
                 chunk_bytes_old,
-                &chunk_representation.shape_u64(),
+                &item.representation().shape_u64(),
                 chunk_subset,
                 chunk_subset_bytes,
-                chunk_representation.data_type().size(),
+                item.representation().data_type().size(),
             )
         };
 
         // Store the updated chunk
-        Self::store_chunk_bytes(
-            store,
-            key,
-            codec_chain,
-            chunk_representation,
-            chunk_bytes_new,
-            codec_options,
-        )
+        Self::store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
     }
 
     fn pyarray_itemsize(value: &Bound<'_, PyUntypedArray>) -> usize {
@@ -459,10 +440,8 @@ impl CodecPipelineImpl {
                         )
                         .map_py_err::<PyRuntimeError>()?;
                     Self::store_chunk_subset_bytes(
-                        item.store().as_ref(),
-                        item.key(),
+                        &item,
                         &self.codec_chain,
-                        item.representation(),
                         &chunk_subset_bytes,
                         &item.chunk_subset,
                         codec_options,
@@ -478,10 +457,8 @@ impl CodecPipelineImpl {
                     );
 
                     Self::store_chunk_subset_bytes(
-                        item.store().as_ref(),
-                        item.key(),
+                        &item,
                         &self.codec_chain,
-                        item.representation(),
                         &chunk_subset_bytes,
                         &item.chunk_subset,
                         codec_options,
