@@ -29,7 +29,7 @@ mod tests;
 mod utils;
 
 use codec_pipeline_store_filesystem::CodecPipelineStoreFilesystem;
-use utils::PyErrExt;
+use utils::{PyErrExt, PyUntypedArrayExt};
 
 trait CodecPipelineStore: Send + Sync {
     fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
@@ -164,7 +164,7 @@ impl CodecPipelineImpl {
                 chunk_subset.num_elements(),
                 chunk_representation.data_type().size(),
             )
-            .map_err(|e| PyErr::new::<PyValueError, _>(e.to_string()))?;
+            .map_py_err::<PyValueError>()?;
         if !chunk_subset.inbounds(&chunk_representation.shape_u64()) {
             return Err(PyErr::new::<PyValueError, _>(
                 "chunk subset is out of bounds".to_string(),
@@ -422,18 +422,7 @@ impl CodecPipelineImpl {
             ));
         }
         let output = Self::nparray_to_unsafe_cell_slice(value);
-
-        // Get the output shape
-        let output_shape: Vec<u64> = if value.shape().is_empty() {
-            vec![1] // scalar value
-        } else {
-            value
-                .shape()
-                .iter()
-                .map(|&i| u64::try_from(i))
-                .collect::<Result<_, _>>()?
-        };
-
+        let output_shape: Vec<u64> = value.shape_zarr()?;
         let chunk_descriptions =
             self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
 
@@ -596,17 +585,7 @@ impl CodecPipelineImpl {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))
         };
 
-        // Get the input shape
-        let input_shape: Vec<u64> = if value.shape().is_empty() {
-            vec![1] // scalar value
-        } else {
-            value
-                .shape()
-                .iter()
-                .map(|&i| u64::try_from(i))
-                .collect::<Result<_, _>>()?
-        };
-
+        let input_shape: Vec<u64> = value.shape_zarr()?;
         let chunk_descriptions =
             self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
 
