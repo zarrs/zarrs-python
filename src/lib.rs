@@ -70,59 +70,18 @@ impl CodecPipelineImpl {
         }
     }
 
-    fn collect_chunk_descriptions(
+    fn collect_chunk_descriptions<R: IntoItem<I>, I>(
         &self,
-        chunk_descriptions: Vec<ChunksItemRaw>,
-    ) -> PyResult<Vec<ChunksItem>> {
-        chunk_descriptions
-            .into_iter()
-            .map(|(store_path, chunk_shape, dtype, fill_value)| {
-                let (store, path) = self.get_store_and_path(&store_path)?;
-                let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
-                Ok(ChunksItem {
-                    store,
-                    key,
-                    representation: Self::get_chunk_representation(
-                        chunk_shape,
-                        &dtype,
-                        fill_value,
-                    )?,
-                })
-            })
-            .collect()
-    }
-
-    fn collect_chunk_descriptions_with_index(
-        &self,
-        chunk_descriptions: Vec<ChunksItemRawWithIndices>,
+        chunk_descriptions: Vec<R>,
         shape: &[u64],
-    ) -> PyResult<Vec<ChunksItemWithSubset>> {
+    ) -> PyResult<Vec<I>> {
         chunk_descriptions
             .into_iter()
-            .map(
-                |((store_path, chunk_shape, dtype, fill_value), selection, chunk_selection)| {
-                    let (store, path) = self.get_store_and_path(&store_path)?;
-                    let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
-                    let chunk_subset = Self::selection_to_array_subset(
-                        &chunk_selection,
-                        &chunk_shape,
-                    )?;
-                    let item = ChunksItem {
-                        store,
-                        key,
-                        representation: Self::get_chunk_representation(
-                            chunk_shape,
-                            &dtype,
-                            fill_value,
-                        )?,
-                    };
-                    Ok(ChunksItemWithSubset {
-                        item,
-                        chunk_subset,
-                        subset: Self::selection_to_array_subset(&selection, shape)?,
-                    })
-                },
-            )
+            .map(|raw| {
+                let (store, path) = self.get_store_and_path(raw.store_path())?;
+                let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
+                raw.into_item(store, key, shape)
+            })
             .collect()
     }
 
@@ -330,14 +289,6 @@ impl CodecPipelineImpl {
     }
 }
 
-type ChunksItemRawWithIndices<'a> = (
-    ChunksItemRaw<'a>,
-    // out selection
-    Vec<Bound<'a, PySlice>>,
-    // chunk selection
-    Vec<Bound<'a, PySlice>>,
-);
-
 type ChunksItemRaw<'a> = (
     // store path
     String,
@@ -349,15 +300,79 @@ type ChunksItemRaw<'a> = (
     Vec<u8>,
 );
 
+type ChunksItemRawWithIndices<'a> = (
+    ChunksItemRaw<'a>,
+    // out selection
+    Vec<Bound<'a, PySlice>>,
+    // chunk selection
+    Vec<Bound<'a, PySlice>>,
+);
+
+trait IntoItem<T>: std::marker::Sized {
+    fn store_path(&self) -> &str;
+    fn into_item(
+        self,
+        store: Arc<dyn ReadableWritableListableStorageTraits>,
+        key: StoreKey,
+        shape: &[u64],
+    ) -> PyResult<T>;
+}
+
+struct ChunksItem {
+    store: Arc<dyn ReadableWritableListableStorageTraits>,
+    key: StoreKey,
+    representation: ChunkRepresentation,
+}
+
 struct ChunksItemWithSubset {
     item: ChunksItem,
     chunk_subset: ArraySubset,
     subset: ArraySubset,
 }
-struct ChunksItem {
-    store: Arc<dyn ReadableWritableListableStorageTraits>,
-    key: StoreKey,
-    representation: ChunkRepresentation,
+
+impl<'a> IntoItem<ChunksItem> for ChunksItemRaw<'a> {
+    fn store_path(&self) -> &str {
+        &self.0
+    }
+    fn into_item(
+        self,
+        store: Arc<dyn ReadableWritableListableStorageTraits>,
+        key: StoreKey,
+        _: &[u64],
+    ) -> PyResult<ChunksItem> {
+        let (_, chunk_shape, dtype, fill_value) = self;
+        let representation =
+            CodecPipelineImpl::get_chunk_representation(chunk_shape, &dtype, fill_value)?;
+        Ok(ChunksItem {
+            store,
+            key,
+            representation,
+        })
+    }
+}
+
+impl IntoItem<ChunksItemWithSubset> for ChunksItemRawWithIndices<'_> {
+    fn store_path(&self) -> &str {
+        &self.0 .0
+    }
+    fn into_item(
+        self,
+        store: Arc<dyn ReadableWritableListableStorageTraits>,
+        key: StoreKey,
+        shape: &[u64],
+    ) -> PyResult<ChunksItemWithSubset> {
+        let (raw, selection, chunk_selection) = self;
+        let chunk_shape = raw.1.clone();
+        let item = raw.into_item(store.clone(), key, shape)?;
+        Ok(ChunksItemWithSubset {
+            item,
+            chunk_subset: CodecPipelineImpl::selection_to_array_subset(
+                &chunk_selection,
+                &chunk_shape,
+            )?,
+            subset: CodecPipelineImpl::selection_to_array_subset(&selection, shape)?,
+        })
+    }
 }
 
 #[pymethods]
@@ -420,7 +435,7 @@ impl CodecPipelineImpl {
         };
 
         let chunk_descriptions =
-            self.collect_chunk_descriptions_with_index(chunk_descriptions, &output_shape)?;
+            self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
 
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
@@ -431,7 +446,11 @@ impl CodecPipelineImpl {
                     && item.chunk_subset.shape() == item.item.representation.shape_u64()
                 {
                     // See zarrs::array::Array::retrieve_chunk_into
-                    let chunk_encoded = item.item.store.get(&item.item.key).map_py_err::<PyRuntimeError>()?;
+                    let chunk_encoded = item
+                        .item
+                        .store
+                        .get(&item.item.key)
+                        .map_py_err::<PyRuntimeError>()?;
                     if let Some(chunk_encoded) = chunk_encoded {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -510,7 +529,7 @@ impl CodecPipelineImpl {
         chunk_descriptions: Vec<ChunksItemRaw>, // FIXME: Ref / iterable?
         chunk_concurrent_limit: usize,
     ) -> PyResult<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>> {
-        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions)?;
+        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, &[])?;
 
         let chunk_bytes = py.allow_threads(move || {
             let codec_options = &self.codec_options;
@@ -589,7 +608,7 @@ impl CodecPipelineImpl {
         };
 
         let chunk_descriptions =
-            self.collect_chunk_descriptions_with_index(chunk_descriptions, &input_shape)?;
+            self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
 
         py.allow_threads(move || {
             let codec_options = &self.codec_options;
