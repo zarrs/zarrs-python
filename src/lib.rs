@@ -91,6 +91,7 @@ impl CodecPipelineImpl {
             })
             .collect()
     }
+
     fn collect_chunk_descriptions_with_index(
         &self,
         chunk_descriptions: Vec<ChunksItemRawWithIndices>,
@@ -99,7 +100,7 @@ impl CodecPipelineImpl {
         chunk_descriptions
             .into_iter()
             .map(
-                |(store_path, chunk_shape, dtype, fill_value, selection, chunk_selection)| {
+                |((store_path, chunk_shape, dtype, fill_value), selection, chunk_selection)| {
                     let (store, path) = self.get_store_and_path(&store_path)?;
                     let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
                     let chunk_subset = Self::selection_to_array_subset(
@@ -330,14 +331,7 @@ impl CodecPipelineImpl {
 }
 
 type ChunksItemRawWithIndices<'a> = (
-    // store path
-    String,
-    // shape
-    Vec<u64>,
-    // data type
-    String,
-    // fill value bytes
-    Vec<u8>,
+    ChunksItemRaw<'a>,
     // out selection
     Vec<Bound<'a, PySlice>>,
     // chunk selection
