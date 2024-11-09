@@ -9,12 +9,12 @@ use zarrs::{
     array::{ChunkRepresentation, DataType, FillValue},
     array_subset::ArraySubset,
     metadata::v3::{array::data_type::DataTypeMetadataV3, MetadataV3},
-    storage::{ReadableWritableListableStorageTraits, StoreKey},
+    storage::{MaybeBytes, ReadableWritableListableStorageTraits, StorageError, StoreKey},
 };
 
 use crate::utils::PyErrExt;
 
-pub(crate) type ChunksItemRaw<'a> = (
+pub(crate) type Raw<'a> = (
     // store path
     String,
     // shape
@@ -25,8 +25,8 @@ pub(crate) type ChunksItemRaw<'a> = (
     Vec<u8>,
 );
 
-pub(crate) type ChunksItemRawWithIndices<'a> = (
-    ChunksItemRaw<'a>,
+pub(crate) type RawWithIndices<'a> = (
+    Raw<'a>,
     // out selection
     Vec<Bound<'a, PySlice>>,
     // chunk selection
@@ -43,19 +43,53 @@ pub(crate) trait IntoItem<T>: std::marker::Sized {
     ) -> PyResult<T>;
 }
 
-pub(crate) struct ChunksItem {
-    pub store: Arc<dyn ReadableWritableListableStorageTraits>,
-    pub key: StoreKey,
-    pub representation: ChunkRepresentation,
+pub(crate) trait ChunksItem {
+    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
+    fn key(&self) -> &StoreKey;
+    fn representation(&self) -> &ChunkRepresentation;
+
+    fn get(&self) -> Result<MaybeBytes, StorageError> {
+        self.store().get(self.key())
+    }
 }
 
-pub(crate) struct ChunksItemWithSubset {
-    pub item: ChunksItem,
+pub(crate) struct Basic {
+    store: Arc<dyn ReadableWritableListableStorageTraits>,
+    key: StoreKey,
+    representation: ChunkRepresentation,
+}
+
+pub(crate) struct WithSubset {
+    pub item: Basic,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
 }
 
-impl<'a> IntoItem<ChunksItem> for ChunksItemRaw<'a> {
+impl ChunksItem for Basic {
+    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits> {
+        self.store.clone()
+    }
+    fn key(&self) -> &StoreKey {
+        &self.key
+    }
+    fn representation(&self) -> &ChunkRepresentation {
+        &self.representation
+    }
+}
+
+impl ChunksItem for WithSubset {
+    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits> {
+        self.item.store.clone()
+    }
+    fn key(&self) -> &StoreKey {
+        &self.item.key
+    }
+    fn representation(&self) -> &ChunkRepresentation {
+        &self.item.representation
+    }
+}
+
+impl<'a> IntoItem<Basic> for Raw<'a> {
     fn store_path(&self) -> &str {
         &self.0
     }
@@ -64,10 +98,10 @@ impl<'a> IntoItem<ChunksItem> for ChunksItemRaw<'a> {
         store: Arc<dyn ReadableWritableListableStorageTraits>,
         key: StoreKey,
         _: &[u64],
-    ) -> PyResult<ChunksItem> {
+    ) -> PyResult<Basic> {
         let (_, chunk_shape, dtype, fill_value) = self;
         let representation = get_chunk_representation(chunk_shape, &dtype, fill_value)?;
-        Ok(ChunksItem {
+        Ok(Basic {
             store,
             key,
             representation,
@@ -75,7 +109,7 @@ impl<'a> IntoItem<ChunksItem> for ChunksItemRaw<'a> {
     }
 }
 
-impl IntoItem<ChunksItemWithSubset> for ChunksItemRawWithIndices<'_> {
+impl IntoItem<WithSubset> for RawWithIndices<'_> {
     fn store_path(&self) -> &str {
         &self.0 .0
     }
@@ -84,11 +118,11 @@ impl IntoItem<ChunksItemWithSubset> for ChunksItemRawWithIndices<'_> {
         store: Arc<dyn ReadableWritableListableStorageTraits>,
         key: StoreKey,
         shape: &[u64],
-    ) -> PyResult<ChunksItemWithSubset> {
+    ) -> PyResult<WithSubset> {
         let (raw, selection, chunk_selection) = self;
         let chunk_shape = raw.1.clone();
         let item = raw.into_item(store.clone(), key, shape)?;
-        Ok(ChunksItemWithSubset {
+        Ok(WithSubset {
             item,
             chunk_subset: selection_to_array_subset(&chunk_selection, &chunk_shape)?,
             subset: selection_to_array_subset(&selection, shape)?,
