@@ -65,6 +65,7 @@ def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
 
 # tests that also fail with zarr-python's default codec pipeline
 zarr_python_default_codec_pipeline_failures = [
+    # ellipsis weirdness, need to report
     "test_roundtrip[oindex-contiguous_in_chunk_array-ellipsis]",
     "test_roundtrip[oindex-discontinuous_in_chunk_array-ellipsis]",
     "test_roundtrip[vindex-contiguous_in_chunk_array-ellipsis]",
@@ -83,6 +84,8 @@ zarr_python_default_codec_pipeline_failures = [
     "test_roundtrip_read_only_zarrs[vindex-across_chunks_indices_array-ellipsis]",
     "test_roundtrip_read_only_zarrs[vindex-ellipsis-contiguous_in_chunk_array]",
     "test_roundtrip_read_only_zarrs[vindex-ellipsis-discontinuous_in_chunk_array]",
+    # need to investigate this one - it seems to fail with the default pipeline
+    "test_roundtrip_read_only_zarrs[vindex-contiguous_in_chunk_array-contiguous_in_chunk_array]",
 ]
 
 zarrs_python_no_discontinuous_writes = [
@@ -103,6 +106,14 @@ zarrs_python_no_discontinuous_writes = [
     "test_roundtrip[vindex-slice_across_chunks-discontinuous_in_chunk_array]",
     "test_roundtrip[vindex-fill_slice-discontinuous_in_chunk_array]",
     "test_roundtrip[vindex-int-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
+    "test_roundtrip[oindex-contiguous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-across_chunks_indices_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-contiguous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-discontinuous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-discontinuous_in_chunk_array-across_chunks_indices_array]",
+    "test_roundtrip[vindex-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
 ]
 
 

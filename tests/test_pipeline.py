@@ -66,7 +66,7 @@ indexer_1d_2 = indexer_1d
 @pytest.fixture
 def index(indexer_1d, indexer_1d_2):
     if isinstance(indexer_1d, EllipsisType) and isinstance(indexer_1d_2, EllipsisType):
-        pytest.skip("Double ellipsis indexing is valid")
+        pytest.skip("Double ellipsis indexing is not valid")
     return indexer_1d, indexer_1d_2
 
 
@@ -85,19 +85,37 @@ def store_values(
     shape: tuple[int, ...],
 ) -> np.ndarray:
     class smoke:
-        oindex = None
+        oindex = "oindex"
 
-    if not isinstance(index, EllipsisType) and indexing_method(smoke) == "oindex":
-        index: tuple[int | np.ndarray, ...] = tuple(
-            i
-            if (not isinstance(i, slice))
-            else np.arange(
-                i.start if hasattr(i, "start") else 0,
-                i.stop if hasattr(i, "end") else shape[axis],
+    def maybe_convert(
+        i: int | np.ndarray | slice | EllipsisType, axis: int
+    ) -> np.ndarray:
+        if isinstance(i, np.ndarray):
+            return i
+        if isinstance(i, slice):
+            return np.arange(
+                i.start if i.start is not None else 0,
+                i.stop if i.stop is not None else shape[axis],
             )
-            for axis, i in enumerate(index)
+        if isinstance(i, int):
+            return np.array([i])
+        if isinstance(i, EllipsisType):
+            return np.arange(shape[axis])
+        raise ValueError(f"Invalid index {i}")
+
+    if not isinstance(index, EllipsisType) and indexing_method(smoke()) == "oindex":
+        index: tuple[np.ndarray, ...] = tuple(
+            maybe_convert(i, axis) for axis, i in enumerate(index)
         )
-        return full_array[np.ix_(index)]
+        res = full_array[np.ix_(*index)]
+        # squeeze out extra dims from integer indexers
+        if all(i.shape == (1,) for i in index):
+            res = res.squeeze()
+            return res
+        for axis, i in enumerate(index):
+            if i.shape == (1,):
+                res = res.squeeze(axis=axis)
+        return res
     return full_array[index]
 
 
@@ -140,12 +158,6 @@ def test_roundtrip(
     index: tuple[int | slice | np.ndarray | EllipsisType, ...],
     indexing_method: Callable,
 ):
-    if not isinstance(index, EllipsisType) and all(
-        isinstance(i, np.ndarray) for i in index
-    ):
-        pytest.skip(
-            "indexing across two axes with arrays seems to have strange behavior even in normal zarr"
-        )
     indexing_method(arr)[index] = store_values
     res = indexing_method(arr)[index]
     assert np.all(
@@ -163,21 +175,15 @@ def use_zarr_default_codec_reader():
 
 
 def test_roundtrip_read_only_zarrs(
-    arr,
+    arr: zarr.Array,
     store_values: np.ndarray,
     index: tuple[int | slice | np.ndarray | EllipsisType, ...],
     indexing_method: Callable,
 ):
-    if not isinstance(index, EllipsisType) and all(
-        isinstance(i, np.ndarray) for i in index
-    ):
-        pytest.skip(
-            "indexing across two axes with arrays seems to have strange behavior even in normal zarr"
-        )
     with use_zarr_default_codec_reader():
         arr_default = zarr.open(arr.store, mode="r+")
         indexing_method(arr_default)[index] = store_values
-    res = indexing_method(arr)[index]
+    res = indexing_method(zarr.open(arr.store))[index]
     assert np.all(
         res == store_values,
     ), res
