@@ -110,6 +110,13 @@ impl CodecPipelineImpl {
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
+        value_decoded
+            .validate(
+                item.representation().num_elements(),
+                item.representation().data_type().size(),
+            )
+            .map_py_err::<PyValueError>()?;
+
         if value_decoded.is_fill_value(item.representation().fill_value()) {
             item.store().erase(item.key())
         } else {
@@ -127,44 +134,52 @@ impl CodecPipelineImpl {
     fn store_chunk_subset_bytes<I: ChunksItem>(
         item: &I,
         codec_chain: &CodecChain,
-        chunk_subset_bytes: &ArrayBytes,
+        chunk_subset_bytes: ArrayBytes,
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        // Validate the inputs
-        chunk_subset_bytes
-            .validate(
-                chunk_subset.num_elements(),
-                item.representation().data_type().size(),
-            )
-            .map_py_err::<PyValueError>()?;
         if !chunk_subset.inbounds(&item.representation().shape_u64()) {
             return Err(PyErr::new::<PyValueError, _>(
                 "chunk subset is out of bounds".to_string(),
             ));
         }
 
-        // Retrieve the chunk
-        let chunk_bytes_old = Self::retrieve_chunk_bytes(item, codec_chain, codec_options)?;
+        if chunk_subset.start().iter().all(|&o| o == 0)
+            && chunk_subset.shape() == item.representation().shape_u64()
+        {
+            // Fast path if the chunk subset spans the entire chunk, no read required
+            Self::store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
+        } else {
+            // Validate the chunk subset bytes
+            chunk_subset_bytes
+                .validate(
+                    chunk_subset.num_elements(),
+                    item.representation().data_type().size(),
+                )
+                .map_py_err::<PyValueError>()?;
 
-        // Update the chunk
-        let chunk_bytes_new = unsafe {
-            // SAFETY:
-            // - chunk_bytes_old is compatible with the chunk shape and data type size (validated on decoding)
-            // - chunk_subset is compatible with chunk_subset_bytes and the data type size (validated above)
-            // - chunk_subset is within the bounds of the chunk shape (validated above)
-            // - output bytes and output subset bytes are compatible (same data type)
-            update_array_bytes(
-                chunk_bytes_old,
-                &item.representation().shape_u64(),
-                chunk_subset,
-                chunk_subset_bytes,
-                item.representation().data_type().size(),
-            )
-        };
+            // Retrieve the chunk
+            let chunk_bytes_old = Self::retrieve_chunk_bytes(item, codec_chain, codec_options)?;
 
-        // Store the updated chunk
-        Self::store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
+            // Update the chunk
+            let chunk_bytes_new = unsafe {
+                // SAFETY:
+                // - chunk_bytes_old is compatible with the chunk shape and data type size (validated on decoding)
+                // - chunk_subset is compatible with chunk_subset_bytes and the data type size (validated above)
+                // - chunk_subset is within the bounds of the chunk shape (validated above)
+                // - output bytes and output subset bytes are compatible (same data type)
+                update_array_bytes(
+                    chunk_bytes_old,
+                    &item.representation().shape_u64(),
+                    chunk_subset,
+                    &chunk_subset_bytes,
+                    item.representation().data_type().size(),
+                )
+            };
+
+            // Store the updated chunk
+            Self::store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
+        }
     }
 
     fn pyarray_itemsize(value: &Bound<'_, PyUntypedArray>) -> usize {
@@ -441,7 +456,7 @@ impl CodecPipelineImpl {
                     Self::store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,
-                        &chunk_subset_bytes,
+                        chunk_subset_bytes,
                         &item.chunk_subset,
                         codec_options,
                     )
@@ -458,7 +473,7 @@ impl CodecPipelineImpl {
                     Self::store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,
-                        &chunk_subset_bytes,
+                        chunk_subset_bytes,
                         &item.chunk_subset,
                         codec_options,
                     )
