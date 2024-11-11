@@ -14,8 +14,7 @@ use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
 };
 use zarrs::array::{
-    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize,
-    CodecChain, FillValue,
+    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize, CodecChain, FillValue,
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
@@ -69,10 +68,10 @@ impl CodecPipelineImpl {
         }
     }
 
-    fn collect_chunk_descriptions<R: IntoItem<I>, I>(
+    fn collect_chunk_descriptions<R: IntoItem<I, S>, I, S: Copy>(
         &self,
         chunk_descriptions: Vec<R>,
-        shape: &[u64],
+        shape: S,
     ) -> PyResult<Vec<I>> {
         chunk_descriptions
             .into_iter()
@@ -356,7 +355,7 @@ impl CodecPipelineImpl {
         chunk_descriptions: Vec<chunk_item::Raw>, // FIXME: Ref / iterable?
         chunk_concurrent_limit: usize,
     ) -> PyResult<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>> {
-        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, &[])?;
+        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, ())?;
 
         let chunk_bytes = py.allow_threads(move || {
             let codec_options = &self.codec_options;

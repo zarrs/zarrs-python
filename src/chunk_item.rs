@@ -33,13 +33,13 @@ pub(crate) type RawWithIndices<'a> = (
     Vec<Bound<'a, PySlice>>,
 );
 
-pub(crate) trait IntoItem<T>: std::marker::Sized {
+pub(crate) trait IntoItem<T, S>: std::marker::Sized {
     fn store_path(&self) -> &str;
     fn into_item(
         self,
         store: Arc<dyn ReadableWritableListableStorageTraits>,
         key: StoreKey,
-        shape: &[u64],
+        shape: S,
     ) -> PyResult<T>;
 }
 
@@ -89,7 +89,7 @@ impl ChunksItem for WithSubset {
     }
 }
 
-impl<'a> IntoItem<Basic> for Raw<'a> {
+impl<'a> IntoItem<Basic, ()> for Raw<'a> {
     fn store_path(&self) -> &str {
         &self.0
     }
@@ -97,7 +97,7 @@ impl<'a> IntoItem<Basic> for Raw<'a> {
         self,
         store: Arc<dyn ReadableWritableListableStorageTraits>,
         key: StoreKey,
-        _: &[u64],
+        (): (),
     ) -> PyResult<Basic> {
         let (_, chunk_shape, dtype, fill_value) = self;
         let representation = get_chunk_representation(chunk_shape, &dtype, fill_value)?;
@@ -109,7 +109,7 @@ impl<'a> IntoItem<Basic> for Raw<'a> {
     }
 }
 
-impl IntoItem<WithSubset> for RawWithIndices<'_> {
+impl IntoItem<WithSubset, &[u64]> for RawWithIndices<'_> {
     fn store_path(&self) -> &str {
         &self.0 .0
     }
@@ -121,7 +121,7 @@ impl IntoItem<WithSubset> for RawWithIndices<'_> {
     ) -> PyResult<WithSubset> {
         let (raw, selection, chunk_selection) = self;
         let chunk_shape = raw.1.clone();
-        let item = raw.into_item(store.clone(), key, shape)?;
+        let item = raw.into_item(store.clone(), key, ())?;
         Ok(WithSubset {
             item,
             chunk_subset: selection_to_array_subset(&chunk_selection, &chunk_shape)?,
