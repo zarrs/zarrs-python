@@ -82,9 +82,11 @@ def make_chunk_info_for_rust_with_indices(
 
 
 def make_chunk_info_for_rust(
-    batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
+    batch_info: Iterable[
+        tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+    ],
 ) -> list[tuple[str, ChunkCoords, str, Any]]:
     return list(
         convert_chunk_to_primitive(byte_getter, chunk_spec)
-        for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
+        for (byte_getter, chunk_spec, _, _) in batch_info
     )
