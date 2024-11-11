@@ -2,7 +2,7 @@
 
 use chunk_item::{ChunksItem, IntoItem};
 use numpy::npyffi::PyArrayObject;
-use numpy::{IntoPyArray, PyArray, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -354,7 +354,7 @@ impl CodecPipelineImpl {
         py: Python<'py>,
         chunk_descriptions: Vec<chunk_item::Raw>, // FIXME: Ref / iterable?
         chunk_concurrent_limit: usize,
-    ) -> PyResult<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>> {
+    ) -> PyResult<Vec<Bound<'py, PyArray1<u8>>>> {
         let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, ())?;
 
         let chunk_bytes = py.allow_threads(move || {
@@ -393,7 +393,7 @@ impl CodecPipelineImpl {
         Ok(chunk_bytes
             .into_iter()
             .map(|x| x.into_pyarray_bound(py))
-            .collect::<Vec<Bound<'py, PyArray<u8, numpy::ndarray::Dim<[usize; 1]>>>>>())
+            .collect())
     }
 
     fn store_chunks_with_indices(
