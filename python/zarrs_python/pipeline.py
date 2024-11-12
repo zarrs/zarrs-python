@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 from ._internal import CodecPipelineImpl
 from .utils import (
+    CollapsedDimensionError,
     DiscontiguousArrayError,
     get_max_threads,
     make_chunk_info_for_rust,
@@ -100,9 +101,9 @@ class ZarrsCodecPipeline(CodecPipeline):
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
-            chunks_desc = make_chunk_info_for_rust_with_indices(batch_info)
+            chunks_desc = make_chunk_info_for_rust_with_indices(batch_info, drop_axes)
             index_in_rust = True
-        except DiscontiguousArrayError:
+        except (DiscontiguousArrayError, CollapsedDimensionError):
             chunks_desc = make_chunk_info_for_rust(batch_info)
             index_in_rust = False
         if index_in_rust:
@@ -142,7 +143,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
         elif not value.flags.c_contiguous:
             value = np.ascontiguousarray(value)
-        chunks_desc = make_chunk_info_for_rust_with_indices(batch_info)
+        chunks_desc = make_chunk_info_for_rust_with_indices(batch_info, drop_axes)
         await asyncio.to_thread(
             self.impl.store_chunks_with_indices,
             chunks_desc,

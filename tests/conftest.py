@@ -116,6 +116,14 @@ zarrs_python_no_discontinuous_writes = [
     "test_roundtrip[vindex-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
 ]
 
+# vindexing with two contiguous arrays would be converted to two slices but
+# in numpy indexing actually requires dropping a dimension, which in turn boils
+# down to integer indexing, which we can't do i.e., [np.array(1, 2), np.array(1, 2)] -> [slice(1, 2), slice(1, 2)]
+# is not a correct conversion, and thus we don't support the write operation
+zarrs_python_no_collapsed_dim = [
+    "test_roundtrip[vindex-contiguous_in_chunk_array-contiguous_in_chunk_array]"
+]
+
 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: Iterable[pytest.Item]
@@ -128,5 +136,6 @@ def pytest_collection_modifyitems(
             item.name
             in zarr_python_default_codec_pipeline_failures
             + zarrs_python_no_discontinuous_writes
+            + zarrs_python_no_collapsed_dim
         ):
             item.add_marker(xfail_marker)
