@@ -55,7 +55,7 @@ def make_slice_selection(selection: tuple[np.ndarray | float]) -> list[slice]:
         == len(selection)
     ):
         raise DiscontiguousArrayError(
-            "Vindexing with multiple contiguous numpy arrays is not supported"
+            "Vindexing with only contiguous numpy arrays is not supported"
         )
     return ls
 
