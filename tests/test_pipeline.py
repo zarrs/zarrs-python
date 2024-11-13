@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
 import operator
+import tempfile
 from collections.abc import Callable
 from contextlib import contextmanager
 from functools import reduce
+from itertools import product
+from pathlib import Path
 from types import EllipsisType
 
 import numpy as np
@@ -13,13 +16,15 @@ from zarr.storage import LocalStore
 
 import zarrs_python  # noqa: F401
 
-axis_size = 10
-chunk_size = axis_size // 2
+axis_size_ = 10
+chunk_size_ = axis_size_ // 2
+fill_value_ = 32767
+dimensionalities_ = list(range(1, 5))
 
 
 @pytest.fixture
 def fill_value() -> int:
-    return 32767
+    return fill_value_
 
 
 non_numpy_indices = [
@@ -30,103 +35,73 @@ non_numpy_indices = [
     pytest.param(Ellipsis, id="ellipsis"),
 ]
 
+numpy_indices = [
+    pytest.param(np.array([1, 2]), id="contiguous_in_chunk_array"),
+    pytest.param(np.array([0, 3]), id="discontinuous_in_chunk_array"),
+    pytest.param(np.array([0, 6]), id="across_chunks_indices_array"),
+]
 
-@pytest.fixture(
-    params=[
-        pytest.param(np.array([1, 2]), id="contiguous_in_chunk_array"),
-        pytest.param(np.array([0, 3]), id="discontinuous_in_chunk_array"),
-        pytest.param(np.array([0, 6]), id="across_chunks_indices_array"),
-        *non_numpy_indices,
-    ],
-)
-def indexer_1d_with_numpy(request) -> slice | np.ndarray | int | EllipsisType:
-    return request.param
+all_indices = numpy_indices + non_numpy_indices
+
+indexing_method_params = [
+    pytest.param(lambda x: getattr(x, "oindex"), id="oindex"),
+    pytest.param(lambda x: x, id="vindex"),
+]
 
 
-@pytest.fixture(
-    params=non_numpy_indices,
-)
-def indexer_1d_no_numpy(request) -> slice | np.ndarray | int | EllipsisType:
-    return request.param
+def pytest_generate_tests(metafunc):
+    old_pipeline_path = zarr.config.get("codec_pipeline.path")
+    # need to set the codec pipeline to the zarrs pipeline because the autouse fixture doesn't apply here
+    zarr.config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
+    if "test_roundtrip" in metafunc.function.__name__:
+        arrs = []
+        indices = []
+        store_values = []
+        indexing_methods = []
+        ids = []
+        for dimensionality in dimensionalities_:
+            indexers = non_numpy_indices if dimensionality > 2 else all_indices
+            for index_param_prod in product(indexers, repeat=dimensionality):
+                index = tuple(index_param.values[0] for index_param in index_param_prod)
+                # multi-ellipsis indexing is not supported
+                if sum(isinstance(i, EllipsisType) for i in index) > 1:
+                    continue
+                for indexing_method_param in indexing_method_params:
+                    arr = gen_arr(fill_value_, Path(tempfile.mktemp()), dimensionality)
+                    indexing_method = indexing_method_param.values[0]
+                    dimensionality_id = f"{dimensionality}d"
+                    id = "-".join(
+                        [indexing_method_param.id, dimensionality_id]
+                        + [index_param.id for index_param in index_param_prod]
+                    )
+                    ids.append(id)
+                    store_values.append(
+                        gen_store_values(
+                            indexing_method,
+                            index,
+                            full_array((axis_size_,) * dimensionality),
+                        )
+                    )
+                    indexing_methods.append(indexing_method)
+                    indices.append(index)
+                    arrs.append(arr)
+        # array is used as param name to prevent collision with arr fixture
+        metafunc.parametrize(
+            ["array", "index", "store_values", "indexing_method"],
+            zip(arrs, indices, store_values, indexing_methods),
+            ids=ids,
+        )
+        zarr.config.set({"codec_pipeline.path": old_pipeline_path})
 
 
 def full_array(shape) -> np.ndarray:
     return np.arange(reduce(operator.mul, shape, 1)).reshape(shape)
 
 
-@pytest.fixture
-def full_array_2d() -> np.ndarray:
-    shape = (axis_size,) * 2
-    return full_array(shape)
-
-
-@pytest.fixture
-def full_array_3d() -> np.ndarray:
-    shape = (axis_size,) * 3
-    return full_array(shape)
-
-
-indexer_1d_with_numpy_2 = indexer_1d_with_numpy
-indexer_1d_no_numpy_2 = indexer_1d_no_numpy
-indexer_1d_no_numpy_3 = indexer_1d_no_numpy
-
-
-@pytest.fixture
-def index_2d(indexer_1d_with_numpy, indexer_1d_with_numpy_2):
-    if isinstance(indexer_1d_with_numpy, EllipsisType) and isinstance(
-        indexer_1d_with_numpy_2, EllipsisType
-    ):
-        pytest.skip("Double ellipsis indexing is not valid")
-    return indexer_1d_with_numpy, indexer_1d_with_numpy_2
-
-
-@pytest.fixture
-def index_3d(indexer_1d_no_numpy, indexer_1d_no_numpy_2, indexer_1d_no_numpy_3):
-    if (
-        sum(
-            isinstance(ind, EllipsisType)
-            for ind in [
-                indexer_1d_no_numpy,
-                indexer_1d_no_numpy_2,
-                indexer_1d_no_numpy_3,
-            ]
-        )
-        > 1
-    ):
-        pytest.skip("Multi ellipsis indexing is not valid")
-    return indexer_1d_no_numpy, indexer_1d_no_numpy_2, indexer_1d_no_numpy_3
-
-
-@pytest.fixture(
-    params=[lambda x: getattr(x, "oindex"), lambda x: x], ids=["oindex", "vindex"]
-)
-def indexing_method(request) -> Callable:
-    return request.param
-
-
-@pytest.fixture
-def store_values_2d(
-    indexing_method: Callable,
-    index_2d: tuple[int | slice | np.ndarray | EllipsisType, ...],
-    full_array_2d: np.ndarray,
-) -> np.ndarray:
-    return store_values(indexing_method, index_2d, full_array_2d, (axis_size,) * 2)
-
-
-@pytest.fixture
-def store_values_3d(
-    indexing_method: Callable,
-    index_3d: tuple[int | slice | np.ndarray | EllipsisType, ...],
-    full_array_3d: np.ndarray,
-) -> np.ndarray:
-    return store_values(indexing_method, index_3d, full_array_3d, (axis_size,) * 3)
-
-
-def store_values(
+def gen_store_values(
     indexing_method: Callable,
     index: tuple[int | slice | np.ndarray | EllipsisType, ...],
     full_array: np.ndarray,
-    shape: tuple[int, ...],
 ) -> np.ndarray:
     class smoke:
         oindex = "oindex"
@@ -139,12 +114,12 @@ def store_values(
         if isinstance(i, slice):
             return np.arange(
                 i.start if i.start is not None else 0,
-                i.stop if i.stop is not None else shape[axis],
+                i.stop if i.stop is not None else full_array.shape[axis],
             )
         if isinstance(i, int):
             return np.array([i])
         if isinstance(i, EllipsisType):
-            return np.arange(shape[axis])
+            return np.arange(full_array.shape[axis])
         raise ValueError(f"Invalid index {i}")
 
     if not isinstance(index, EllipsisType) and indexing_method(smoke()) == "oindex":
@@ -163,63 +138,60 @@ def store_values(
     return full_array[index]
 
 
-@pytest.fixture
-def arr_2d(fill_value, tmp_path) -> zarr.Array:
+def gen_arr(fill_value, tmp_path, dimensionality) -> zarr.Array:
     return zarr.create(
-        (axis_size,) * 2,
+        (axis_size_,) * dimensionality,
         store=LocalStore(root=tmp_path / ".zarr", mode="w"),
-        chunks=(chunk_size,) * 2,
+        chunks=(chunk_size_,) * dimensionality,
         dtype=np.int16,
         fill_value=fill_value,
         codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()],
     )
 
 
+@pytest.fixture(params=dimensionalities_)
+def dimensionality(request):
+    return request.param
+
+
 @pytest.fixture
-def arr_3d(fill_value, tmp_path) -> zarr.Array:
-    return zarr.create(
-        (axis_size,) * 3,
-        store=LocalStore(root=tmp_path / ".zarr", mode="w"),
-        chunks=(chunk_size,) * 3,
-        dtype=np.int16,
-        fill_value=fill_value,
-        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()],
-    )
+def arr(dimensionality, tmp_path) -> zarr.Array:
+    return gen_arr(fill_value_, tmp_path, dimensionality)
 
 
-def test_fill_value(arr_2d: zarr.Array, fill_value: int):
-    assert np.all(arr_2d[:] == fill_value)
+def test_fill_value(arr: zarr.Array):
+    assert np.all(arr[:] == fill_value_)
 
 
-def test_roundtrip_constant(arr_2d: zarr.Array):
-    arr_2d[:] = 42
-    assert np.all(arr_2d[:] == 42)
+def test_constant(arr: zarr.Array):
+    arr[:] = 42
+    assert np.all(arr[:] == 42)
 
 
-def test_roundtrip_singleton(arr_2d: zarr.Array):
-    arr_2d[1, 1] = 42
-    assert arr_2d[1, 1] == 42
-    assert arr_2d[0, 0] != 42
+def test_singleton(arr: zarr.Array):
+    singleton_index = (1,) * len(arr.shape)
+    non_singleton_index = (0,) * len(arr.shape)
+    arr[singleton_index] = 42
+    assert arr[singleton_index] == 42
+    assert arr[non_singleton_index] != 42
 
 
-def test_roundtrip_full_array(arr_2d: zarr.Array):
-    stored_values = np.arange(reduce(operator.mul, arr_2d.shape, 1)).reshape(
-        arr_2d.shape
-    )
-    arr_2d[:] = stored_values
-    assert np.all(arr_2d[:] == stored_values)
+def test_full_array(arr: zarr.Array):
+    stored_values = full_array(arr.shape)
+    arr[:] = stored_values
+    assert np.all(arr[:] == stored_values)
 
 
-def test_roundtrip_2d(
-    arr_2d: zarr.Array,
-    store_values_2d: np.ndarray,
-    index_2d: tuple[int | slice | np.ndarray | EllipsisType, ...],
+def test_roundtrip(
+    array: zarr.Array,
+    store_values: np.ndarray,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
     indexing_method: Callable,
 ):
-    indexing_method(arr_2d)[index_2d] = store_values_2d
-    res = indexing_method(arr_2d)[index_2d]
+    indexing_method(array)[index] = store_values
+    res = indexing_method(array)[index]
     assert np.all(
-        res == store_values_2d,
+        res == store_values,
     ), res
 
 
@@ -232,54 +204,28 @@ def use_zarr_default_codec_reader():
     zarr.config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
 
 
-def test_roundtrip_read_only_zarrs_2d(
-    arr_2d: zarr.Array,
-    store_values_2d: np.ndarray,
-    index_2d: tuple[int | slice | np.ndarray | EllipsisType, ...],
+def test_roundtrip_read_only_zarrs(
+    array: zarr.Array,
+    store_values: np.ndarray,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
     indexing_method: Callable,
 ):
     with use_zarr_default_codec_reader():
-        arr_default = zarr.open(arr_2d.store, mode="r+")
-        indexing_method(arr_default)[index_2d] = store_values_2d
-    res = indexing_method(zarr.open(arr_2d.store))[index_2d]
+        arr_default = zarr.open(array.store, mode="r+")
+        indexing_method(arr_default)[index] = store_values
+    res = indexing_method(zarr.open(array.store))[index]
     assert np.all(
-        res == store_values_2d,
+        res == store_values,
     ), res
 
 
-def test_roundtrip_ellipsis_indexing_1d_invalid(arr_2d: zarr.Array):
+def test_ellipsis_indexing_invalid(arr: zarr.Array):
+    if len(arr.shape) <= 2:
+        pytest.skip(
+            "Ellipsis indexing works for 1D and 2D arrays in zarr-python despite a shape mismatch"
+        )
     stored_value = np.array([1, 2, 3])
-    with pytest.raises(
-        BaseException  # TODO: ValueError, but this raises pyo3_runtime.PanicException  # noqa: PT011
-    ):
+    with pytest.raises(ValueError):  # noqa: PT011
         # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
         # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
-        arr_2d[2, ...] = stored_value
-
-
-def test_roundtrip_3d(
-    arr_3d: zarr.Array,
-    store_values_3d: np.ndarray,
-    index_3d: tuple[int | slice | np.ndarray | EllipsisType, ...],
-    indexing_method: Callable,
-):
-    indexing_method(arr_3d)[index_3d] = store_values_3d
-    res = indexing_method(arr_3d)[index_3d]
-    assert np.all(
-        res == store_values_3d,
-    ), res
-
-
-def test_roundtrip_read_only_zarrs_3d(
-    arr_3d: zarr.Array,
-    store_values_3d: np.ndarray,
-    index_3d: tuple[int | slice | np.ndarray | EllipsisType, ...],
-    indexing_method: Callable,
-):
-    with use_zarr_default_codec_reader():
-        arr_default = zarr.open(arr_3d.store, mode="r+")
-        indexing_method(arr_default)[index_3d] = store_values_3d
-    res = indexing_method(zarr.open(arr_3d.store))[index_3d]
-    assert np.all(
-        res == store_values_3d,
-    ), res
+        arr[2, ...] = stored_value

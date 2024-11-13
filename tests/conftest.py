@@ -66,54 +66,56 @@ def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
 # tests that also fail with zarr-python's default codec pipeline
 zarr_python_default_codec_pipeline_failures = [
     # ellipsis weirdness, need to report
-    "test_roundtrip_2d[oindex-contiguous_in_chunk_array-ellipsis]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-ellipsis]",
-    "test_roundtrip_2d[vindex-contiguous_in_chunk_array-ellipsis]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-ellipsis]",
-    "test_roundtrip_2d[oindex-across_chunks_indices_array-ellipsis]",
-    "test_roundtrip_2d[vindex-ellipsis-across_chunks_indices_array]",
-    "test_roundtrip_2d[vindex-across_chunks_indices_array-ellipsis]",
-    "test_roundtrip_2d[vindex-ellipsis-contiguous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-ellipsis-discontinuous_in_chunk_array]",
-    "test_roundtrip_read_only_zarrs_2d[oindex-contiguous_in_chunk_array-ellipsis]",
-    "test_roundtrip_read_only_zarrs_2d[oindex-discontinuous_in_chunk_array-ellipsis]",
-    "test_roundtrip_read_only_zarrs_2d[vindex-contiguous_in_chunk_array-ellipsis]",
-    "test_roundtrip_read_only_zarrs_2d[vindex-discontinuous_in_chunk_array-ellipsis]",
-    "test_roundtrip_read_only_zarrs_2d[oindex-across_chunks_indices_array-ellipsis]",
-    "test_roundtrip_read_only_zarrs_2d[vindex-ellipsis-across_chunks_indices_array]",
-    "test_roundtrip_read_only_zarrs_2d[vindex-across_chunks_indices_array-ellipsis]",
-    "test_roundtrip_read_only_zarrs_2d[vindex-ellipsis-contiguous_in_chunk_array]",
-    "test_roundtrip_read_only_zarrs_2d[vindex-ellipsis-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-contiguous_in_chunk_array-ellipsis]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-ellipsis]",
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-ellipsis]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-ellipsis]",
+    "test_roundtrip[oindex-2d-across_chunks_indices_array-ellipsis]",
+    "test_roundtrip[vindex-2d-ellipsis-across_chunks_indices_array]",
+    "test_roundtrip[vindex-2d-across_chunks_indices_array-ellipsis]",
+    "test_roundtrip[vindex-2d-ellipsis-contiguous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-ellipsis-discontinuous_in_chunk_array]",
+    "test_roundtrip_read_only_zarrs[oindex-2d-contiguous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[oindex-2d-discontinuous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-contiguous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-discontinuous_in_chunk_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[oindex-2d-across_chunks_indices_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-ellipsis-across_chunks_indices_array]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-across_chunks_indices_array-ellipsis]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-ellipsis-contiguous_in_chunk_array]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-ellipsis-discontinuous_in_chunk_array]",
     # need to investigate this one - it seems to fail with the default pipeline
-    "test_roundtrip_read_only_zarrs_2d[vindex-contiguous_in_chunk_array-contiguous_in_chunk_array]",
+    "test_roundtrip_read_only_zarrs[vindex-2d-contiguous_in_chunk_array-contiguous_in_chunk_array]",
 ]
 
 zarrs_python_no_discontinuous_writes = [
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-slice_in_chunk]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-slice_across_chunks]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-full_slice]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-int]",
-    "test_roundtrip_2d[oindex-slice_in_chunk-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-slice_across_chunks-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-full_slice-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-int-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-ellipsis-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-slice_in_chunk]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-slice_across_chunks]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-full_slice]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-int]",
-    "test_roundtrip_2d[vindex-slice_in_chunk-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-slice_across_chunks-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-full_slice-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-int-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-contiguous_in_chunk_array-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-across_chunks_indices_array-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-contiguous_in_chunk_array-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-discontinuous_in_chunk_array]",
-    "test_roundtrip_2d[oindex-discontinuous_in_chunk_array-across_chunks_indices_array]",
-    "test_roundtrip_2d[vindex-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-slice_in_chunk]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-slice_across_chunks]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-full_slice]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-int]",
+    "test_roundtrip[oindex-2d-slice_in_chunk-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-slice_across_chunks-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-full_slice-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-int-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-ellipsis-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-slice_in_chunk]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-slice_across_chunks]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-full_slice]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-int]",
+    "test_roundtrip[vindex-2d-slice_in_chunk-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-slice_across_chunks-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-full_slice-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-int-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-contiguous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-across_chunks_indices_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-discontinuous_in_chunk_array]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-across_chunks_indices_array]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-contiguous_in_chunk_array]",
+    "test_roundtrip[oindex-1d-discontinuous_in_chunk_array]",
+    "test_roundtrip[vindex-1d-discontinuous_in_chunk_array]",
 ]
 
 # vindexing with two contiguous arrays would be converted to two slices but
@@ -121,21 +123,26 @@ zarrs_python_no_discontinuous_writes = [
 # down to integer indexing, which we can't do i.e., [np.array(1, 2), np.array(1, 2)] -> [slice(1, 2), slice(1, 2)]
 # is not a correct conversion, and thus we don't support the write operation
 zarrs_python_no_collapsed_dim = [
-    "test_roundtrip_2d[vindex-contiguous_in_chunk_array-contiguous_in_chunk_array]"
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-contiguous_in_chunk_array]"
 ]
 
 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: Iterable[pytest.Item]
 ) -> None:
-    xfail_marker = pytest.mark.xfail(
-        reason="This test fails with the zarr-python default codec pipeline."
-    )
     for item in items:
-        if (
-            item.name
-            in zarr_python_default_codec_pipeline_failures
-            + zarrs_python_no_discontinuous_writes
-            + zarrs_python_no_collapsed_dim
-        ):
+        if item.name in zarr_python_default_codec_pipeline_failures:
+            xfail_marker = pytest.mark.xfail(
+                reason="This test fails with the zarr-python default codec pipeline."
+            )
+            item.add_marker(xfail_marker)
+        if item.name in zarrs_python_no_discontinuous_writes:
+            xfail_marker = pytest.mark.xfail(
+                reason="zarrs discontinuous writes are not supported."
+            )
+            item.add_marker(xfail_marker)
+        if item.name in zarrs_python_no_collapsed_dim:
+            xfail_marker = pytest.mark.xfail(
+                reason="zarrs vindexing with multiple contiguous arrays is not supported."
+            )
             item.add_marker(xfail_marker)
