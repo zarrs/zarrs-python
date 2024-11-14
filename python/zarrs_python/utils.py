@@ -94,11 +94,9 @@ def resulting_shape_from_index(
 
     # Broadcast all advanced indices, if any
     if advanced_index_shapes:
-        broadcasted_shape = np.broadcast_shapes(*advanced_index_shapes)
-        result_shape.extend(broadcasted_shape)
-        basic_shape_index += len(
-            advanced_index_shapes
-        )  # Consume dimensions from array_shape
+        result_shape += np.broadcast_shapes(*advanced_index_shapes)
+        # Consume dimensions from array_shape
+        basic_shape_index += len(advanced_index_shapes)
 
     # Process each remaining index in index_tuple
     for idx in index_tuple:
@@ -117,14 +115,14 @@ def resulting_shape_from_index(
         elif idx is Ellipsis:
             # Calculate number of dimensions that Ellipsis should fill
             num_to_fill = len(array_shape) - len(index_tuple) + 1
-            result_shape.extend(
-                array_shape[basic_shape_index : basic_shape_index + num_to_fill]
-            )
+            result_shape += array_shape[
+                basic_shape_index : basic_shape_index + num_to_fill
+            ]
             basic_shape_index += num_to_fill
 
     # Step 4: Append remaining dimensions from array_shape if fewer indices were used
     if basic_shape_index < len(array_shape) and pad:
-        result_shape.extend(array_shape[basic_shape_index:])
+        result_shape += array_shape[basic_shape_index:]
 
     return tuple(size for idx, size in enumerate(result_shape) if idx not in drop_axes)
 
