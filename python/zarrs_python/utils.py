@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import operator
 import os
+from functools import reduce
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -49,14 +51,6 @@ def make_slice_selection(selection: tuple[np.ndarray | float]) -> list[slice]:
                 ls.append(slice(dim_selection[0], dim_selection[-1] + 1, 1))
         else:
             ls.append(dim_selection)
-    if (
-        sum(isinstance(dim_selection, np.ndarray) for dim_selection in selection)
-        == sum(isinstance(dim_selection, slice) for dim_selection in selection)
-        == len(selection)
-    ):
-        raise DiscontiguousArrayError(
-            "Vindexing with only contiguous numpy arrays is not supported"
-        )
     return ls
 
 
@@ -152,23 +146,25 @@ def make_chunk_info_for_rust_with_indices(
     ],
     drop_axes: tuple[int, ...],
 ) -> list[tuple[tuple[str, ChunkCoords, str, Any], list[slice], list[slice]]]:
-    for _, chunk_spec, chunk_selection, out_selection in batch_info:
-        shape_out_selection = get_shape_for_selector(
-            out_selection, chunk_spec.shape, pad=False
+    chunk_info_with_indices = []
+    for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
+        chunk_info = convert_chunk_to_primitive(byte_getter, chunk_spec)
+        out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
+        chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
+        shape_chunk_selection_slices = get_shape_for_selector(
+            chunk_selection_as_slices, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
         shape_chunk_selection = get_shape_for_selector(
             chunk_selection, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
-        if len(shape_chunk_selection) != len(shape_out_selection):
+        if reduce(operator.mul, shape_chunk_selection, 1) != reduce(
+            operator.mul, shape_chunk_selection_slices, 1
+        ):
             raise CollapsedDimensionError()
-    return list(
-        (
-            convert_chunk_to_primitive(byte_getter, chunk_spec),
-            selector_tuple_to_slice_selection(out_selection),
-            selector_tuple_to_slice_selection(chunk_selection),
+        chunk_info_with_indices.append(
+            (chunk_info, out_selection_as_slices, chunk_selection_as_slices)
         )
-        for (byte_getter, chunk_spec, chunk_selection, out_selection) in batch_info
-    )
+    return chunk_info_with_indices
 
 
 def make_chunk_info_for_rust(
