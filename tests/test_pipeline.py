@@ -141,7 +141,7 @@ def gen_store_values(
 def gen_arr(fill_value, tmp_path, dimensionality) -> zarr.Array:
     return zarr.create(
         (axis_size_,) * dimensionality,
-        store=LocalStore(root=tmp_path / ".zarr", mode="w"),
+        store=LocalStore(root=tmp_path / ".zarr"),
         chunks=(chunk_size_,) * dimensionality,
         dtype=np.int16,
         fill_value=fill_value,
@@ -198,7 +198,7 @@ def test_roundtrip(
 @contextmanager
 def use_zarr_default_codec_reader():
     zarr.config.set(
-        {"codec_pipeline.path": "zarr.codecs.pipeline.BatchedCodecPipeline"}
+        {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
     )
     yield
     zarr.config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
@@ -211,7 +211,7 @@ def test_roundtrip_read_only_zarrs(
     indexing_method: Callable,
 ):
     with use_zarr_default_codec_reader():
-        arr_default = zarr.open(array.store, mode="r+")
+        arr_default = zarr.open(array.store)
         indexing_method(arr_default)[index] = store_values
     res = indexing_method(zarr.open(array.store))[index]
     assert np.all(

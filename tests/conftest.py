@@ -40,13 +40,13 @@ async def parse_store(
     store: Literal["local", "memory", "remote", "zip"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     if store == "local":
-        return await LocalStore.open(path, mode="w")
+        return await LocalStore.open(path)
     if store == "memory":
-        return await MemoryStore.open(mode="w")
+        return await MemoryStore.open()
     if store == "remote":
-        return await RemoteStore.open(url=path, mode="w")
+        return await RemoteStore.open(url=path)
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", mode="w")
+        return await ZipStore.open(path + "/zarr.zip")
     raise AssertionError
 
 

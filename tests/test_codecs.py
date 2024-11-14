@@ -384,7 +384,7 @@ async def test_resize(store: Store) -> None:
         await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is not None
     )
 
-    a = await a.resize((10, 12))
+    await a.resize((10, 12))
     assert a.metadata.shape == (10, 12)
     assert (
         await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
