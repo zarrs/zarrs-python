@@ -119,6 +119,8 @@ def resulting_shape_from_index(
                 basic_shape_index : basic_shape_index + num_to_fill
             ]
             basic_shape_index += num_to_fill
+        elif not isinstance(idx, np.ndarray):
+            raise ValueError(f"Invalid index type: {type(idx)}")
 
     # Step 4: Append remaining dimensions from array_shape if fewer indices were used
     if basic_shape_index < len(array_shape) and pad:
