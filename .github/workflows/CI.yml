@@ -44,8 +44,8 @@ jobs:
           version: "0.5.0"
           enable-cache: true
           cache-dependency-glob:  |
-            "pyproject.toml"
-            "Cargo.toml"
+            pyproject.toml
+            Cargo.toml
       
       - name: Install python deps + Build
         run: |
