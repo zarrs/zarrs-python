@@ -150,7 +150,7 @@ def make_chunk_info_for_rust_with_indices(
     batch_info: Iterable[
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
     ],
-    drop_axes: tuple,
+    drop_axes: tuple[int, ...],
 ) -> list[tuple[tuple[str, ChunkCoords, str, Any], list[slice], list[slice]]]:
     for _, chunk_spec, chunk_selection, out_selection in batch_info:
         shape_out_selection = get_shape_for_selector(
