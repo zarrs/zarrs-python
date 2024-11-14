@@ -20,11 +20,11 @@ def get_max_threads() -> int:
     return (os.cpu_count() or 1) + 4
 
 
-class DiscontiguousArrayError(BaseException):
+class DiscontiguousArrayError(Exception):
     pass
 
 
-class CollapsedDimensionError(BaseException):
+class CollapsedDimensionError(Exception):
     pass
 
 
