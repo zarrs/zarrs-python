@@ -123,6 +123,10 @@ def resulting_shape_from_index(
     return tuple(size for idx, size in enumerate(result_shape) if idx not in drop_axes)
 
 
+def prod_op(x: Iterable[int]) -> int:
+    return reduce(operator.mul, x, 1)
+
+
 def get_shape_for_selector(
     selector_tuple: SelectorTuple,
     shape: tuple[int, ...],
@@ -152,15 +156,18 @@ def make_chunk_info_for_rust_with_indices(
         out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
         shape_chunk_selection_slices = get_shape_for_selector(
-            chunk_selection_as_slices, chunk_spec.shape, pad=True, drop_axes=drop_axes
+            tuple(chunk_selection_as_slices),
+            chunk_spec.shape,
+            pad=True,
+            drop_axes=drop_axes,
         )
         shape_chunk_selection = get_shape_for_selector(
             chunk_selection, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
-        if reduce(operator.mul, shape_chunk_selection, 1) != reduce(
-            operator.mul, shape_chunk_selection_slices, 1
-        ):
-            raise CollapsedDimensionError()
+        if prod_op(shape_chunk_selection) != prod_op(shape_chunk_selection_slices):
+            raise CollapsedDimensionError(
+                f"{shape_chunk_selection} != {shape_chunk_selection_slices}"
+            )
         chunk_info_with_indices.append(
             (chunk_info, out_selection_as_slices, chunk_selection_as_slices)
         )
