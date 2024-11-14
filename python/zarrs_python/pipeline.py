@@ -24,7 +24,13 @@ if TYPE_CHECKING:
     from zarr.core.indexing import SelectorTuple
 
 from ._internal import CodecPipelineImpl
-from .utils import get_max_threads, make_chunk_info_for_rust
+from .utils import (
+    CollapsedDimensionError,
+    DiscontiguousArrayError,
+    get_max_threads,
+    make_chunk_info_for_rust,
+    make_chunk_info_for_rust_with_indices,
+)
 
 
 @dataclass(frozen=True)
@@ -94,12 +100,32 @@ class ZarrsCodecPipeline(CodecPipeline):
         out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
-
-        chunks_desc = make_chunk_info_for_rust(batch_info)
-        await asyncio.to_thread(
-            self.impl.retrieve_chunks, chunks_desc, out, chunk_concurrent_limit
+        try:
+            chunks_desc = make_chunk_info_for_rust_with_indices(batch_info, drop_axes)
+            index_in_rust = True
+        except (DiscontiguousArrayError, CollapsedDimensionError):
+            chunks_desc = make_chunk_info_for_rust(batch_info)
+            index_in_rust = False
+        if index_in_rust:
+            await asyncio.to_thread(
+                self.impl.retrieve_chunks_and_apply_index,
+                chunks_desc,
+                out,
+                chunk_concurrent_limit,
+            )
+            return None
+        chunks = await asyncio.to_thread(
+            self.impl.retrieve_chunks, chunks_desc, chunk_concurrent_limit
         )
-        return None
+        for chunk, chunk_info in zip(chunks, batch_info):
+            out_selection = chunk_info[3]
+            selection = chunk_info[2]
+            spec = chunk_info[1]
+            chunk_reshaped = chunk.view(spec.dtype).reshape(spec.shape)
+            chunk_selected = chunk_reshaped[selection]
+            if drop_axes:
+                chunk_selected = np.squeeze(chunk_selected, axis=drop_axes)
+            out[out_selection] = chunk_selected
 
     async def write(
         self,
@@ -117,8 +143,11 @@ class ZarrsCodecPipeline(CodecPipeline):
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
         elif not value.flags.c_contiguous:
             value = np.ascontiguousarray(value)
-        chunks_desc = make_chunk_info_for_rust(batch_info)
+        chunks_desc = make_chunk_info_for_rust_with_indices(batch_info, drop_axes)
         await asyncio.to_thread(
-            self.impl.store_chunks, chunks_desc, value, chunk_concurrent_limit
+            self.impl.store_chunks_with_indices,
+            chunks_desc,
+            value,
+            chunk_concurrent_limit,
         )
         return None
