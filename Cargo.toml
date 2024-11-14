@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 pyo3 = "0.22.6"
-zarrs = { version = "0.18.0-dev", git = "https://github.com/LDeakin/zarrs.git" }
+zarrs = { version = "0.18.0-dev", git = "https://github.com/LDeakin/zarrs.git", rev = "108cd0b" }
 paste = "1.0"
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
