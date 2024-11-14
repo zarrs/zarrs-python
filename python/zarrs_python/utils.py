@@ -132,9 +132,9 @@ def resulting_shape_from_index(
 def get_shape_for_selector(
     selector_tuple: SelectorTuple,
     shape: tuple[int, ...],
-    drop_axes: tuple[int, ...],
     *,
     pad: bool,
+    drop_axes: tuple[int, ...] = (),
 ) -> tuple[int, ...]:
     if isinstance(selector_tuple, slice | np.ndarray):
         return resulting_shape_from_index(
@@ -154,10 +154,10 @@ def make_chunk_info_for_rust_with_indices(
 ) -> list[tuple[tuple[str, ChunkCoords, str, Any], list[slice], list[slice]]]:
     for _, chunk_spec, chunk_selection, out_selection in batch_info:
         shape_out_selection = get_shape_for_selector(
-            out_selection, chunk_spec.shape, (), pad=False
+            out_selection, chunk_spec.shape, pad=False
         )
         shape_chunk_selection = get_shape_for_selector(
-            chunk_selection, chunk_spec.shape, drop_axes, pad=True
+            chunk_selection, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
         if len(shape_chunk_selection) != len(shape_out_selection):
             raise CollapsedDimensionError()
