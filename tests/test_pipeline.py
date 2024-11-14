@@ -211,7 +211,7 @@ def test_roundtrip_read_only_zarrs(
     indexing_method: Callable,
 ):
     with use_zarr_default_codec_reader():
-        arr_default = zarr.open(array.store)
+        arr_default = zarr.open(array.store, read_only=True)
         indexing_method(arr_default)[index] = store_values
     res = indexing_method(zarr.open(array.store))[index]
     assert np.all(
