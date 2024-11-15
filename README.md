@@ -25,8 +25,20 @@ There are two ways to control the concurrency of the i/o **TODO: Need to clarify
 
 We **do not** officially support the following indexing methods.  Some of these methods may error out, others may not:
 
-1. Any discontinuous integer indexing for writes in 2D, and any integer-based indexing with dimensionality >=3
-2. `vindex` writes in 2D where both indexers are integer indices
+1. Any discontinuous integer `np.ndarray` indexing for writes in 2D, and any integer `np.ndarray` indexing with dimensionality >=3 i.e.,
+```python
+arr[np.array([0, 5]), :] = ...
+arr[np.array([...]), np.array([...]),  np.array([...])] = ...
+```
+2. `vindex` writes in 2D where both indexers are integer `np.ndarray` indices i.e.,
+```python
+arr[np.array([...]), np.array([...])] = ...
+```
 3. Ellipsis indexing.  We have tested some, but others fail even with `zarr-python`'s default codec pipeline.  Thus for now we advise proceeding with cuation here.
+```python
+arr[0:10, ..., 0:5]
+```
 
-Otherwise, we believe that we support your indexing case: slices, ints, and all integer indices in 2D for reading, contiguous integer indices along one axis for writing etc.  Please file an issue if you believe we have more holes in our coverage than we are aware of or you wish to contribute!  For example, https://github.com/LDeakin/zarrs/issues/52 would unblock a lot of these issues!
+Otherwise, we believe that we support your indexing case: slices, ints, and all integer `np.ndarray` indices in 2D for reading, contiguous integer `np.ndarray` indices along one axis for writing etc.  Please file an issue if you believe we have more holes in our coverage than we are aware of or you wish to contribute!  For example, https://github.com/LDeakin/zarrs/issues/52 would unblock a lot of these issues!
+
+That being said, using non-contiguous integer `np.ndarray` indexing for reads may not be as fast as expected given the performance of other supported methods.  Until `zarrs` supports integer indexing, only fetching chunks is done in `rust` while indexing then occurs in `python`.
