@@ -23,7 +23,7 @@ dependencies = [
     'donfig',
     'pytest',
     'universal_pathlib>=0.2.0',
-    'zarr>=3.0.0b1',
+    'zarr>=3.0.0b2',
 ]
 
 [project.optional-dependencies]
