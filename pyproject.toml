@@ -41,8 +41,10 @@ test = [
     "requests",
     "mypy",
     "hypothesis",
+    "pytest-xdist"
 ]
 dev = ["maturin"]
+doc = ["sphinx>=7.4.6", "myst-parser"]
 
 [tool.maturin]
 python-source = "python"
