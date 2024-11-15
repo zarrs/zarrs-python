@@ -2,6 +2,10 @@
 installer = "uv"
 features = ["dev"]
 
+[envs.hatch-test]
+default-args = []
+features = ["test"]
+
 [envs.docs]
 features = ["doc"]
 extra-dependencies = ["setuptools"]  # https://bitbucket.org/pybtex-devs/pybtex/issues/169
