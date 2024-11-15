@@ -4,7 +4,7 @@ from .pipeline import ZarrsCodecPipeline as _ZarrsCodecPipeline
 from .utils import CollapsedDimensionError, DiscontiguousArrayError
 
 
-# Need to do this redirection so people can access the pipeline as `zarrs_python.ZarrsCodecPipeline` instead of `zarrs_python.pipeline.ZarrsCodecPipeline`
+# Need to do this redirection so people can access the pipeline as `zarrs.ZarrsCodecPipeline` instead of `zarrs.pipeline.ZarrsCodecPipeline`
 class ZarrsCodecPipeline(_ZarrsCodecPipeline):
     pass
 

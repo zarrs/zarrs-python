@@ -1,7 +1,7 @@
 # Exceptions
 
 ```{eval-rst}
-.. module:: zarrs_python
+.. module:: zarrs
 ```
 
 ```{eval-rst}

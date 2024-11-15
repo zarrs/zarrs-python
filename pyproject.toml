@@ -3,7 +3,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "zarrs-python"
+name = "zarrs"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Rust",
@@ -48,7 +48,7 @@ doc = ["sphinx>=7.4.6", "myst-parser"]
 
 [tool.maturin]
 python-source = "python"
-module-name = "zarrs_python._internal"
+module-name = "zarrs._internal"
 features = ["pyo3/extension-module"]
 
 
@@ -112,4 +112,4 @@ ignore = [
     "E741",
 ]
 [tool.ruff.lint.isort]
-known-first-party = ["zarrs_python"]
+known-first-party = ["zarrs"]
