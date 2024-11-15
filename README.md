@@ -28,6 +28,7 @@ We **do not** officially support the following indexing methods.  Some of these 
 1. Any discontinuous integer `np.ndarray` indexing for writes in 2D, and any integer `np.ndarray` indexing with dimensionality >=3 i.e.,
 ```python
 arr[np.array([0, 5]), :] = ...
+arr[np.array([...]), np.array([...]),  np.array([...])]
 arr[np.array([...]), np.array([...]),  np.array([...])] = ...
 ```
 2. `vindex` writes in 2D where both indexers are integer `np.ndarray` indices i.e.,
