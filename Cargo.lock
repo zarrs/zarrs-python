@@ -1227,8 +1227,9 @@ checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
 
 [[package]]
 name = "zarrs"
-version = "0.18.0-dev"
-source = "git+https://github.com/LDeakin/zarrs.git?rev=108cd0b#108cd0bf5bcfe916de2276123347d6d0b2edb810"
+version = "0.18.0-beta.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cf2268e57ea21ebb30abee0f5707a73d59b3ee822d8cd92dffd4230286ea6af"
 dependencies = [
  "blosc-src",
  "bytemuck",
@@ -1274,8 +1275,9 @@ dependencies = [
 
 [[package]]
 name = "zarrs_filesystem"
-version = "0.1.0"
-source = "git+https://github.com/LDeakin/zarrs.git?rev=108cd0b#108cd0bf5bcfe916de2276123347d6d0b2edb810"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f1c095b47dafbeee5c6714adc7a989f4cb1541212e5f9206509e732f678c71e"
 dependencies = [
  "bytes",
  "derive_more",
@@ -1292,7 +1294,8 @@ dependencies = [
 [[package]]
 name = "zarrs_metadata"
 version = "0.2.0"
-source = "git+https://github.com/LDeakin/zarrs.git?rev=108cd0b#108cd0bf5bcfe916de2276123347d6d0b2edb810"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "902f67415f15036895770fab4dd3b274fb4a6cd44390d68feaa21b3f0dfabba4"
 dependencies = [
  "derive_more",
  "half",
@@ -1306,8 +1309,9 @@ dependencies = [
 
 [[package]]
 name = "zarrs_storage"
-version = "0.3.0-dev"
-source = "git+https://github.com/LDeakin/zarrs.git?rev=108cd0b#108cd0bf5bcfe916de2276123347d6d0b2edb810"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d23665d868dd8843989bb74239956eb4600f0bd713f1f81489b4c1877503b607"
 dependencies = [
  "bytes",
  "derive_more",
