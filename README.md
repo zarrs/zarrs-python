@@ -26,7 +26,7 @@ There are two ways to control the concurrency of the i/o **TODO: Need to clarify
 
 We **do not** officially support the following indexing methods.  Some of these methods may error out, others may not:
 
-1.  Any integer `np.ndarray` indexing with dimensionality >=3 i.e.,
+1.  Any `oindex` or `vindex` integer `np.ndarray` indexing with dimensionality >=3 i.e.,
 ```python
 arr[np.array([...]), :,  np.array([...])]
 arr[np.array([...]), np.array([...]),  np.array([...])]
