@@ -20,7 +20,48 @@ You can then use your `zarr` as normal (with some caveats)!
 
 We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class but it is not meant to be instantiated and we do not guarantee the stability of its API beyond what is required so that `zarr-python` can use it.  Therefore, it is not documented here.  We also export two errors, `DiscontiguousArrayError` and `CollapsedDimensionError` that can be thrown in the process of converting to indexers that `zarrs` can understand (see below for more details).
 
-There are two ways to control the concurrency of the i/o **TODO: Need to clarify this**
+### Configuration
+
+`ZarrsCodecPipeline` options are exposed through `zarr.config`.
+
+Standard `zarr.config` options control some functionality (see the defaults in the [config.py](https://github.com/zarr-developers/zarr-python/blob/main/src/zarr/core/config.py) of `zarr-python`):
+- `threading.num_workers` (#threads if `None`): the maximum number of threads used internally by the `ZarrsCodecPipeline` (on the Rust side).
+- `async.concurrency` (#threads if `None`): the maximum number of chunks stored/retrieved concurrently.
+- `array.write_empty_chunks` ([`False`](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#store-empty-chunks) if `None`): set whether or not to store empty chunks.
+  - Pending [zarr-python #2429](https://github.com/zarr-developers/zarr-python/pull/2429)
+
+The `ZarrsCodecPipeline` specific options are:
+- `codec_pipeline.chunk_concurrent_minimum` ([4](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) if `None`): the minimum number of chunks retrieved/stored concurrently when balancing chunk/codec concurrency.
+- `codec_pipeline.validate_checksums` ([`True`](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) if `None`): enable checksum validation (e.g. with the CRC32C codec).
+
+For example:
+```python
+zarr.config.set({
+    "threading.num_workers": None,
+    "async.concurrency": None,
+    "array.write_empty_chunks": False,
+    "codec_pipeline": {
+        "path": "zarrs.ZarrsCodecPipeline",
+        "validate_checksums": True,
+        "store_empty_chunks": False,
+    }
+})
+```
+
+## Concurrency
+
+Concurrency can be classified into two types:
+- chunk (outer) concurrency: the number of chunks retrieved/stored concurrently, and
+- codec (inner) concurrency: the number of threads encoding/decoding a chunk.
+
+`zarrs` and `zarrs-python` automatically balance chunk and codec concurrency based on factors such as the chunk size and the codecs.
+Chunk concurrency is typically favored because:
+- parallel encoding/decoding can have a high overhead with some codecs, especially with small chunks, and
+- it is advantageous to retrieve/store multiple chunks concurrently, especially with high latency stores.
+
+Sharded arrays are one of the main exceptions.
+If encoding/decoding a shard (chunk) with many inner chunks, `zarrs` will favor codec concurrency over chunk concurrency.
+However, the number of concurrent chunks will not drop below the `codec_pipeline.chunk_concurrent_minimum`, unless `threading.num_workers` is lower.
 
 ## Supported Indexing Methods
 
