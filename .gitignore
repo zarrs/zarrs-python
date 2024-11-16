@@ -10,6 +10,9 @@ __pycache__/
 
 .hypothesis/
 
+# docs generated rst
+docs/generated
+
 # Distribution / packaging
 .Python
 .venv/

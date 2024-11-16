@@ -52,7 +52,7 @@ jobs:
           uv pip install --system -e ".[test]" maturin --verbose
 
       - name: Python Tests
-        run: pytest
+        run: pytest -n auto
 
       - name: Rust Tests
         run: cargo test

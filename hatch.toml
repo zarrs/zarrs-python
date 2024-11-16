@@ -1,0 +1,13 @@
+[envs.default]
+installer = "uv"
+features = ["dev"]
+
+[envs.hatch-test]
+default-args = []
+features = ["test"]
+
+[envs.docs]
+features = ["doc"]
+extra-dependencies = ["setuptools"]  # https://bitbucket.org/pybtex-devs/pybtex/issues/169
+scripts.build = "sphinx-build -M html docs docs/_build -W --keep-going {args}"
+scripts.clean = "git clean -fdX -- {args:docs}"

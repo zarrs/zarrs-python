@@ -14,7 +14,7 @@ import pytest
 import zarr
 from zarr.storage import LocalStore
 
-import zarrs_python  # noqa: F401
+import zarrs  # noqa: F401
 
 axis_size_ = 10
 chunk_size_ = axis_size_ // 2
@@ -52,7 +52,7 @@ indexing_method_params = [
 def pytest_generate_tests(metafunc):
     old_pipeline_path = zarr.config.get("codec_pipeline.path")
     # need to set the codec pipeline to the zarrs pipeline because the autouse fixture doesn't apply here
-    zarr.config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
+    zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
     if "test_roundtrip" in metafunc.function.__name__:
         arrs = []
         indices = []
@@ -201,7 +201,7 @@ def use_zarr_default_codec_reader():
         {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
     )
     yield
-    zarr.config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
+    zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 
 
 def test_roundtrip_read_only_zarrs(

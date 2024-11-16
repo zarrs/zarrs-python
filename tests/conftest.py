@@ -11,7 +11,7 @@ from zarr.core.common import ChunkCoords
 from zarr.storage import LocalStore, MemoryStore, ZipStore
 from zarr.storage.remote import RemoteStore
 
-from zarrs_python.utils import (  # noqa: F401
+from zarrs.utils import (  # noqa: F401
     CollapsedDimensionError,
     DiscontiguousArrayError,
 )
@@ -33,7 +33,7 @@ class ArrayRequest:
 
 @pytest.fixture(autouse=True)
 def _setup_codec_pipeline():
-    config.set({"codec_pipeline.path": "zarrs_python.ZarrsCodecPipeline"})
+    config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 
 
 async def parse_store(
