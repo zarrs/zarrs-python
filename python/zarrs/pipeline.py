@@ -27,7 +27,6 @@ from ._internal import CodecPipelineImpl
 from .utils import (
     CollapsedDimensionError,
     DiscontiguousArrayError,
-    get_max_threads,
     make_chunk_info_for_rust,
     make_chunk_info_for_rust_with_indices,
 )
@@ -45,13 +44,24 @@ class ZarrsCodecPipeline(CodecPipeline):
     def from_codecs(cls, codecs: Iterable[Codec]) -> Self:
         codec_metadata = [codec.to_dict() for codec in codecs]
         codec_metadata_json = json.dumps(codec_metadata)
+        # TODO: upstream zarr-python has not settled on how to deal with configs yet
+        # Should they be checked when an array is created, or when an operation is performed?
+        # https://github.com/zarr-developers/zarr-python/issues/2409
+        # https://github.com/zarr-developers/zarr-python/pull/2429
         return cls(
             codecs=tuple(codecs),
             impl=CodecPipelineImpl(
                 codec_metadata_json,
-                config.get("codec_pipeline.validate_checksums", None),
-                config.get("codec_pipeline.store_empty_chunks", None),
-                config.get("codec_pipeline.concurrent_target", None),
+                validate_checksums=config.get(
+                    "codec_pipeline.validate_checksums", None
+                ),
+                # TODO: upstream zarr-python array.write_empty_chunks is not merged yet #2429
+                store_empty_chunks=config.get("array.write_empty_chunks", None),
+                chunk_concurrent_minimum=config.get(
+                    "codec_pipeline.chunk_concurrent_minimum", None
+                ),
+                chunk_concurrent_maximum=config.get("async.concurrency", None),
+                num_threads=config.get("threading.max_workers", None),
             ),
         )
 
@@ -94,9 +104,6 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-        chunk_concurrent_limit = (
-            config.get("threading.max_workers") or get_max_threads()
-        )
         out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
@@ -111,12 +118,9 @@ class ZarrsCodecPipeline(CodecPipeline):
                 self.impl.retrieve_chunks_and_apply_index,
                 chunks_desc,
                 out,
-                chunk_concurrent_limit,
             )
             return None
-        chunks = await asyncio.to_thread(
-            self.impl.retrieve_chunks, chunks_desc, chunk_concurrent_limit
-        )
+        chunks = await asyncio.to_thread(self.impl.retrieve_chunks, chunks_desc)
         for chunk, chunk_info in zip(chunks, batch_info):
             out_selection = chunk_info[3]
             selection = chunk_info[2]
@@ -135,9 +139,6 @@ class ZarrsCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        chunk_concurrent_limit = (
-            config.get("threading.max_workers") or get_max_threads()
-        )
         value = value.as_ndarray_like()  # FIXME: Error if array is not in host memory
         if not value.dtype.isnative:
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
@@ -148,6 +149,5 @@ class ZarrsCodecPipeline(CodecPipeline):
             self.impl.store_chunks_with_indices,
             chunks_desc,
             value,
-            chunk_concurrent_limit,
         )
         return None

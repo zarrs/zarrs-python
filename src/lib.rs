@@ -13,8 +13,10 @@ use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
 };
+use zarrs::array::concurrency::calc_concurrency_outer_inner;
 use zarrs::array::{
-    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize, CodecChain, FillValue,
+    copy_fill_value_into, update_array_bytes, ArrayBytes, ArrayCodecTraits, ArraySize,
+    ChunkRepresentation, CodecChain, FillValue, RecommendedConcurrency,
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
@@ -40,6 +42,9 @@ pub struct CodecPipelineImpl {
     codec_chain: Arc<CodecChain>,
     store: Mutex<Option<Arc<dyn CodecPipelineStore>>>,
     codec_options: CodecOptions,
+    chunk_concurrent_minimum: usize,
+    chunk_concurrent_maximum: usize,
+    num_threads: usize
 }
 
 impl CodecPipelineImpl {
@@ -227,17 +232,51 @@ impl CodecPipelineImpl {
         };
         UnsafeCellSlice::new(output)
     }
+
+    fn concurrency_chunks_and_codec(
+        &self,
+        num_chunks: usize,
+        chunk_representation: &ChunkRepresentation,
+    ) -> PyResult<(usize, CodecOptions)> {
+        let codec_concurrency = self
+            .codec_chain
+            .recommended_concurrency(chunk_representation)
+            .map_err(|err| PyErr::new::<PyRuntimeError, _>(err.to_string()))?;
+
+        let min_concurrent_chunks = std::cmp::min(self.chunk_concurrent_minimum, num_chunks);
+        let max_concurrent_chunks = std::cmp::max(self.chunk_concurrent_maximum, num_chunks);
+        let (self_concurrent_limit, codec_concurrent_limit) = calc_concurrency_outer_inner(
+            self.num_threads,
+            &RecommendedConcurrency::new(min_concurrent_chunks..max_concurrent_chunks),
+            &codec_concurrency,
+        );
+        let codec_options = self
+            .codec_options
+            .into_builder()
+            .concurrent_target(codec_concurrent_limit)
+            .build();
+        Ok((self_concurrent_limit, codec_options))
+    }
 }
 
 #[pymethods]
 impl CodecPipelineImpl {
-    #[pyo3(signature = (metadata, validate_checksums=None, store_empty_chunks=None, concurrent_target=None))]
+    #[pyo3(signature = (
+        metadata,
+        validate_checksums=None,
+        store_empty_chunks=None,
+        chunk_concurrent_minimum=None,
+        chunk_concurrent_maximum=None,
+        num_threads=None,
+    ))]
     #[new]
     fn new(
         metadata: &str,
         validate_checksums: Option<bool>,
         store_empty_chunks: Option<bool>,
-        concurrent_target: Option<usize>,
+        chunk_concurrent_minimum: Option<usize>,
+        chunk_concurrent_maximum: Option<usize>,
+        num_threads: Option<usize>,
     ) -> PyResult<Self> {
         let metadata: Vec<MetadataV3> =
             serde_json::from_str(metadata).map_py_err::<PyTypeError>()?;
@@ -250,15 +289,21 @@ impl CodecPipelineImpl {
         if let Some(store_empty_chunks) = store_empty_chunks {
             codec_options = codec_options.store_empty_chunks(store_empty_chunks);
         }
-        if let Some(concurrent_target) = concurrent_target {
-            codec_options = codec_options.concurrent_target(concurrent_target);
-        }
         let codec_options = codec_options.build();
+
+        let chunk_concurrent_minimum = chunk_concurrent_minimum
+            .unwrap_or(zarrs::config::global_config().chunk_concurrent_minimum());
+        let chunk_concurrent_maximum = chunk_concurrent_maximum
+            .unwrap_or(rayon::current_num_threads());
+        let num_threads = num_threads.unwrap_or(rayon::current_num_threads());
 
         Ok(Self {
             codec_chain,
             store: Mutex::new(None),
             codec_options,
+            chunk_concurrent_minimum,
+            chunk_concurrent_maximum,
+            num_threads,
         })
     }
 
@@ -267,7 +312,6 @@ impl CodecPipelineImpl {
         py: Python,
         chunk_descriptions: Vec<chunk_item::RawWithIndices>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
-        chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
         // Get input array
         if !value.is_c_contiguous() {
@@ -280,9 +324,16 @@ impl CodecPipelineImpl {
         let chunk_descriptions =
             self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
 
-        py.allow_threads(move || {
-            let codec_options = &self.codec_options;
+        // Adjust the concurrency based on the codec chain and the first chunk description
+        let Some(chunk_descriptions0) = chunk_descriptions.first() else {
+            return Ok(());
+        };
+        let (chunk_concurrent_limit, codec_options) = self.concurrency_chunks_and_codec(
+            chunk_descriptions.len(),
+            chunk_descriptions0.representation(),
+        )?;
 
+        py.allow_threads(move || {
             let update_chunk_subset = |item: chunk_item::WithSubset| {
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if item.chunk_subset.start().iter().all(|&o| o == 0)
@@ -303,7 +354,7 @@ impl CodecPipelineImpl {
                                 &output,
                                 &output_shape,
                                 &item.subset,
-                                codec_options,
+                                &codec_options,
                             )
                         }
                     } else {
@@ -334,7 +385,7 @@ impl CodecPipelineImpl {
                     let partial_decoder = self
                         .codec_chain
                         .clone()
-                        .partial_decoder(input_handle, item.representation(), codec_options)
+                        .partial_decoder(input_handle, item.representation(), &codec_options)
                         .map_py_err::<PyValueError>()?;
                     unsafe {
                         // SAFETY:
@@ -346,7 +397,7 @@ impl CodecPipelineImpl {
                             &output,
                             &output_shape,
                             &item.subset,
-                            codec_options,
+                            &codec_options,
                         )
                     }
                 }
@@ -368,13 +419,19 @@ impl CodecPipelineImpl {
         &self,
         py: Python<'py>,
         chunk_descriptions: Vec<chunk_item::Raw>, // FIXME: Ref / iterable?
-        chunk_concurrent_limit: usize,
     ) -> PyResult<Vec<Bound<'py, PyArray1<u8>>>> {
         let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, ())?;
 
-        let chunk_bytes = py.allow_threads(move || {
-            let codec_options = &self.codec_options;
+        // Adjust the concurrency based on the codec chain and the first chunk description
+        let Some(chunk_descriptions0) = chunk_descriptions.first() else {
+            return Ok(vec![]);
+        };
+        let (chunk_concurrent_limit, codec_options) = self.concurrency_chunks_and_codec(
+            chunk_descriptions.len(),
+            chunk_descriptions0.representation(),
+        )?;
 
+        let chunk_bytes = py.allow_threads(move || {
             let get_chunk_subset = |item: chunk_item::Basic| {
                 let chunk_encoded = item.get().map_py_err::<PyRuntimeError>()?;
                 Ok(if let Some(chunk_encoded) = chunk_encoded {
@@ -383,7 +440,7 @@ impl CodecPipelineImpl {
                         .decode(
                             Cow::Owned(chunk_encoded),
                             item.representation(),
-                            codec_options,
+                            &codec_options,
                         )
                         .map_py_err::<PyRuntimeError>()?
                 } else {
@@ -416,7 +473,6 @@ impl CodecPipelineImpl {
         py: Python,
         chunk_descriptions: Vec<chunk_item::RawWithIndices>,
         value: &Bound<'_, PyUntypedArray>,
-        chunk_concurrent_limit: usize,
     ) -> PyResult<()> {
         enum InputValue<'a> {
             Array(ArrayBytes<'a>),
@@ -441,9 +497,16 @@ impl CodecPipelineImpl {
         let chunk_descriptions =
             self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
 
-        py.allow_threads(move || {
-            let codec_options = &self.codec_options;
+        // Adjust the concurrency based on the codec chain and the first chunk description
+        let Some(chunk_descriptions0) = chunk_descriptions.first() else {
+            return Ok(());
+        };
+        let (chunk_concurrent_limit, codec_options) = self.concurrency_chunks_and_codec(
+            chunk_descriptions.len(),
+            chunk_descriptions0.representation(),
+        )?;
 
+        py.allow_threads(move || {
             let store_chunk = |item: chunk_item::WithSubset| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
@@ -458,7 +521,7 @@ impl CodecPipelineImpl {
                         &self.codec_chain,
                         chunk_subset_bytes,
                         &item.chunk_subset,
-                        codec_options,
+                        &codec_options,
                     )
                 }
                 InputValue::Constant(constant_value) => {
@@ -475,7 +538,7 @@ impl CodecPipelineImpl {
                         &self.codec_chain,
                         chunk_subset_bytes,
                         &item.chunk_subset,
-                        codec_options,
+                        &codec_options,
                     )
                 }
             };
