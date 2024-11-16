@@ -1,8 +1,8 @@
-# `zarrs-python`
+# zarrs-python
 
-```{warning}
-The version of `zarr-python` we currently depend on is still in pre-release and this package is accordingly extremely experimental.  We cannot guarantee any stability or correctness at the moment, although we have tried to do extensive testing and make clear what we think we support and do not.
-```
+
+> [!CAUTION]
+> The version of `zarr-python` we currently depend on is still in pre-release and this package is accordingly extremely experimental.  We cannot guarantee any stability or correctness at the moment, although we have tried to do extensive testing and make clear what we think we support and do not.
 
 This project serves as a bridge between [`zarrs`](https://docs.rs/zarrs/latest/zarrs/) and [`zarr`](https://zarr.readthedocs.io/en/latest/index.html) via [`PyO3`](https://pyo3.rs/v0.22.3/).  The main goal of the project is to speed up i/o.
 
