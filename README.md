@@ -63,7 +63,17 @@ Sharded arrays are one of the main exceptions.
 If encoding/decoding a shard (chunk) with many inner chunks, `zarrs` will favor codec concurrency over chunk concurrency.
 However, the number of concurrent chunks will not drop below the `codec_pipeline.chunk_concurrent_minimum`, unless `threading.num_workers` is lower.
 
-## Supported Indexing Methods
+## Limitations
+
+`zarrs-python` has several limitations to be aware of.
+
+### Limited Store Support
+
+`zarrs-python` only supports filesystem stores.
+
+Support for more stores is planned in the near future - relevant [`zarrs` stores](https://docs.rs/zarrs/latest/zarrs/index.html#storage-support) just need to be wrapped.
+
+### Supported Indexing Methods
 
 We **do not** officially support the following indexing methods.  Some of these methods may error out, others may not:
 
@@ -85,3 +95,7 @@ arr[0:10, ..., 0:5]
 Otherwise, we believe that we support your indexing case: slices, ints, and all integer `np.ndarray` indices in 2D for reading, contiguous integer `np.ndarray` indices along one axis for writing etc.  Please file an issue if you believe we have more holes in our coverage than we are aware of or you wish to contribute!  For example, we have an [issue in zarrs for integer-array indexing](https://github.com/LDeakin/zarrs/issues/52) that would unblock a lot of these issues!
 
 That being said, using non-contiguous integer `np.ndarray` indexing for reads may not be as fast as expected given the performance of other supported methods.  Until `zarrs` supports integer indexing, only fetching chunks is done in `rust` while indexing then occurs in `python`.
+
+### No Partial Encoding
+
+`zarrs` experimentally supports partial encoding (e.g. writing shard inner chunks incrementally), but this is not supported in `zarrs-python` yet.
