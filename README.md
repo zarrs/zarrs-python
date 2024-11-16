@@ -25,11 +25,17 @@ There are two ways to control the concurrency of the i/o **TODO: Need to clarify
 
 We **do not** officially support the following indexing methods.  Some of these methods may error out, others may not:
 
-1. Any discontinuous integer `np.ndarray` indexing for writes in 2D, and any integer `np.ndarray` indexing with dimensionality >=3 i.e.,
+1.  Any integer `np.ndarray` indexing with dimensionality >=3 i.e.,
 ```python
-arr[np.array([0, 5]), :] = ...
+arr[np.array([...]), :,  np.array([...])]
 arr[np.array([...]), np.array([...]),  np.array([...])]
 arr[np.array([...]), np.array([...]),  np.array([...])] = ...
+arr.oindex[np.array([...]), np.array([...]),  np.array([...])] = ...
+```
+2. Any `vindex` or `oindex` discontinuous integer `np.ndarray` indexing for writes in 2D
+```python
+arr[np.array([0, 5]), :] = ...
+arr.oindex[np.array([0, 5]), :] = ...
 ```
 2. `vindex` writes in 2D where both indexers are integer `np.ndarray` indices i.e.,
 ```python
