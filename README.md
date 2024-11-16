@@ -36,7 +36,7 @@ arr[np.array([...]), np.array([...]),  np.array([...])] = ...
 ```python
 arr[np.array([...]), np.array([...])] = ...
 ```
-3. Ellipsis indexing.  We have tested some, but others fail even with `zarr-python`'s default codec pipeline.  Thus for now we advise proceeding with cuation here.
+3. Ellipsis indexing.  We have tested some, but others fail even with `zarr-python`'s default codec pipeline.  Thus for now we advise proceeding with caution here.
 ```python
 arr[0:10, ..., 0:5]
 ```
