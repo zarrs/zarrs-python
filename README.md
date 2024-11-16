@@ -10,6 +10,7 @@ To use the project, simply install our package (which depends on `zarr-python>3.
 
 ```python
 import zarr
+import zarrs
 zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 ```
 
