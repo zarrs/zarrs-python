@@ -28,7 +28,7 @@ jobs:
       with:
         maturin-version: v1.0.0-beta.7
         command: build
-        args: --sdist --release -i python3.8 -i python3.9 -i python3.10 -i python3.11
+        args: --sdist --release -i python3.11 -i python3.12
     - uses: pypa/gh-action-pypi-publish@release/v1
       with:
         packages-dir: target/wheels
