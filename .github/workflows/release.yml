@@ -1,0 +1,21 @@
+name: Create release PR or publish GitHub release and Rust crate
+
+permissions:
+  pull-requests: write
+  contents: write
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: MarcoIeni/release-plz-action@v0.5
+      with:
+        # since we don’t publish to crates.io,
+        # we only want the PR and don’t need to specify a token
+        command: release-pr
