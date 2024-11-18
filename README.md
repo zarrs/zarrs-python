@@ -3,7 +3,7 @@
 ```{warning}
 ⚠️ The version of `zarr-python` we currently depend on is still in pre-release and this
 package is accordingly extremely experimental.
-We cannot guarantee any stability or correctness at the moment, although we have 
+We cannot guarantee any stability or correctness at the moment, although we have
 tried to do extensive testing and make clear what we think we support and do not.
 ```
 
