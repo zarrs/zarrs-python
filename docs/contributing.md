@@ -29,3 +29,13 @@ pytest -n auto
 ```
 
 for parallelized tests.  Most tests have been copied from the `zarr-python` repository with the exception of `test_pipeline.py` which we have written.
+
+## Type hints
+
+When authoring Python code, your IDE will not be able to analyze the extension module `zarrs._internal`.
+But thanks to [`pyo3-stub-gen`][], we can generate type stubs for it!
+
+To build the stub generator, run `cargo build --bin stub_gen`.
+Afterwards, whenever you `cargo build`, `maturin build` or interact with your editor’s rust language server (e.g. `rust-analyzer`), the type hints will be updated.
+
+[`pyo3-stub-gen`]: https://github.com/Jij-Inc/pyo3-stub-gen
