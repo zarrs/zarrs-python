@@ -9,7 +9,7 @@ name = "zarrs"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.22.6"
+pyo3 = { version = "0.22.6", features = ["abi3-py311"] }
 zarrs = "0.18.0-beta.0"
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
