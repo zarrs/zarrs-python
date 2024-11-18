@@ -5,6 +5,8 @@ use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3_stub_gen::define_stub_info_gatherer;
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
@@ -35,6 +37,7 @@ trait CodecPipelineStore: Send + Sync {
 }
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
+#[gen_stub_pyclass]
 #[pyclass]
 pub struct CodecPipelineImpl {
     codec_chain: Arc<CodecChain>,
@@ -229,6 +232,7 @@ impl CodecPipelineImpl {
     }
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
     #[pyo3(signature = (metadata, validate_checksums=None, store_empty_chunks=None, concurrent_target=None))]
@@ -499,3 +503,5 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CodecPipelineImpl>()?;
     Ok(())
 }
+
+define_stub_info_gatherer!(stub_info);

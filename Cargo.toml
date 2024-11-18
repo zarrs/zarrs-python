@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "zarrs"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = "0.22.6"
@@ -18,6 +18,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 numpy = "0.22.1"
 unsafe_cell_slice = "0.2.0"
 serde_json = "1.0.128"
+pyo3-stub-gen = { version = "0.6.1", git = "https://github.com/flying-sheep/pyo3-stub-gen.git", branch = "py-untyped-array" }
 
 [profile.release]
 lto = true
