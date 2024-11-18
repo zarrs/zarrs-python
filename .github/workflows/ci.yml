@@ -1,4 +1,4 @@
-name: zarrs-python
+name: ci
 
 on:
   push:
@@ -15,7 +15,7 @@ env:
 
 jobs:
   build_and_test:
-    name: zarrs-python
+    name: build and test
     strategy:
       fail-fast: false
       matrix:
