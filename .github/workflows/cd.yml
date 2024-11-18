@@ -64,11 +64,12 @@ jobs:
                 # in order to build openssl with -latomic flag.
                 if [[ ! -d "/usr/lib64" ]]; then
                     ln -s /usr/lib/libatomic.so.1 /usr/lib/libatomic.so
+                    yum install -y libgcc.i686 glibc-devel.i686 libstdc++-devel.i686
                 fi
+            
             else
                 # If we're running on debian-based system.
-                apt update -y && apt-get install -y libssl-dev openssl pkg-config gcc-12-i686-linux-gnu
-                ln -s /usr/bin/i686-linux-gnu-gcc-12 /usr/bin/i686-linux-gnu-gcc
+                apt update -y && apt-get install -y libssl-dev openssl pkg-config
             fi
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
       - run: twine check --strict dist/*
