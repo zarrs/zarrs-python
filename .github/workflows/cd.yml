@@ -79,6 +79,7 @@ jobs:
         with:
           pattern: pypi-wheels-*
           merge-multiple: true
+          path: dist/
       - run: ls -lh dist/
 
   publish:
@@ -94,9 +95,10 @@ jobs:
         with:
           pattern: pypi-wheels-*
           merge-multiple: true
+          path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist
+          packages-dir: dist/
 
   release:
     name: update a release PR
