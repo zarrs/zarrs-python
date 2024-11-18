@@ -24,11 +24,12 @@ jobs:
         manylinux: ['2_28']
         include:
           # manylinux for various platforms
-        #   - { os: linux, manylinux: '2_28', target: i686 }
+          - { os: linux, manylinux: '2_28', target: x86_64 }
+          #- { os: linux, manylinux: '2_28', target: i686 }
           - { os: linux, manylinux: '2_28', target: aarch64 }
           - { os: linux, manylinux: '2_28', target: armv7 }
           - { os: linux, manylinux: '2_28', target: ppc64le }
-        #   - { os: linux, manylinux: '2_28', target: s390x }
+          #- { os: linux, manylinux: '2_28', target: s390x }
           # musl
           - { os: linux, manylinux: musllinux_1_1, target: x86_64 }
           - { os: linux, manylinux: musllinux_1_1, target: aarch64 }
