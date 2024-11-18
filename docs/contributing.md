@@ -8,7 +8,7 @@ You will need `rust` and `cargo` installed on your local system.  For more info,
 
 We encourage the use of [uv](https://docs.astral.sh/uv/) for environment management.  To install the package for development, run
 
-```
+```shell
 uv pip install -e ".[test,dev,doc]"
 ```
 
@@ -16,15 +16,15 @@ However, take note that while this does build the rust package, the rust package
 
 ## Testing
 
-To install test dependencies, simply run 
+To install test dependencies, simply run
 
-```
+```shell
 pytest
 ```
 
 or
 
-```
+```shell
 pytest -n auto
 ```
 
