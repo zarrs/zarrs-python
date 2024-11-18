@@ -35,7 +35,7 @@ Standard `zarr.config` options control some functionality (see the defaults in t
   - This option name is proposed in [zarr-python #2429](https://github.com/zarr-developers/zarr-python/pull/2429)
 
 The `ZarrsCodecPipeline` specific options are:
-- `chunk_concurrent_maximum`: the maximum number of chunks stored/retrieved concurrently.
+- `codec_pipeline.chunk_concurrent_maximum`: the maximum number of chunks stored/retrieved concurrently.
   - Defaults to the number of logical CPUs if `None`. It is constrained by `threading.num_workers` as well.
 - `codec_pipeline.chunk_concurrent_minimum`: the minimum number of chunks retrieved/stored concurrently when balancing chunk/codec concurrency.
   - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info
