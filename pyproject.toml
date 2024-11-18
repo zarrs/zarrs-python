@@ -42,9 +42,9 @@ test = [
     "requests",
     "mypy",
     "hypothesis",
-    "pytest-xdist"
+    "pytest-xdist",
 ]
-dev = ["maturin"]
+dev = ["maturin", "pip"]
 doc = ["sphinx>=7.4.6", "myst-parser"]
 
 [tool.maturin]
