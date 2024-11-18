@@ -9,6 +9,7 @@ classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Typing :: Typed",
 ]
 dynamic = ["version"]
 dependencies = [
@@ -41,9 +42,9 @@ test = [
     "requests",
     "mypy",
     "hypothesis",
-    "pytest-xdist"
+    "pytest-xdist",
 ]
-dev = ["maturin"]
+dev = ["maturin", "pip"]
 doc = ["sphinx>=7.4.6", "myst-parser"]
 
 [tool.maturin]
