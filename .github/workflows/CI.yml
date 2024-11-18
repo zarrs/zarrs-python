@@ -10,7 +10,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-env: 
+env:
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
           cache-dependency-glob:  |
             pyproject.toml
             Cargo.toml
-      
+
       - name: Install python deps + Build
         run: |
           uv pip install --system -e ".[test]" maturin --verbose

@@ -3,7 +3,7 @@
 ```{warning}
 ⚠️ The version of `zarr-python` we currently depend on is still in pre-release and this
 package is accordingly extremely experimental.
-We cannot guarantee any stability or correctness at the moment, although we have 
+We cannot guarantee any stability or correctness at the moment, although we have
 tried to do extensive testing and make clear what we think we support and do not.
 ```
 
@@ -23,7 +23,56 @@ You can then use your `zarr` as normal (with some caveats)!
 
 We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class but it is not meant to be instantiated and we do not guarantee the stability of its API beyond what is required so that `zarr-python` can use it.  Therefore, it is not documented here.  We also export two errors, `DiscontiguousArrayError` and `CollapsedDimensionError` that can be thrown in the process of converting to indexers that `zarrs` can understand (see below for more details).
 
-There are two ways to control the concurrency of the i/o **TODO: Need to clarify this**
+### Configuration
+
+`ZarrsCodecPipeline` options are exposed through `zarr.config`.
+
+Standard `zarr.config` options control some functionality (see the defaults in the [config.py](https://github.com/zarr-developers/zarr-python/blob/main/src/zarr/core/config.py) of `zarr-python`):
+- `threading.num_workers`: the maximum number of threads used internally by the `ZarrsCodecPipeline` on the Rust side.
+  - Defaults to the number of threads in the global `rayon` thread pool if set to `None`, which is [typically the number of logical CPUs](https://docs.rs/rayon/latest/rayon/struct.ThreadPoolBuilder.html#method.num_threads).
+- `array.write_empty_chunks`: whether or not to store empty chunks.
+  - Defaults to false if `None`. Note that checking for emptiness has some overhead, see [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#store-empty-chunks) for more info.
+  - This option name is proposed in [zarr-python #2429](https://github.com/zarr-developers/zarr-python/pull/2429)
+
+The `ZarrsCodecPipeline` specific options are:
+- `codec_pipeline.chunk_concurrent_maximum`: the maximum number of chunks stored/retrieved concurrently.
+  - Defaults to the number of logical CPUs if `None`. It is constrained by `threading.num_workers` as well.
+- `codec_pipeline.chunk_concurrent_minimum`: the minimum number of chunks retrieved/stored concurrently when balancing chunk/codec concurrency.
+  - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info
+- `codec_pipeline.validate_checksums`: enable checksum validation (e.g. with the CRC32C codec).
+  - Defaults to true if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
+
+For example:
+```python
+zarr.config.set({
+    "threading.num_workers": None,
+    "array.write_empty_chunks": False,
+    "codec_pipeline": {
+        "path": "zarrs.ZarrsCodecPipeline",
+        "validate_checksums": True,
+        "store_empty_chunks": False,
+        "chunk_concurrent_maximum": None,
+        "chunk_concurrent_minimum": 4,
+    }
+})
+```
+
+## Concurrency
+
+Concurrency can be classified into two types:
+- chunk (outer) concurrency: the number of chunks retrieved/stored concurrently.
+  - This is chosen automatically based on various factors, such as the chunk size and codecs.
+  - It is constrained between `codec_pipeline.chunk_concurrent_minimum` and `async.concurrency` for operations involving multiple chunks.
+- codec (inner) concurrency: the number of threads encoding/decoding a chunk.
+  - This is chosen automatically in combination with the chunk concurrency.
+
+The product of the chunk and codec concurrency will approximately match `threading.num_workers`.
+
+Chunk concurrency is typically favored because:
+- parallel encoding/decoding can have a high overhead with some codecs, especially with small chunks, and
+- it is advantageous to retrieve/store multiple chunks concurrently, especially with high latency stores.
+
+`zarrs-python` will often favor codec concurrency with sharded arrays, as they are well suited to codec concurrency.
 
 ## Supported Indexing Methods
 
