@@ -67,12 +67,8 @@ jobs:
                 fi
             else
                 # If we're running on debian-based system.
-                apt update -y && apt-get install -y libssl-dev openssl pkg-config
-
-                if [[ "$(uname -m)" == "i686" ]]; then
-                    apt-get install -y gcc-12-i686-linux-gnu
-                    ln -s /usr/bin/i686-linux-gnu-gcc-12 /usr/bin/i686-linux-gnu-gcc
-                fi
+                apt update -y && apt-get install -y libssl-dev openssl pkg-config gcc-12-i686-linux-gnu
+                ln -s /usr/bin/i686-linux-gnu-gcc-12 /usr/bin/i686-linux-gnu-gcc
             fi
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
       - run: twine check --strict dist/*
