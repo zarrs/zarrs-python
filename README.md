@@ -29,13 +29,14 @@ We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class b
 
 Standard `zarr.config` options control some functionality (see the defaults in the [config.py](https://github.com/zarr-developers/zarr-python/blob/main/src/zarr/core/config.py) of `zarr-python`):
 - `threading.num_workers`: the maximum number of threads used internally by the `ZarrsCodecPipeline` on the Rust side.
-- `async.concurrency`: the maximum number of chunks stored/retrieved concurrently.
-  - `threading.num_workers` and `async.concurrency` default to the number of threads in the global rayon thread pool if set to `None`, which is [typically the number of logical CPUs](https://docs.rs/rayon/latest/rayon/struct.ThreadPoolBuilder.html#method.num_threads).
+  - Defaults to the number of threads in the global `rayon` thread pool if set to `None`, which is [typically the number of logical CPUs](https://docs.rs/rayon/latest/rayon/struct.ThreadPoolBuilder.html#method.num_threads).
 - `array.write_empty_chunks`: whether or not to store empty chunks.
   - Defaults to false if `None`. Note that checking for emptiness has some overhead, see [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#store-empty-chunks) for more info.
   - This option name is proposed in [zarr-python #2429](https://github.com/zarr-developers/zarr-python/pull/2429)
 
 The `ZarrsCodecPipeline` specific options are:
+- `chunk_concurrent_maximum`: the maximum number of chunks stored/retrieved concurrently.
+  - Defaults to the number of logical CPUs if `None`. It is constrained by `threading.num_workers` as well.
 - `codec_pipeline.chunk_concurrent_minimum`: the minimum number of chunks retrieved/stored concurrently when balancing chunk/codec concurrency.
   - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info
 - `codec_pipeline.validate_checksums`: enable checksum validation (e.g. with the CRC32C codec).
@@ -45,12 +46,12 @@ For example:
 ```python
 zarr.config.set({
     "threading.num_workers": None,
-    "async.concurrency": None,
     "array.write_empty_chunks": False,
     "codec_pipeline": {
         "path": "zarrs.ZarrsCodecPipeline",
         "validate_checksums": True,
         "store_empty_chunks": False,
+        "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
     }
 })

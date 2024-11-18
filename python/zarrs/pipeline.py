@@ -60,7 +60,9 @@ class ZarrsCodecPipeline(CodecPipeline):
                 chunk_concurrent_minimum=config.get(
                     "codec_pipeline.chunk_concurrent_minimum", None
                 ),
-                chunk_concurrent_maximum=config.get("async.concurrency", None),
+                chunk_concurrent_maximum=config.get(
+                    "codec_pipeline.chunk_concurrent_maximum", None
+                ),
                 num_threads=config.get("threading.max_workers", None),
             ),
         )
