@@ -242,6 +242,7 @@ impl CodecPipelineImpl {
 impl CodecPipelineImpl {
     #[pyo3(signature = (
         metadata,
+        *,
         validate_checksums=None,
         store_empty_chunks=None,
         chunk_concurrent_minimum=None,
