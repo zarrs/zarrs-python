@@ -61,5 +61,5 @@ jobs:
       - name: Check formatting
         run: |
           cargo run --bin stub_gen
-          pre-commit run --all-files --show-diff-on-failure || exit 1
-          git diff --exit-code HEAD -- python/**/*.pyi
+          pre-commit run --all-files --show-diff-on-failure || true
+          git diff --exit-code HEAD
