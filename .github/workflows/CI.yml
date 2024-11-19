@@ -59,6 +59,7 @@ jobs:
         run: cargo test
 
       - name: Check formatting
+        # see “Type hints” section in contributing.md
         run: |
           cargo run --bin stub_gen
           pre-commit run --all-files --show-diff-on-failure || true
