@@ -44,7 +44,7 @@ test = [
     "hypothesis",
     "pytest-xdist",
 ]
-dev = ["maturin", "pip"]
+dev = ["maturin", "pip", "pre-commit"]
 doc = ["sphinx>=7.4.6", "myst-parser"]
 
 [tool.maturin]
@@ -52,13 +52,13 @@ python-source = "python"
 module-name = "zarrs._internal"
 features = ["pyo3/extension-module"]
 
-
 [tool.pytest.ini_options]
 minversion = "7"
 testpaths = ["tests"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
@@ -112,5 +112,7 @@ ignore = [
     # allow I, O, l as variable names -> I is the identity matrix, i, j, k, l is reasonable indexing notation
     "E741",
 ]
+[tool.ruff.lint.per-file-ignores]
+"**/*.pyi" = ["ICN001"]
 [tool.ruff.lint.isort]
 known-first-party = ["zarrs"]

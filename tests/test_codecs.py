@@ -305,7 +305,7 @@ def test_invalid_metadata(store: Store) -> None:
             ],
         )
     spath4 = StorePath(store, "invalid_missing_bytes_codec")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r".*[Cc]odec.*required"):
         Array.create(
             spath4,
             shape=(16, 16),
@@ -317,7 +317,9 @@ def test_invalid_metadata(store: Store) -> None:
             ],
         )
     spath5 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=r".*shard.*chunk_shape.*array.*shape.*need.*same.*dimensions"
+    ):
         Array.create(
             spath5,
             shape=(16, 16),
@@ -329,7 +331,9 @@ def test_invalid_metadata(store: Store) -> None:
             ],
         )
     spath6 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=r".*array.*chunk_shape.*divisible.*shard.*chunk_shape"
+    ):
         Array.create(
             spath6,
             shape=(16, 16),

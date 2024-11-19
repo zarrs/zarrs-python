@@ -12,6 +12,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  PYTEST_ADDOPTS: '--color=yes'
 
 jobs:
   build_and_test:
@@ -49,10 +50,17 @@ jobs:
 
       - name: Install python deps + Build
         run: |
-          uv pip install --system -e ".[test]" maturin --verbose
+          uv pip install --system -e ".[test,dev]" --verbose
 
       - name: Python Tests
         run: pytest -n auto
 
       - name: Rust Tests
         run: cargo test
+
+      - name: Check formatting
+        # see “Type hints” section in contributing.md
+        run: |
+          cargo run --bin stub_gen
+          pre-commit run --all-files --show-diff-on-failure || true
+          git diff --exit-code HEAD

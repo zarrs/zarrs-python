@@ -10,7 +10,6 @@ __pycache__/
 
 # Build
 *.so
-*.pyi
 /target/
 /dist/
 /docs/_build/
