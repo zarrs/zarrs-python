@@ -32,10 +32,9 @@ for parallelized tests.  Most tests have been copied from the `zarr-python` repo
 
 ## Type hints
 
-When authoring Python code, your IDE will not be able to analyze the extension module `zarrs._internal`.
-But thanks to [`pyo3-stub-gen`][], we can generate type stubs for it!
+Thanks to [`pyo3-stub-gen`][], we can generate type stubs for the `zarrs._internal` module.
+If the “Check formatting” CI step fails, run `cargo run --bin stub_gen`, then `pre-commit run --all-files`, and commit the changes.
 
-To build the stub generator, run `cargo build --bin stub_gen`.
-Afterwards, whenever you `cargo build`, `maturin build` or interact with your editor’s rust language server (e.g. `rust-analyzer`), the type hints will be updated.
+Once `maturin` can be run as a `hatchling` plugin, this can be made automatic.
 
 [`pyo3-stub-gen`]: https://github.com/Jij-Inc/pyo3-stub-gen
