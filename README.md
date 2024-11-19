@@ -38,7 +38,7 @@ The `ZarrsCodecPipeline` specific options are:
 - `codec_pipeline.chunk_concurrent_maximum`: the maximum number of chunks stored/retrieved concurrently.
   - Defaults to the number of logical CPUs if `None`. It is constrained by `threading.max_workers` as well.
 - `codec_pipeline.chunk_concurrent_minimum`: the minimum number of chunks retrieved/stored concurrently when balancing chunk/codec concurrency.
-  - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info
+  - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info.
 - `codec_pipeline.validate_checksums`: enable checksum validation (e.g. with the CRC32C codec).
   - Defaults to true if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
 
@@ -62,7 +62,7 @@ zarr.config.set({
 Concurrency can be classified into two types:
 - chunk (outer) concurrency: the number of chunks retrieved/stored concurrently.
   - This is chosen automatically based on various factors, such as the chunk size and codecs.
-  - It is constrained between `codec_pipeline.chunk_concurrent_minimum` and `async.concurrency` for operations involving multiple chunks.
+  - It is constrained between `codec_pipeline.chunk_concurrent_minimum` and `codec_pipeline.chunk_concurrent_maximum` for operations involving multiple chunks.
 - codec (inner) concurrency: the number of threads encoding/decoding a chunk.
   - This is chosen automatically in combination with the chunk concurrency.
 

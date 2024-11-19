@@ -17,3 +17,6 @@ __pycache__/
 # Coverage
 /.coverage
 /coverage.xml
+
+# Docs
+docs/generated/
