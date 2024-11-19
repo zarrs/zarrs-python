@@ -12,6 +12,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  PYTEST_ADDOPTS: '--color=yes'
 
 jobs:
   build_and_test:
