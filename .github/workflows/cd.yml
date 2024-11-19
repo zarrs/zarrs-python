@@ -108,4 +108,5 @@ jobs:
           packages-dir: dist/
       - uses: ncipollo/release-action@v1
         with:
+          name: ${{ needs.inspect.outputs.version }}
           prerelease: ${{ needs.inspect.outputs.prerelease != '' }}
