@@ -10,7 +10,6 @@ class CodecPipelineImpl:
     def __new__(
         cls,
         metadata,
-        *,
         validate_checksums=...,
         store_empty_chunks=...,
         chunk_concurrent_minimum=...,
