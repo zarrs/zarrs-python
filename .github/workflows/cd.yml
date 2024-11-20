@@ -63,9 +63,6 @@ jobs:
 
   inspect:
     needs: build
-    outputs:
-      version: ${{ steps.version.outcome == 'success' && steps.version.outputs.full || '0.0.0' }}
-      prerelease: ${{ steps.version.outcome == 'success' && steps.version.outputs.prerelease || '' }}
     runs-on: ubuntu-latest
     steps:
       # keep this the same as below in `publish`
@@ -75,32 +72,71 @@ jobs:
           merge-multiple: true
           path: dist/
       - run: ls -lh dist/
+      # TODO: some more checks? `twine` is already run above
+
+  version_tag:
+    outputs:
+      version: ${{ steps.version.outcome == 'success' && steps.version.outputs.full || '0.0.0' }}
+      prerelease: ${{ steps.version.outcome == 'success' && steps.version.outputs.prerelease || '' }}
+    runs-on: ubuntu-latest
+    steps:
       - id: version
         uses: release-kit/semver@v2
         continue-on-error: true # continue if tag doesn’t match
         with:
           fallback: '0.0.0' # fall back if there is no tag
-      # TODO: some more checks? `twine` is already run above
+      - name: Print version
+        run: echo "${{ steps.version.outputs.full }}"
+
+  version_package:
+    needs: build
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      # keep this the same as above in `version_tag`
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pypi-wheels-linux-x86_64-2_28
+          merge-multiple: true
+          path: dist/
+      - name: Install zarrs-python
+        run: |
+          pip install dist/*manylinux_2_28_x86_64.whl
+      - name: Get zarrs-python version
+        id: version
+        run: |
+          python -c "import zarrs; print(f'version={zarrs.__version__}')" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - name: Print version
+        run: echo "${{ steps.version.outputs.version }}"
 
   publish:
-    if: needs.inspect.outputs.version != '0.0.0'
+    if: |
+      needs.version_package.outputs.version == needs.version_tag.outputs.version &&
+      needs.version_tag.outputs.version != '0.0.0'
     runs-on: ubuntu-latest
-    needs: inspect
+    needs: [inspect, version_tag, version_package]
     environment: pypi
     permissions:
       id-token: write # to authenticate as Trusted Publisher to pypi.org
     steps:
-      # keep this the same as above in `inspect`
+      # keep this the same as above in `version_tag`
       - uses: actions/download-artifact@v4
         with:
           pattern: pypi-wheels-*
           merge-multiple: true
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: "Publishing version ${{ needs.version_tag.outputs.version }}"
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
           repository-url: https://test.pypi.org/legacy/
       - uses: ncipollo/release-action@v1
         with:
-          name: ${{ needs.inspect.outputs.version }}
-          prerelease: ${{ needs.inspect.outputs.prerelease != '' }}
+          name: ${{ needs.version_tag.outputs.version }}
+          prerelease: ${{ needs.version_tag.outputs.prerelease != '' }}
