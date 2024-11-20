@@ -106,6 +106,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          repository-url: https://test.pypi.org/legacy/
       - uses: ncipollo/release-action@v1
         with:
           name: ${{ needs.inspect.outputs.version }}
