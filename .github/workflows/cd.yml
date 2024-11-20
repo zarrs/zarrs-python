@@ -24,9 +24,7 @@ jobs:
         manylinux: ['2_28']
         include:
           # manylinux for various platforms
-          - { os: linux, manylinux: '2_28', target: x86_64 }
           #- { os: linux, manylinux: '2_28', target: i686 }
-          - { os: linux, manylinux: '2_28', target: aarch64 }
           - { os: linux, manylinux: '2_28', target: armv7 }
           - { os: linux, manylinux: '2_28', target: ppc64le }
           #- { os: linux, manylinux: '2_28', target: s390x }
@@ -34,13 +32,8 @@ jobs:
           - { os: linux, manylinux: musllinux_1_2, target: x86_64 }
           - { os: linux, manylinux: musllinux_1_2, target: aarch64 }
           - { os: linux, manylinux: musllinux_1_2, target: armv7 }
-          # macos
-          - { os: macos, target: x86_64 }
-          - { os: macos, target: aarch64 }
           # windows
-          - { os: windows, target: x86_64 }
           - { os: windows, target: i686, python-architecture: x86 }
-          - { os: windows, target: aarch64 }
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
     steps:
       - uses: actions/checkout@v4
