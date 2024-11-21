@@ -58,16 +58,34 @@ jobs:
       - run: twine check --strict dist/*
       - uses: actions/upload-artifact@v4
         with:
-          name: pypi-wheels-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.manylinux }}
+          name: pypi-files-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.manylinux }}
+          path: dist
+
+  build-sdist:
+    name: build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          rust-toolchain: stable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi-files-sdist
           path: dist
 
   inspect:
-    needs: build
+    needs: [build, build-sdist]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: pypi-wheels-*
+          pattern: pypi-files-*
           merge-multiple: true
           path: dist/
       - run: ls -lh dist/
@@ -89,7 +107,7 @@ jobs:
           python-version: '3.13'
       - uses: actions/download-artifact@v4
         with:
-          name: pypi-wheels-linux-x86_64-2_28
+          name: pypi-files-linux-x86_64-2_28
           path: dist/
       - name: Install zarrs-python
         run: pip install packaging dist/*manylinux_2_28_x86_64.whl
@@ -103,11 +121,12 @@ jobs:
     needs: [inspect, version]
     environment: pypi
     permissions:
+      contents: write # to create a github release
       id-token: write # to authenticate as Trusted Publisher to pypi.org
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: pypi-wheels-*
+          pattern: pypi-files-*
           merge-multiple: true
           path: dist/
       - name: "Publishing version ${{ needs.version.outputs.version }}"

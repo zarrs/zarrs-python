@@ -12,6 +12,7 @@ from packaging.version import InvalidVersion, Version
 def set_outputs(version: Version | str) -> None:
     is_prerelease = version.is_prerelease if isinstance(version, Version) else False
     is_prerelease_json = "true" if is_prerelease else "false"
+    print(f"{version=!s} {is_prerelease=}")
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as f:
         print(f"version={version}", file=f)
         print(f"is_prerelease={is_prerelease_json}", file=f)
