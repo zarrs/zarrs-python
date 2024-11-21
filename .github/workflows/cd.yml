@@ -103,6 +103,7 @@ jobs:
     needs: [inspect, version]
     environment: pypi
     permissions:
+      contents: write # to create a github release
       id-token: write # to authenticate as Trusted Publisher to pypi.org
     steps:
       - uses: actions/download-artifact@v4
