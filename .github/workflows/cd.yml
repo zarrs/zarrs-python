@@ -99,22 +99,19 @@ jobs:
           python-version: '3.13'
       - uses: actions/download-artifact@v4
         with:
-          pattern: pypi-wheels-linux-x86_64-2_28
-          merge-multiple: true
+          name: pypi-wheels-linux-x86_64-2_28
           path: dist/
       - name: Install zarrs-python
-        run: |
-          pip install dist/*manylinux_2_28_x86_64.whl
+        run: pip install dist/*manylinux_2_28_x86_64.whl
       - name: Get zarrs-python version
         id: version
-        run: |
-          python -c "import zarrs; print(f'version={zarrs.__version__}')" >> "$GITHUB_OUTPUT"
+        run: python -c "import importlib.metadata as im; version = im.version('zarrs'); print(f'{version=!s}')" >> "$GITHUB_OUTPUT"
         shell: bash
       - name: Print version
         run: echo "${{ steps.version.outputs.version }}"
 
   publish:
-    if: |
+    if: >
       needs.version_package.outputs.version == needs.version_tag.outputs.version &&
       needs.version_tag.outputs.version != '0.0.0'
     runs-on: ubuntu-latest
