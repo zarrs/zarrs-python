@@ -1,4 +1,4 @@
-name: zarrs-python
+name: ci
 
 on:
   push:
@@ -16,7 +16,7 @@ env:
 
 jobs:
   build_and_test:
-    name: zarrs-python
+    name: build and test
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +30,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust_toolchain }}
+          components: rustfmt
 
       - name: Install rust-cache
         uses: Swatinem/rust-cache@v2

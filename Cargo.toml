@@ -2,14 +2,14 @@
 name = "zarrs-python"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
 name = "zarrs_python"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-pyo3 = "0.22.6"
+pyo3 = { version = "0.22.6", features = ["abi3-py311"] }
 zarrs = "0.18.0-beta.0"
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
