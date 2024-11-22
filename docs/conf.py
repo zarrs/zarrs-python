@@ -10,7 +10,7 @@ from importlib.metadata import distribution
 
 _dist = distribution("zarrs")
 project = _dist.name
-copyright = "2024, Ilan Gold, Lachlan Deakin, Philipp Angerer"
+copyright = f"2024, {_dist.metadata['Author']}"
 author = _dist.metadata["Author"]
 release = _dist.version
 
