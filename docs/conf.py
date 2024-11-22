@@ -3,13 +3,16 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+from importlib.metadata import distribution
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "zarrs-python"
+_dist = distribution("zarrs")
+project = _dist.name
 copyright = "2024, Ilan Gold, Lachlan Deakin, Philipp Angerer"
-author = "Ilan Gold, Lachlan Deakin, Philipp Angerer"
-release = "0.1.0"
+author = _dist.metadata["Author"]
+release = _dist.version
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
