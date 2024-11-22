@@ -10,6 +10,7 @@ authors = [
     { name = "Lachlan Deakin" },
     { name = "Philipp Angerer" },
 ]
+license = "MIT"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
