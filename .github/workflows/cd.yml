@@ -137,7 +137,6 @@ jobs:
         with:
           packages-dir: dist/
           verbose: true
-          repository-url: https://test.pypi.org/legacy/
       - uses: ncipollo/release-action@v1
         with:
           name: ${{ needs.version.outputs.version }}
