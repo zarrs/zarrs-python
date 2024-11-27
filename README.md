@@ -23,6 +23,8 @@ You can then use your `zarr` as normal (with some caveats)!
 
 We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class but it is not meant to be instantiated and we do not guarantee the stability of its API beyond what is required so that `zarr-python` can use it.  Therefore, it is not documented here.  We also export two errors, `DiscontiguousArrayError` and `CollapsedDimensionError` that can be thrown in the process of converting to indexers that `zarrs` can understand (see below for more details).
 
+At the moment, we only support local filesystems but intend to support more in the future: https://github.com/ilan-gold/zarrs-python/issues/44
+
 ### Configuration
 
 `ZarrsCodecPipeline` options are exposed through `zarr.config`.
