@@ -66,6 +66,7 @@ impl CodecPipelineImpl {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
         })?;
 
+        // TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
         #[allow(clippy::collapsible_if)]
         if gstore.is_none() {
             if store_path.0.is_empty() && store_path.1.starts_with("file://") {
