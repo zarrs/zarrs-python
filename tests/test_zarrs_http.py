@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
+import aiohttp
 import numpy as np
+import pytest
 import zarr
+from zarr.storage.remote import RemoteStore
 
 import zarrs  # noqa: F401
 
-arr_ref = np.array(
+ARR_REF = np.array(
     [
         [np.nan, np.nan, np.nan, np.nan, 0.1, 0.1, -0.6, 0.1],
         [np.nan, np.nan, np.nan, np.nan, 0.1, 0.1, -1.6, 0.1],
@@ -18,11 +21,22 @@ arr_ref = np.array(
     ]
 )
 
+URL = "https://raw.githubusercontent.com/LDeakin/zarrs/main/zarrs/tests/data/array_write_read.zarr/group/array"
+
 
 def test_zarrs_http():
     zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
-    arr = zarr.open(
-        "https://raw.githubusercontent.com/LDeakin/zarrs/main/zarrs/tests/data/array_write_read.zarr/group/array"
-    )
+    arr = zarr.open(URL)
     assert arr.shape == (8, 8)
-    assert np.allclose(arr[:], arr_ref, equal_nan=True)
+    assert np.allclose(arr[:], ARR_REF, equal_nan=True)
+
+
+@pytest.mark.xfail(reason="Storage options are not supported for HTTP store")
+def test_zarrs_http_kwargs():
+    zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
+    store = RemoteStore.from_url(
+        URL, storage_options={"auth": aiohttp.BasicAuth("user", "pass")}
+    )
+    arr = zarr.open(store)
+    assert arr.shape == (8, 8)
+    assert np.allclose(arr[:], ARR_REF, equal_nan=True)

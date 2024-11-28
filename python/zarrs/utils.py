@@ -67,8 +67,12 @@ def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[sli
 def convert_chunk_to_primitive(
     byte_getter: ByteGetter | ByteSetter, chunk_spec: ArraySpec
 ) -> tuple[(str, str), ChunkCoords, str, Any]:
+    # TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
     if isinstance(byte_getter.store, RemoteStore):
-        # TODO: Prefer passing enum to Rust for RemoteStore, LocalStore, etc?
+        # TODO: Handle supported storage_options per store type (HTTP, S3, etc) and put in an enum (per store) for Rust
+        storage_options = byte_getter.store.fs.storage_options
+        if set(storage_options) > {"asynchronous"}:
+            raise NotImplementedError(f"Unsupported storage options: {storage_options}")
         root = str(byte_getter.store.path)
         path = str(byte_getter.path)
     elif isinstance(byte_getter.store, LocalStore):
@@ -76,7 +80,7 @@ def convert_chunk_to_primitive(
         path = str(byte_getter)
     else:
         # TODO: Check what other store types exist
-        raise ValueError(f"Unsupported store type: {type(byte_getter.store)}")
+        raise NotImplementedError(f"Unsupported store type: {type(byte_getter.store)}")
     return (
         (root, path),
         chunk_spec.shape,
