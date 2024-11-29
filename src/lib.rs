@@ -440,7 +440,7 @@ impl CodecPipelineImpl {
         })?;
         Ok(chunk_bytes
             .into_iter()
-            .map(|x| x.into_pyarray_bound(py))
+            .map(|x| x.into_pyarray(py))
             .collect())
     }
 
