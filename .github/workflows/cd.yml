@@ -42,7 +42,10 @@ jobs:
         with:
           python-version: '3.13'
           architecture: ${{ matrix.python-architecture || 'x64' }}
-      - run: pip install twine
+      - run: |
+          which pip
+          which python
+          pip install "twine>6.0.0"
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
