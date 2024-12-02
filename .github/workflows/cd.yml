@@ -16,7 +16,6 @@ jobs:
     name: build on ${{ matrix.os }} (${{ matrix.target }}${{ matrix.os == 'linux' && format(' - {0}', matrix.manylinux == 'auto' && 'manylinux' || matrix.manylinux) || '' }})
     # only run on push to tags, main branch, or explicit full build
     # keep condition in sync with `build-sdist` job
-    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +49,8 @@ jobs:
           args: --release --out dist --interpreter '3.11 3.12 3.13'
           rust-toolchain: stable
           docker-options: -e CI
+          # https://github.com/PyO3/maturin/issues/2336#issuecomment-2507418846
+          maturin-version: 1.7.4
           before-script-linux: |
             # If we're running on rhel centos, install needed packages.
             if command -v yum &> /dev/null; then
@@ -65,7 +66,6 @@ jobs:
   build-sdist:
     name: build sdist
     # keep condition in sync with `build` job
-    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +74,8 @@ jobs:
           python-version: '3.13'
       - uses: PyO3/maturin-action@v1
         with:
+          # https://github.com/PyO3/maturin/issues/2336#issuecomment-2507418846
+          maturin-version: 1.7.4
           command: sdist
           args: --out dist
           rust-toolchain: stable
