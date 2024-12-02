@@ -59,7 +59,9 @@ jobs:
                 yum update -y && yum install -y perl-core
             fi
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
-      - run: twine check --strict dist/*
+      - run: |
+          which twine
+          twine check --strict dist/*
       - uses: actions/upload-artifact@v4
         with:
           name: pypi-files-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.manylinux }}
