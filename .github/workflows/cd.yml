@@ -50,6 +50,8 @@ jobs:
           args: --release --out dist --interpreter '3.11 3.12 3.13'
           rust-toolchain: stable
           docker-options: -e CI
+          # https://github.com/PyO3/maturin/issues/2336#issuecomment-2507418846
+          maturin-version: 1.7.4
           before-script-linux: |
             # If we're running on rhel centos, install needed packages.
             if command -v yum &> /dev/null; then
@@ -74,6 +76,8 @@ jobs:
           python-version: '3.13'
       - uses: PyO3/maturin-action@v1
         with:
+          # https://github.com/PyO3/maturin/issues/2336#issuecomment-2507418846
+          maturin-version: 1.7.4
           command: sdist
           args: --out dist
           rust-toolchain: stable
