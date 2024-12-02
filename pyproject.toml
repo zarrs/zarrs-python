@@ -50,7 +50,8 @@ test = [
     "hypothesis",
     "pytest-xdist",
 ]
-dev = ["maturin", "pip", "pre-commit"]
+# https://github.com/PyO3/maturin/issues/2336#issuecomment-2507418846 for maturin pin
+dev = ["maturin<=1.7.4", "pip", "pre-commit"]
 doc = ["sphinx>=7.4.6", "myst-parser"]
 
 [tool.maturin]
