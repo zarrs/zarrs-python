@@ -45,7 +45,7 @@ jobs:
       - run: |
           which pip
           which python
-          pip install "twine>6.0.0"
+          pip install twine
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
