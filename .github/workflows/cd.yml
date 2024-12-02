@@ -16,7 +16,6 @@ jobs:
     name: build on ${{ matrix.os }} (${{ matrix.target }}${{ matrix.os == 'linux' && format(' - {0}', matrix.manylinux == 'auto' && 'manylinux' || matrix.manylinux) || '' }})
     # only run on push to tags, main branch, or explicit full build
     # keep condition in sync with `build-sdist` job
-    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
     strategy:
       fail-fast: false
       matrix:
@@ -67,7 +66,6 @@ jobs:
   build-sdist:
     name: build sdist
     # keep condition in sync with `build` job
-    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'Full Build')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
