@@ -53,7 +53,7 @@ class ZarrsCodecPipelineState(TypedDict):
     codec_metadata_json: str
     codecs: tuple[Codec, ...]
 
-@dataclass(frozen=False)
+@dataclass
 class ZarrsCodecPipeline(CodecPipeline):
     codecs: tuple[Codec, ...]
     impl: CodecPipelineImpl
