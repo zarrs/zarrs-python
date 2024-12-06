@@ -7,14 +7,12 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from zarr.core.indexing import SelectorTuple, is_integer
-from zarr.storage.local import LocalStore
-from zarr.storage.remote import RemoteStore
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from types import EllipsisType
 
-    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.common import ChunkCoords
 
@@ -65,24 +63,11 @@ def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[sli
 
 
 def convert_chunk_to_primitive(
-    byte_getter: ByteGetter | ByteSetter, chunk_spec: ArraySpec
-) -> tuple[(str, str), ChunkCoords, str, Any]:
-    # TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
-    if isinstance(byte_getter.store, RemoteStore):
-        # TODO: Handle supported storage_options per store type (HTTP, S3, etc) and put in an enum (per store) for Rust
-        storage_options = byte_getter.store.fs.storage_options
-        if set(storage_options) > {"asynchronous"}:
-            raise NotImplementedError(f"Unsupported storage options: {storage_options}")
-        root = str(byte_getter.store.path)
-        path = str(byte_getter.path)
-    elif isinstance(byte_getter.store, LocalStore):
-        root = ""
-        path = str(byte_getter)
-    else:
-        # TODO: Check what other store types exist
-        raise NotImplementedError(f"Unsupported store type: {type(byte_getter.store)}")
+    byte_interface: ByteGetter | ByteSetter, chunk_spec: ArraySpec
+) -> tuple[(Store, str), ChunkCoords, str, Any]:
     return (
-        (root, path),
+        byte_interface.store,
+        byte_interface.path,
         chunk_spec.shape,
         str(chunk_spec.dtype),
         chunk_spec.fill_value.tobytes(),
@@ -165,7 +150,7 @@ def make_chunk_info_for_rust_with_indices(
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
     ],
     drop_axes: tuple[int, ...],
-) -> list[tuple[tuple[str, ChunkCoords, str, Any], list[slice], list[slice]]]:
+) -> list[tuple[tuple[(Store, str), ChunkCoords, str, Any], list[slice], list[slice]]]:
     chunk_info_with_indices = []
     for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
         chunk_info = convert_chunk_to_primitive(byte_getter, chunk_spec)
@@ -194,7 +179,7 @@ def make_chunk_info_for_rust(
     batch_info: Iterable[
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
     ],
-) -> list[tuple[str, ChunkCoords, str, Any]]:
+) -> list[tuple[(Store, str), ChunkCoords, str, Any]]:
     return list(
         convert_chunk_to_primitive(byte_getter, chunk_spec)
         for (byte_getter, chunk_spec, _, _) in batch_info
