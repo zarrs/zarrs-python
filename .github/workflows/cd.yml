@@ -42,7 +42,6 @@ jobs:
           python-version: '3.13'
           architecture: ${{ matrix.python-architecture || 'x64' }}
       - run: pip install twine
-      - uses: ilammy/setup-nasm@v1
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
