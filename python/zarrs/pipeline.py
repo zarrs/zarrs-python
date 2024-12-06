@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from zarr.abc.codec import (
@@ -49,6 +49,9 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
         num_threads=config.get("threading.max_workers", None),
     )
 
+class ZarrsCodecPipelineState(TypedDict):
+    codec_metadata_json: str
+    codecs: tuple[Codec, ...]
 
 @dataclass(frozen=False)
 class ZarrsCodecPipeline(CodecPipeline):
@@ -56,10 +59,10 @@ class ZarrsCodecPipeline(CodecPipeline):
     impl: CodecPipelineImpl
     codec_metadata_json: str
 
-    def __getstate__(self):
+    def __getstate__(self) -> ZarrsCodecPipelineState:
         return { "codec_metadata_json": self.codec_metadata_json, "codecs": self.codecs }
 
-    def __setstate__(self, state: dict[Literal["codec_metadata_json", "codecs"], Any]):
+    def __setstate__(self, state: ZarrsCodecPipelineState):
         self.codecs = state["codecs"]
         self.codec_metadata_json = state["codec_metadata_json"]
         self.impl = get_codec_pipeline_impl(self.codec_metadata_json)
