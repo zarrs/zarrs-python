@@ -32,7 +32,7 @@ from .utils import (
 )
 
 
-def get_codec_pipeline_impl(codec_metadata_json) -> CodecPipelineImpl:
+def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
     return CodecPipelineImpl(
         codec_metadata_json,
         validate_checksums=config.get(
