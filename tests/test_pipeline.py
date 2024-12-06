@@ -231,6 +231,7 @@ def test_ellipsis_indexing_invalid(arr: zarr.Array):
         # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
         arr[2, ...] = stored_value
 
+
 def test_pickle(arr: zarr.Array, tmp_path: Path):
     arr[:] = np.arange(reduce(operator.mul, arr.shape, 1)).reshape(arr.shape)
     expected = arr[:]
