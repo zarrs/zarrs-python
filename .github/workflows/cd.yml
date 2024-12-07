@@ -35,6 +35,8 @@ jobs:
           # windows
           - { os: windows, target: i686, python-architecture: x86 }
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
+    env:
+        MATURIN_USE_XWIN: ${{ matrix.os == 'windows' && matrix.target == 'aarch64' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
