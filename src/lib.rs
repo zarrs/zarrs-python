@@ -62,32 +62,36 @@ enum StoreConfig {
 
 impl<'py> FromPyObject<'py> for StoreConfig {
     fn extract_bound(store: &Bound<'py, PyAny>) -> PyResult<Self> {
-        if store.get_type().name()? == "LocalStore" {
-            let root: String = store
-                .getattr("root")?
-                .call_method("as_posix", (), None)?
-                .extract()?;
-            Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(root)))
-        } else if store.get_type().name()? == "RemoteStore" {
-            let fs = store.getattr("fs")?;
-            let name = fs.get_type().name()?;
-            let path: String = store.getattr("path")?.extract()?;
-            let storage_options: HashMap<String, Bound<'py, PyAny>> =
-                fs.getattr("storage_options")?.extract()?;
-            if name == "HTTPFileSystem" {
-                Ok(StoreConfig::HTTP(HTTPStoreConfig::new(
-                    &path,
-                    &storage_options,
-                )?))
-            } else {
-                return Err(PyErr::new::<PyValueError, _>(
-                    "zarrs-python only supports a HTTPFileSystem RemoteStore".to_string(),
-                ));
+        let name = store.get_type().name()?;
+        let name = name.to_str()?;
+        match name {
+            "LocalStore" => {
+                let root: String = store
+                    .getattr("root")?
+                    .call_method("as_posix", (), None)?
+                    .extract()?;
+                Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(root)))
             }
-        } else {
-            Err(PyErr::new::<PyValueError, _>(
+            "RemoteStore" => {
+                let fs = store.getattr("fs")?;
+                let name = fs.get_type().name()?;
+                let path: String = store.getattr("path")?.extract()?;
+                let storage_options: HashMap<String, Bound<'py, PyAny>> =
+                    fs.getattr("storage_options")?.extract()?;
+                if name == "HTTPFileSystem" {
+                    Ok(StoreConfig::HTTP(HTTPStoreConfig::new(
+                        &path,
+                        &storage_options,
+                    )?))
+                } else {
+                    return Err(PyErr::new::<PyValueError, _>(
+                        "zarrs-python only supports a HTTPFileSystem RemoteStore".to_string(),
+                    ));
+                }
+            }
+            _ => Err(PyErr::new::<PyValueError, _>(
                 "zarrs-python only supports LocalStore and RemoteStore".to_string(),
-            ))
+            )),
         }
     }
 }
