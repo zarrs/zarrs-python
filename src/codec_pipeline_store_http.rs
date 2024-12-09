@@ -23,10 +23,7 @@ pub struct HTTPStoreConfig {
 }
 
 impl HTTPStoreConfig {
-    pub fn new<'py>(
-        path: &str,
-        storage_options: &HashMap<String, Bound<'py, PyAny>>,
-    ) -> PyResult<Self> {
+    pub fn new(path: &str, storage_options: &HashMap<String, Bound<'_, PyAny>>) -> PyResult<Self> {
         if !storage_options.is_empty() {
             for storage_option in storage_options.keys() {
                 match storage_option.as_str() {
