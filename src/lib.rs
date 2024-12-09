@@ -34,7 +34,7 @@ mod tests;
 mod utils;
 
 use codec_pipeline_store_filesystem::{CodecPipelineStoreFilesystem, FilesystemStoreConfig};
-use codec_pipeline_store_http::{CodecPipelineStoreHTTP, HTTPStoreConfig};
+use codec_pipeline_store_http::{CodecPipelineStoreHTTP, HttpStoreConfig};
 use utils::{PyErrExt, PyUntypedArrayExt};
 
 trait CodecPipelineStore: Send + Sync {
@@ -56,7 +56,7 @@ pub struct CodecPipelineImpl {
 #[gen_stub_pyclass_enum]
 enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
-    HTTP(HTTPStoreConfig),
+    Http(HttpStoreConfig),
     // TODO: Add support for more stores
 }
 
@@ -79,7 +79,7 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                 let storage_options: HashMap<String, Bound<'py, PyAny>> =
                     fs.getattr("storage_options")?.extract()?;
                 if name == "HTTPFileSystem" {
-                    Ok(StoreConfig::HTTP(HTTPStoreConfig::new(
+                    Ok(StoreConfig::Http(HttpStoreConfig::new(
                         &path,
                         &storage_options,
                     )?))
@@ -113,7 +113,7 @@ impl CodecPipelineImpl {
                     StoreConfig::Filesystem(config) => {
                         *gstore = Some(Arc::new(CodecPipelineStoreFilesystem::new(config)?));
                     }
-                    StoreConfig::HTTP(config) => {
+                    StoreConfig::Http(config) => {
                         *gstore = Some(Arc::new(CodecPipelineStoreHTTP::new(config)?));
                     }
                 }

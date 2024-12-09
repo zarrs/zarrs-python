@@ -18,11 +18,11 @@ pub struct CodecPipelineStoreHTTP {
 
 #[gen_stub_pyclass]
 #[pyclass]
-pub struct HTTPStoreConfig {
+pub struct HttpStoreConfig {
     pub root: String,
 }
 
-impl HTTPStoreConfig {
+impl HttpStoreConfig {
     pub fn new(path: &str, storage_options: &HashMap<String, Bound<'_, PyAny>>) -> PyResult<Self> {
         if !storage_options.is_empty() {
             for storage_option in storage_options.keys() {
@@ -45,7 +45,7 @@ impl HTTPStoreConfig {
 }
 
 impl CodecPipelineStoreHTTP {
-    pub fn new(config: &HTTPStoreConfig) -> PyResult<Self> {
+    pub fn new(config: &HttpStoreConfig) -> PyResult<Self> {
         let builder = opendal::services::Http::default().endpoint(&config.root);
         let operator = opendal::Operator::new(builder)
             .map_py_err::<PyValueError>()?
