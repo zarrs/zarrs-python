@@ -106,20 +106,19 @@ impl CodecPipelineImpl {
         })?;
 
         // TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
-        match gstore.as_ref() {
-            Some(gstore) => Ok(gstore.store()),
-            None => {
-                match config {
-                    StoreConfig::Filesystem(config) => {
-                        *gstore = Some(Arc::new(CodecPipelineStoreFilesystem::new(config)?));
-                    }
-                    StoreConfig::Http(config) => {
-                        *gstore = Some(Arc::new(CodecPipelineStoreHTTP::new(config)?));
-                    }
+        if let Some(gstore) = gstore.as_ref() {
+            Ok(gstore.store())
+        } else {
+            match config {
+                StoreConfig::Filesystem(config) => {
+                    *gstore = Some(Arc::new(CodecPipelineStoreFilesystem::new(config)?));
                 }
-                let gstore = gstore.as_ref().expect("store was just initialised");
-                Ok(gstore.store())
+                StoreConfig::Http(config) => {
+                    *gstore = Some(Arc::new(CodecPipelineStoreHTTP::new(config)?));
+                }
             }
+            let gstore = gstore.as_ref().expect("store was just initialised");
+            Ok(gstore.store())
         }
     }
 
