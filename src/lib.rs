@@ -93,9 +93,9 @@ impl<'py> FromPyObject<'py> for StoreConfig {
 }
 
 impl CodecPipelineImpl {
-    fn get_store(
+    fn get_store_from_config(
         &self,
-        store: &StoreConfig,
+        config: &StoreConfig,
     ) -> PyResult<Arc<dyn ReadableWritableListableStorageTraits>> {
         let mut gstore = self.store.lock().map_err(|_| {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
@@ -105,7 +105,7 @@ impl CodecPipelineImpl {
         match gstore.as_ref() {
             Some(gstore) => Ok(gstore.store()),
             None => {
-                match store {
+                match config {
                     StoreConfig::Filesystem(config) => {
                         *gstore = Some(Arc::new(CodecPipelineStoreFilesystem::new(config)?));
                     }
@@ -128,7 +128,7 @@ impl CodecPipelineImpl {
             .into_iter()
             .map(|raw| {
                 // TODO: Prefer to get the store once, and assume it is the same for all chunks
-                let store = self.get_store(raw.store_config())?;
+                let store = self.get_store_from_config(raw.store_config())?;
                 let path = raw.path();
                 let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
                 raw.into_item(store, key, shape)
