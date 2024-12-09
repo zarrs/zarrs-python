@@ -84,9 +84,9 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                         &storage_options,
                     )?))
                 } else {
-                    return Err(PyErr::new::<PyValueError, _>(
+                    Err(PyErr::new::<PyValueError, _>(
                         "zarrs-python only supports a HTTPFileSystem RemoteStore".to_string(),
-                    ));
+                    ))
                 }
             }
             _ => Err(PyErr::new::<PyValueError, _>(
