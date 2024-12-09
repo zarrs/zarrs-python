@@ -74,19 +74,19 @@ impl<'py> FromPyObject<'py> for StoreConfig {
             }
             "RemoteStore" => {
                 let fs = store.getattr("fs")?;
-                let name = fs.get_type().name()?;
+                let fs_name = fs.get_type().name()?;
+                let fs_name = fs_name.to_str()?;
                 let path: String = store.getattr("path")?.extract()?;
                 let storage_options: HashMap<String, Bound<'py, PyAny>> =
                     fs.getattr("storage_options")?.extract()?;
-                if name == "HTTPFileSystem" {
-                    Ok(StoreConfig::Http(HttpStoreConfig::new(
+                match fs_name {
+                    "HTTPFileSystem" => Ok(StoreConfig::Http(HttpStoreConfig::new(
                         &path,
                         &storage_options,
-                    )?))
-                } else {
-                    Err(PyErr::new::<PyValueError, _>(
+                    )?)),
+                    _ => Err(PyErr::new::<PyValueError, _>(
                         "zarrs-python only supports a HTTPFileSystem RemoteStore".to_string(),
-                    ))
+                    )),
                 }
             }
             _ => Err(PyErr::new::<PyValueError, _>(
