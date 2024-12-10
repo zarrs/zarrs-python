@@ -4,7 +4,7 @@ use chunk_item::{ChunksItem, IntoItem};
 use concurrency::ChunkConcurrentLimitAndCodecOptions;
 use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
-use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyclass_enum, gen_stub_pymethods};
@@ -87,14 +87,14 @@ impl<'py> FromPyObject<'py> for StoreConfigType {
                         &path,
                         &storage_options,
                     )?)),
-                    _ => Err(PyErr::new::<PyValueError, _>(
-                        "zarrs-python only supports a HTTPFileSystem RemoteStore".to_string(),
-                    )),
+                    _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
+                        "zarrs-python does not support {fs_name} (RemoteStore) stores"
+                    ))),
                 }
             }
-            _ => Err(PyErr::new::<PyValueError, _>(
-                "zarrs-python only supports LocalStore and RemoteStore".to_string(),
-            )),
+            _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
+                "zarrs-python does not support {name} stores"
+            ))),
         }
     }
 }
