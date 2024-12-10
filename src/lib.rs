@@ -96,6 +96,19 @@ impl<'py> FromPyObject<'py> for StoreConfig {
     }
 }
 
+impl TryFrom<&StoreConfig> for Arc<dyn CodecPipelineStore> {
+    type Error = PyErr;
+
+    fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
+        match value {
+            StoreConfig::Filesystem(config) => {
+                Ok(Arc::new(CodecPipelineStoreFilesystem::new(config)?))
+            }
+            StoreConfig::Http(config) => Ok(Arc::new(CodecPipelineStoreHTTP::new(config)?)),
+        }
+    }
+}
+
 impl CodecPipelineImpl {
     fn get_store_from_config(
         &self,
@@ -109,14 +122,7 @@ impl CodecPipelineImpl {
         if let Some(gstore) = gstore.as_ref() {
             Ok(gstore.store())
         } else {
-            match config {
-                StoreConfig::Filesystem(config) => {
-                    *gstore = Some(Arc::new(CodecPipelineStoreFilesystem::new(config)?));
-                }
-                StoreConfig::Http(config) => {
-                    *gstore = Some(Arc::new(CodecPipelineStoreHTTP::new(config)?));
-                }
-            }
+            *gstore = Some(config.try_into()?);
             let gstore = gstore.as_ref().expect("store was just initialised");
             Ok(gstore.store())
         }
