@@ -39,8 +39,6 @@ impl TryInto<Arc<dyn ReadableWritableListableStorageTraits>> for &HttpStoreConfi
 
     fn try_into(self) -> Result<Arc<dyn ReadableWritableListableStorageTraits>, Self::Error> {
         let builder = opendal::services::Http::default().endpoint(&self.root);
-        let store: Arc<dyn ReadableWritableListableStorageTraits> =
-            opendal_builder_to_sync_store(builder)?;
-        Ok(store)
+        opendal_builder_to_sync_store(builder)
     }
 }

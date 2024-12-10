@@ -15,12 +15,8 @@ use zarrs::storage::{
     storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
     ReadableWritableListableStorageTraits,
 };
-use zarrs_opendal::AsyncOpendalStore;
 
-use crate::{
-    runtime::{tokio_block_on, TokioBlockOn},
-    utils::PyErrExt,
-};
+use crate::{runtime::tokio_block_on, utils::PyErrExt};
 
 mod filesystem;
 mod http;
@@ -82,9 +78,9 @@ impl TryFrom<&StoreConfigType> for Arc<dyn ReadableWritableListableStorageTraits
     }
 }
 
-type OpendalStoreSync = Arc<AsyncToSyncStorageAdapter<AsyncOpendalStore, TokioBlockOn>>;
-
-fn opendal_builder_to_sync_store<B: Builder>(builder: B) -> PyResult<OpendalStoreSync> {
+fn opendal_builder_to_sync_store<B: Builder>(
+    builder: B,
+) -> PyResult<Arc<dyn ReadableWritableListableStorageTraits>> {
     let operator = opendal::Operator::new(builder)
         .map_py_err::<PyValueError>()?
         .finish();

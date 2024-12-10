@@ -24,7 +24,7 @@ impl TryInto<Arc<dyn ReadableWritableListableStorageTraits>> for &FilesystemStor
     type Error = PyErr;
 
     fn try_into(self) -> Result<Arc<dyn ReadableWritableListableStorageTraits>, Self::Error> {
-        let store: Arc<dyn ReadableWritableListableStorageTraits> =
+        let store =
             Arc::new(FilesystemStore::new(self.root.clone()).map_py_err::<PyRuntimeError>()?);
         Ok(store)
     }
