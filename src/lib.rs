@@ -4,15 +4,15 @@ use chunk_item::{ChunksItem, IntoItem};
 use concurrency::ChunkConcurrentLimitAndCodecOptions;
 use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
-use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyclass_enum, gen_stub_pymethods};
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use store::{CodecPipelineStore, StoreConfigType};
 use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
@@ -25,21 +25,14 @@ use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::{ReadableWritableListableStorageTraits, StorageHandle, StoreKey};
 
 mod chunk_item;
-mod codec_pipeline_store_filesystem;
-mod codec_pipeline_store_http;
 mod concurrency;
 mod runtime;
+mod store;
 #[cfg(test)]
 mod tests;
 mod utils;
 
-use codec_pipeline_store_filesystem::{CodecPipelineStoreFilesystem, FilesystemStoreConfig};
-use codec_pipeline_store_http::{CodecPipelineStoreHTTP, HttpStoreConfig};
 use utils::{PyErrExt, PyUntypedArrayExt};
-
-trait CodecPipelineStore: Send + Sync {
-    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
-}
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -51,65 +44,6 @@ pub struct CodecPipelineImpl {
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
     pub(crate) num_threads: usize,
-}
-
-#[gen_stub_pyclass]
-#[pyclass(subclass)]
-pub struct StoreConfig;
-
-#[gen_stub_pyclass_enum]
-enum StoreConfigType {
-    Filesystem(FilesystemStoreConfig),
-    Http(HttpStoreConfig),
-    // TODO: Add support for more stores
-}
-
-impl<'py> FromPyObject<'py> for StoreConfigType {
-    fn extract_bound(store: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let name = store.get_type().name()?;
-        let name = name.to_str()?;
-        match name {
-            "LocalStore" => {
-                let root: String = store.getattr("root")?.call_method0("__str__")?.extract()?;
-                Ok(StoreConfigType::Filesystem(FilesystemStoreConfig::new(
-                    root,
-                )))
-            }
-            "RemoteStore" => {
-                let fs = store.getattr("fs")?;
-                let fs_name = fs.get_type().name()?;
-                let fs_name = fs_name.to_str()?;
-                let path: String = store.getattr("path")?.extract()?;
-                let storage_options: HashMap<String, Bound<'py, PyAny>> =
-                    fs.getattr("storage_options")?.extract()?;
-                match fs_name {
-                    "HTTPFileSystem" => Ok(StoreConfigType::Http(HttpStoreConfig::new(
-                        &path,
-                        &storage_options,
-                    )?)),
-                    _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
-                        "zarrs-python does not support {fs_name} (RemoteStore) stores"
-                    ))),
-                }
-            }
-            _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
-                "zarrs-python does not support {name} stores"
-            ))),
-        }
-    }
-}
-
-impl TryFrom<&StoreConfigType> for Arc<dyn CodecPipelineStore> {
-    type Error = PyErr;
-
-    fn try_from(value: &StoreConfigType) -> Result<Self, Self::Error> {
-        match value {
-            StoreConfigType::Filesystem(config) => {
-                Ok(Arc::new(CodecPipelineStoreFilesystem::new(config)?))
-            }
-            StoreConfigType::Http(config) => Ok(Arc::new(CodecPipelineStoreHTTP::new(config)?)),
-        }
-    }
 }
 
 impl CodecPipelineImpl {

@@ -4,7 +4,9 @@ use pyo3::{exceptions::PyRuntimeError, pyclass, PyResult};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorageTraits};
 
-use crate::{utils::PyErrExt, CodecPipelineStore, StoreConfig};
+use crate::utils::PyErrExt;
+
+use super::{CodecPipelineStore, StoreConfig};
 
 pub struct CodecPipelineStoreFilesystem {
     store: Arc<FilesystemStore>,

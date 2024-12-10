@@ -9,8 +9,9 @@ use zarrs_opendal::AsyncOpendalStore;
 use crate::{
     runtime::{tokio_block_on, TokioBlockOn},
     utils::PyErrExt,
-    CodecPipelineStore, StoreConfig,
 };
+
+use super::{CodecPipelineStore, StoreConfig};
 
 pub struct CodecPipelineStoreHTTP {
     store: Arc<AsyncToSyncStorageAdapter<AsyncOpendalStore, TokioBlockOn>>,
