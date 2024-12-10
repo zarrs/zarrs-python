@@ -70,10 +70,7 @@ impl<'py> FromPyObject<'py> for StoreConfigType {
         let name = name.to_str()?;
         match name {
             "LocalStore" => {
-                let root: String = store
-                    .getattr("root")?
-                    .call_method("as_posix", (), None)?
-                    .extract()?;
+                let root: String = store.getattr("root")?.call_method0("__str__")?.extract()?;
                 Ok(StoreConfigType::Filesystem(FilesystemStoreConfig::new(
                     root,
                 )))
