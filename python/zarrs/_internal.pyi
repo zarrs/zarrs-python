@@ -23,7 +23,11 @@ class CodecPipelineImpl:
         chunk_descriptions: typing.Sequence[
             tuple[
                 tuple[
-                    StoreConfig, str, typing.Sequence[int], str, typing.Sequence[int]
+                    StoreConfigType,
+                    str,
+                    typing.Sequence[int],
+                    str,
+                    typing.Sequence[int],
                 ],
                 typing.Sequence[slice],
                 typing.Sequence[slice],
@@ -34,7 +38,7 @@ class CodecPipelineImpl:
     def retrieve_chunks(
         self,
         chunk_descriptions: typing.Sequence[
-            tuple[StoreConfig, str, typing.Sequence[int], str, typing.Sequence[int]]
+            tuple[StoreConfigType, str, typing.Sequence[int], str, typing.Sequence[int]]
         ],
     ) -> list[numpy.typing.NDArray[numpy.uint8]]: ...
     def store_chunks_with_indices(
@@ -42,7 +46,11 @@ class CodecPipelineImpl:
         chunk_descriptions: typing.Sequence[
             tuple[
                 tuple[
-                    StoreConfig, str, typing.Sequence[int], str, typing.Sequence[int]
+                    StoreConfigType,
+                    str,
+                    typing.Sequence[int],
+                    str,
+                    typing.Sequence[int],
                 ],
                 typing.Sequence[slice],
                 typing.Sequence[slice],
@@ -53,7 +61,8 @@ class CodecPipelineImpl:
 
 class FilesystemStoreConfig: ...
 class HttpStoreConfig: ...
+class StoreConfig: ...
 
-class StoreConfig(Enum):
+class StoreConfigType(Enum):
     Filesystem = auto()
     Http = auto()

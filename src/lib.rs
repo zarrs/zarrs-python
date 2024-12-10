@@ -53,14 +53,18 @@ pub struct CodecPipelineImpl {
     pub(crate) num_threads: usize,
 }
 
+#[gen_stub_pyclass]
+#[pyclass(subclass)]
+pub struct StoreConfig;
+
 #[gen_stub_pyclass_enum]
-enum StoreConfig {
+enum StoreConfigType {
     Filesystem(FilesystemStoreConfig),
     Http(HttpStoreConfig),
     // TODO: Add support for more stores
 }
 
-impl<'py> FromPyObject<'py> for StoreConfig {
+impl<'py> FromPyObject<'py> for StoreConfigType {
     fn extract_bound(store: &Bound<'py, PyAny>) -> PyResult<Self> {
         let name = store.get_type().name()?;
         let name = name.to_str()?;
@@ -70,7 +74,9 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                     .getattr("root")?
                     .call_method("as_posix", (), None)?
                     .extract()?;
-                Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(root)))
+                Ok(StoreConfigType::Filesystem(FilesystemStoreConfig::new(
+                    root,
+                )))
             }
             "RemoteStore" => {
                 let fs = store.getattr("fs")?;
@@ -80,7 +86,7 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                 let storage_options: HashMap<String, Bound<'py, PyAny>> =
                     fs.getattr("storage_options")?.extract()?;
                 match fs_name {
-                    "HTTPFileSystem" => Ok(StoreConfig::Http(HttpStoreConfig::new(
+                    "HTTPFileSystem" => Ok(StoreConfigType::Http(HttpStoreConfig::new(
                         &path,
                         &storage_options,
                     )?)),
@@ -96,15 +102,15 @@ impl<'py> FromPyObject<'py> for StoreConfig {
     }
 }
 
-impl TryFrom<&StoreConfig> for Arc<dyn CodecPipelineStore> {
+impl TryFrom<&StoreConfigType> for Arc<dyn CodecPipelineStore> {
     type Error = PyErr;
 
-    fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
+    fn try_from(value: &StoreConfigType) -> Result<Self, Self::Error> {
         match value {
-            StoreConfig::Filesystem(config) => {
+            StoreConfigType::Filesystem(config) => {
                 Ok(Arc::new(CodecPipelineStoreFilesystem::new(config)?))
             }
-            StoreConfig::Http(config) => Ok(Arc::new(CodecPipelineStoreHTTP::new(config)?)),
+            StoreConfigType::Http(config) => Ok(Arc::new(CodecPipelineStoreHTTP::new(config)?)),
         }
     }
 }
@@ -112,7 +118,7 @@ impl TryFrom<&StoreConfig> for Arc<dyn CodecPipelineStore> {
 impl CodecPipelineImpl {
     fn get_store_from_config(
         &self,
-        config: &StoreConfig,
+        config: &StoreConfigType,
     ) -> PyResult<Arc<dyn ReadableWritableListableStorageTraits>> {
         let mut gstore = self.store.lock().map_err(|_| {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())

@@ -9,7 +9,7 @@ use zarrs_opendal::AsyncOpendalStore;
 use crate::{
     runtime::{tokio_block_on, TokioBlockOn},
     utils::PyErrExt,
-    CodecPipelineStore,
+    CodecPipelineStore, StoreConfig,
 };
 
 pub struct CodecPipelineStoreHTTP {
@@ -17,7 +17,7 @@ pub struct CodecPipelineStoreHTTP {
 }
 
 #[gen_stub_pyclass]
-#[pyclass]
+#[pyclass(extends=StoreConfig)]
 pub struct HttpStoreConfig {
     pub root: String,
 }
