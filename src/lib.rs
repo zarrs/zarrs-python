@@ -1,4 +1,5 @@
 #![warn(clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
 
 use chunk_item::{ChunksItem, IntoItem};
 use concurrency::ChunkConcurrentLimitAndCodecOptions;
@@ -12,7 +13,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
-use store::{CodecPipelineStore, StoreConfigType};
+use store::StoreConfigType;
 use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
@@ -39,7 +40,7 @@ use utils::{PyErrExt, PyUntypedArrayExt};
 #[pyclass]
 pub struct CodecPipelineImpl {
     pub(crate) codec_chain: Arc<CodecChain>,
-    pub(crate) store: Mutex<Option<Arc<dyn CodecPipelineStore>>>,
+    pub(crate) store: Mutex<Option<Arc<dyn ReadableWritableListableStorageTraits>>>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
@@ -57,11 +58,11 @@ impl CodecPipelineImpl {
 
         // TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
         if let Some(gstore) = gstore.as_ref() {
-            Ok(gstore.store())
+            Ok(gstore.clone())
         } else {
             *gstore = Some(config.try_into()?);
             let gstore = gstore.as_ref().expect("store was just initialised");
-            Ok(gstore.store())
+            Ok(gstore.clone())
         }
     }
 

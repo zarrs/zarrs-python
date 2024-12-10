@@ -1,23 +1,29 @@
 use std::{collections::HashMap, sync::Arc};
 
+use opendal::Builder;
 use pyo3::{
-    exceptions::PyNotImplementedError,
+    exceptions::{PyNotImplementedError, PyValueError},
     pyclass,
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
     Bound, FromPyObject, PyAny, PyErr, PyResult,
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyclass_enum};
 
-pub use filesystem::{CodecPipelineStoreFilesystem, FilesystemStoreConfig};
-pub use http::{CodecPipelineStoreHTTP, HttpStoreConfig};
-use zarrs::storage::ReadableWritableListableStorageTraits;
+pub use filesystem::FilesystemStoreConfig;
+pub use http::HttpStoreConfig;
+use zarrs::storage::{
+    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
+    ReadableWritableListableStorageTraits,
+};
+use zarrs_opendal::AsyncOpendalStore;
+
+use crate::{
+    runtime::{tokio_block_on, TokioBlockOn},
+    utils::PyErrExt,
+};
 
 mod filesystem;
 mod http;
-
-pub trait CodecPipelineStore: Send + Sync {
-    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits>;
-}
 
 #[gen_stub_pyclass]
 #[pyclass(subclass)]
@@ -65,15 +71,24 @@ impl<'py> FromPyObject<'py> for StoreConfigType {
     }
 }
 
-impl TryFrom<&StoreConfigType> for Arc<dyn CodecPipelineStore> {
+impl TryFrom<&StoreConfigType> for Arc<dyn ReadableWritableListableStorageTraits> {
     type Error = PyErr;
 
     fn try_from(value: &StoreConfigType) -> Result<Self, Self::Error> {
         match value {
-            StoreConfigType::Filesystem(config) => {
-                Ok(Arc::new(CodecPipelineStoreFilesystem::new(config)?))
-            }
-            StoreConfigType::Http(config) => Ok(Arc::new(CodecPipelineStoreHTTP::new(config)?)),
+            StoreConfigType::Filesystem(config) => config.try_into(),
+            StoreConfigType::Http(config) => config.try_into(),
         }
     }
+}
+
+type OpendalStoreSync = Arc<AsyncToSyncStorageAdapter<AsyncOpendalStore, TokioBlockOn>>;
+
+fn opendal_builder_to_sync_store<B: Builder>(builder: B) -> PyResult<OpendalStoreSync> {
+    let operator = opendal::Operator::new(builder)
+        .map_py_err::<PyValueError>()?
+        .finish();
+    let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
+    let store = Arc::new(AsyncToSyncStorageAdapter::new(store, tokio_block_on()));
+    Ok(store)
 }

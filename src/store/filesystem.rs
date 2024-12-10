@@ -1,16 +1,12 @@
 use std::sync::Arc;
 
-use pyo3::{exceptions::PyRuntimeError, pyclass, PyResult};
+use pyo3::{exceptions::PyRuntimeError, pyclass, PyErr};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
 use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorageTraits};
 
 use crate::utils::PyErrExt;
 
-use super::{CodecPipelineStore, StoreConfig};
-
-pub struct CodecPipelineStoreFilesystem {
-    store: Arc<FilesystemStore>,
-}
+use super::StoreConfig;
 
 #[gen_stub_pyclass]
 #[pyclass(extends=StoreConfig)]
@@ -24,16 +20,12 @@ impl FilesystemStoreConfig {
     }
 }
 
-impl CodecPipelineStoreFilesystem {
-    pub fn new(config: &FilesystemStoreConfig) -> PyResult<Self> {
-        let store =
-            Arc::new(FilesystemStore::new(config.root.clone()).map_py_err::<PyRuntimeError>()?);
-        Ok(Self { store })
-    }
-}
+impl TryInto<Arc<dyn ReadableWritableListableStorageTraits>> for &FilesystemStoreConfig {
+    type Error = PyErr;
 
-impl CodecPipelineStore for CodecPipelineStoreFilesystem {
-    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits> {
-        self.store.clone()
+    fn try_into(self) -> Result<Arc<dyn ReadableWritableListableStorageTraits>, Self::Error> {
+        let store: Arc<dyn ReadableWritableListableStorageTraits> =
+            Arc::new(FilesystemStore::new(self.root.clone()).map_py_err::<PyRuntimeError>()?);
+        Ok(store)
     }
 }

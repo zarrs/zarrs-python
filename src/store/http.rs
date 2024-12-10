@@ -1,21 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
-use pyo3::{exceptions::PyValueError, pyclass, Bound, PyAny, PyResult};
+use pyo3::{exceptions::PyValueError, pyclass, Bound, PyAny, PyErr, PyResult};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
-use zarrs::storage::storage_adapter::async_to_sync::AsyncToSyncStorageAdapter;
 use zarrs::storage::ReadableWritableListableStorageTraits;
-use zarrs_opendal::AsyncOpendalStore;
 
-use crate::{
-    runtime::{tokio_block_on, TokioBlockOn},
-    utils::PyErrExt,
-};
-
-use super::{CodecPipelineStore, StoreConfig};
-
-pub struct CodecPipelineStoreHTTP {
-    store: Arc<AsyncToSyncStorageAdapter<AsyncOpendalStore, TokioBlockOn>>,
-}
+use super::{opendal_builder_to_sync_store, StoreConfig};
 
 #[gen_stub_pyclass]
 #[pyclass(extends=StoreConfig)]
@@ -45,20 +34,13 @@ impl HttpStoreConfig {
     }
 }
 
-impl CodecPipelineStoreHTTP {
-    pub fn new(config: &HttpStoreConfig) -> PyResult<Self> {
-        let builder = opendal::services::Http::default().endpoint(&config.root);
-        let operator = opendal::Operator::new(builder)
-            .map_py_err::<PyValueError>()?
-            .finish();
-        let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
-        let store = Arc::new(AsyncToSyncStorageAdapter::new(store, tokio_block_on()));
-        Ok(Self { store })
-    }
-}
+impl TryInto<Arc<dyn ReadableWritableListableStorageTraits>> for &HttpStoreConfig {
+    type Error = PyErr;
 
-impl CodecPipelineStore for CodecPipelineStoreHTTP {
-    fn store(&self) -> Arc<dyn ReadableWritableListableStorageTraits> {
-        self.store.clone()
+    fn try_into(self) -> Result<Arc<dyn ReadableWritableListableStorageTraits>, Self::Error> {
+        let builder = opendal::services::Http::default().endpoint(&self.root);
+        let store: Arc<dyn ReadableWritableListableStorageTraits> =
+            opendal_builder_to_sync_store(builder)?;
+        Ok(store)
     }
 }
