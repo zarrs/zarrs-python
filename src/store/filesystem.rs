@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use pyo3::{exceptions::PyRuntimeError, pyclass, PyErr};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
-use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorageTraits};
+use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorage};
 
 use crate::utils::PyErrExt;
 
@@ -20,10 +20,10 @@ impl FilesystemStoreConfig {
     }
 }
 
-impl TryInto<Arc<dyn ReadableWritableListableStorageTraits>> for &FilesystemStoreConfig {
+impl TryInto<ReadableWritableListableStorage> for &FilesystemStoreConfig {
     type Error = PyErr;
 
-    fn try_into(self) -> Result<Arc<dyn ReadableWritableListableStorageTraits>, Self::Error> {
+    fn try_into(self) -> Result<ReadableWritableListableStorage, Self::Error> {
         let store =
             Arc::new(FilesystemStore::new(self.root.clone()).map_py_err::<PyRuntimeError>()?);
         Ok(store)

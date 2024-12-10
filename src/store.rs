@@ -12,8 +12,7 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyclass_enum};
 pub use filesystem::FilesystemStoreConfig;
 pub use http::HttpStoreConfig;
 use zarrs::storage::{
-    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
-    ReadableWritableListableStorageTraits,
+    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
 };
 
 use crate::{runtime::tokio_block_on, utils::PyErrExt};
@@ -67,7 +66,7 @@ impl<'py> FromPyObject<'py> for StoreConfigType {
     }
 }
 
-impl TryFrom<&StoreConfigType> for Arc<dyn ReadableWritableListableStorageTraits> {
+impl TryFrom<&StoreConfigType> for ReadableWritableListableStorage {
     type Error = PyErr;
 
     fn try_from(value: &StoreConfigType) -> Result<Self, Self::Error> {
@@ -80,7 +79,7 @@ impl TryFrom<&StoreConfigType> for Arc<dyn ReadableWritableListableStorageTraits
 
 fn opendal_builder_to_sync_store<B: Builder>(
     builder: B,
-) -> PyResult<Arc<dyn ReadableWritableListableStorageTraits>> {
+) -> PyResult<ReadableWritableListableStorage> {
     let operator = opendal::Operator::new(builder)
         .map_py_err::<PyValueError>()?
         .finish();

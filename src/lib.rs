@@ -23,7 +23,7 @@ use zarrs::array::{
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
-use zarrs::storage::{ReadableWritableListableStorageTraits, StorageHandle, StoreKey};
+use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
 mod concurrency;
@@ -40,7 +40,7 @@ use utils::{PyErrExt, PyUntypedArrayExt};
 #[pyclass]
 pub struct CodecPipelineImpl {
     pub(crate) codec_chain: Arc<CodecChain>,
-    pub(crate) store: Mutex<Option<Arc<dyn ReadableWritableListableStorageTraits>>>,
+    pub(crate) store: Mutex<Option<ReadableWritableListableStorage>>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
@@ -51,7 +51,7 @@ impl CodecPipelineImpl {
     fn get_store_from_config(
         &self,
         config: &StoreConfigType,
-    ) -> PyResult<Arc<dyn ReadableWritableListableStorageTraits>> {
+    ) -> PyResult<ReadableWritableListableStorage> {
         let mut gstore = self.store.lock().map_err(|_| {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
         })?;
@@ -60,9 +60,9 @@ impl CodecPipelineImpl {
         if let Some(gstore) = gstore.as_ref() {
             Ok(gstore.clone())
         } else {
-            *gstore = Some(config.try_into()?);
-            let gstore = gstore.as_ref().expect("store was just initialised");
-            Ok(gstore.clone())
+            let store: ReadableWritableListableStorage = config.try_into()?;
+            *gstore = Some(store.clone());
+            Ok(store)
         }
     }
 

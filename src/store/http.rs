@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use pyo3::{exceptions::PyValueError, pyclass, Bound, PyAny, PyErr, PyResult};
 use pyo3_stub_gen::derive::gen_stub_pyclass;
-use zarrs::storage::ReadableWritableListableStorageTraits;
+use zarrs::storage::ReadableWritableListableStorage;
 
 use super::{opendal_builder_to_sync_store, StoreConfig};
 
@@ -34,10 +34,10 @@ impl HttpStoreConfig {
     }
 }
 
-impl TryInto<Arc<dyn ReadableWritableListableStorageTraits>> for &HttpStoreConfig {
+impl TryInto<ReadableWritableListableStorage> for &HttpStoreConfig {
     type Error = PyErr;
 
-    fn try_into(self) -> Result<Arc<dyn ReadableWritableListableStorageTraits>, Self::Error> {
+    fn try_into(self) -> Result<ReadableWritableListableStorage, Self::Error> {
         let builder = opendal::services::Http::default().endpoint(&self.root);
         opendal_builder_to_sync_store(builder)
     }
