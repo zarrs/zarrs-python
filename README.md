@@ -36,7 +36,7 @@ At the moment, we only support a subset of the `zarr-python` stores:
 - [RemoteStore](https://zarr.readthedocs.io/en/main/_autoapi/zarr/storage/remote/index.html)
   - [x] [HTTPFileSystem](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.implementations.http.HTTPFileSystem)
 
-A `NotImplemented` error will be raised if a store is not supported.
+A `NotImplementedError` will be raised if a store is not supported.
 We intend to support more stores in the future: https://github.com/ilan-gold/zarrs-python/issues/44.
 
 ### Configuration
