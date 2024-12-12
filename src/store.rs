@@ -34,9 +34,7 @@ impl<'py> FromPyObject<'py> for StoreConfig {
         match name {
             "LocalStore" => {
                 let root: String = store.getattr("root")?.call_method0("__str__")?.extract()?;
-                Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(
-                    root,
-                )))
+                Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(root)))
             }
             "RemoteStore" => {
                 let fs = store.getattr("fs")?;
