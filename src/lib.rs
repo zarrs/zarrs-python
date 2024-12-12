@@ -13,7 +13,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
-use store::StoreConfigType;
+use store::StoreConfig;
 use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
@@ -50,7 +50,7 @@ pub struct CodecPipelineImpl {
 impl CodecPipelineImpl {
     fn get_store_from_config(
         &self,
-        config: &StoreConfigType,
+        config: &StoreConfig,
     ) -> PyResult<ReadableWritableListableStorage> {
         let mut gstore = self.store.lock().map_err(|_| {
             PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())

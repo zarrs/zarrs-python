@@ -20,25 +20,21 @@ use crate::{runtime::tokio_block_on, utils::PyErrExt};
 mod filesystem;
 mod http;
 
-#[gen_stub_pyclass]
-#[pyclass(subclass)]
-pub struct StoreConfig;
-
 #[gen_stub_pyclass_enum]
-pub enum StoreConfigType {
+pub enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
     Http(HttpStoreConfig),
     // TODO: Add support for more stores
 }
 
-impl<'py> FromPyObject<'py> for StoreConfigType {
+impl<'py> FromPyObject<'py> for StoreConfig {
     fn extract_bound(store: &Bound<'py, PyAny>) -> PyResult<Self> {
         let name = store.get_type().name()?;
         let name = name.to_str()?;
         match name {
             "LocalStore" => {
                 let root: String = store.getattr("root")?.call_method0("__str__")?.extract()?;
-                Ok(StoreConfigType::Filesystem(FilesystemStoreConfig::new(
+                Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(
                     root,
                 )))
             }
@@ -50,7 +46,7 @@ impl<'py> FromPyObject<'py> for StoreConfigType {
                 let storage_options: HashMap<String, Bound<'py, PyAny>> =
                     fs.getattr("storage_options")?.extract()?;
                 match fs_name {
-                    "HTTPFileSystem" => Ok(StoreConfigType::Http(HttpStoreConfig::new(
+                    "HTTPFileSystem" => Ok(StoreConfig::Http(HttpStoreConfig::new(
                         &path,
                         &storage_options,
                     )?)),
@@ -66,13 +62,13 @@ impl<'py> FromPyObject<'py> for StoreConfigType {
     }
 }
 
-impl TryFrom<&StoreConfigType> for ReadableWritableListableStorage {
+impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
     type Error = PyErr;
 
-    fn try_from(value: &StoreConfigType) -> Result<Self, Self::Error> {
+    fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
         match value {
-            StoreConfigType::Filesystem(config) => config.try_into(),
-            StoreConfigType::Http(config) => config.try_into(),
+            StoreConfig::Filesystem(config) => config.try_into(),
+            StoreConfig::Http(config) => config.try_into(),
         }
     }
 }
