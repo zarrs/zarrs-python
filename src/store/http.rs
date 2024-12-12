@@ -6,9 +6,11 @@ use zarrs::storage::ReadableWritableListableStorage;
 
 use super::opendal_builder_to_sync_store;
 
+#[derive(Debug, Clone)]
 #[gen_stub_pyclass]
 #[pyclass]
 pub struct HttpStoreConfig {
+    #[pyo3(get, set)]
     pub root: String,
 }
 

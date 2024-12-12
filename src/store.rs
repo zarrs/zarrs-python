@@ -3,11 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use opendal::Builder;
 use pyo3::{
     exceptions::{PyNotImplementedError, PyValueError},
-    pyclass,
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
     Bound, FromPyObject, PyAny, PyErr, PyResult,
 };
-use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pyclass_enum};
+use pyo3_stub_gen::derive::gen_stub_pyclass_enum;
 
 pub use filesystem::FilesystemStoreConfig;
 pub use http::HttpStoreConfig;
