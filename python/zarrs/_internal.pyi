@@ -55,7 +55,7 @@ class FilesystemStoreConfig:
     root: str
 
 class HttpStoreConfig:
-    root: str
+    endpoint: str
 
 class StoreConfig(Enum):
     Filesystem = auto()

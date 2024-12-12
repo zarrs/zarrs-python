@@ -11,7 +11,7 @@ use super::opendal_builder_to_sync_store;
 #[pyclass]
 pub struct HttpStoreConfig {
     #[pyo3(get, set)]
-    pub root: String,
+    pub endpoint: String,
 }
 
 impl HttpStoreConfig {
@@ -31,7 +31,7 @@ impl HttpStoreConfig {
         }
 
         Ok(Self {
-            root: path.to_string(),
+            endpoint: path.to_string(),
         })
     }
 }
@@ -40,7 +40,7 @@ impl TryInto<ReadableWritableListableStorage> for &HttpStoreConfig {
     type Error = PyErr;
 
     fn try_into(self) -> Result<ReadableWritableListableStorage, Self::Error> {
-        let builder = opendal::services::Http::default().endpoint(&self.root);
+        let builder = opendal::services::Http::default().endpoint(&self.endpoint);
         opendal_builder_to_sync_store(builder)
     }
 }
