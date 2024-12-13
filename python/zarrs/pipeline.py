@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
-from zarr.abc.codec import (
-    Codec,
-    CodecPipeline,
-)
+from zarr.abc.codec import Codec, CodecPipeline
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -18,7 +15,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
     from zarr.core.indexing import SelectorTuple
@@ -127,12 +124,12 @@ class ZarrsCodecPipeline(CodecPipeline):
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
-            chunks_desc = make_chunk_info_for_rust_with_indices(batch_info, drop_axes)
-            index_in_rust = True
+            chunks_desc = make_chunk_info_for_rust_with_indices(
+                batch_info, drop_axes, out.shape
+            )
         except (DiscontiguousArrayError, CollapsedDimensionError):
             chunks_desc = make_chunk_info_for_rust(batch_info)
-            index_in_rust = False
-        if index_in_rust:
+        else:
             await asyncio.to_thread(
                 self.impl.retrieve_chunks_and_apply_index,
                 chunks_desc,
@@ -158,15 +155,14 @@ class ZarrsCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        value = value.as_ndarray_like()  # FIXME: Error if array is not in host memory
+        # FIXME: Error if array is not in host memory
+        value: NDArrayLike | np.ndarray = value.as_ndarray_like()
         if not value.dtype.isnative:
             value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
         elif not value.flags.c_contiguous:
             value = np.ascontiguousarray(value)
-        chunks_desc = make_chunk_info_for_rust_with_indices(batch_info, drop_axes)
-        await asyncio.to_thread(
-            self.impl.store_chunks_with_indices,
-            chunks_desc,
-            value,
+        chunks_desc = make_chunk_info_for_rust_with_indices(
+            batch_info, drop_axes, value.shape
         )
+        await asyncio.to_thread(self.impl.store_chunks_with_indices, chunks_desc, value)
         return None

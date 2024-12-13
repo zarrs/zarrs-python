@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
-use chunk_item::{ChunksItem, IntoItem};
+use chunk_item::ChunksItem;
 use concurrency::ChunkConcurrentLimitAndCodecOptions;
 use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
@@ -64,23 +64,6 @@ impl CodecPipelineImpl {
             *gstore = Some(store.clone());
             Ok(store)
         }
-    }
-
-    fn collect_chunk_descriptions<R: IntoItem<I, S>, I, S: Copy>(
-        &self,
-        chunk_descriptions: Vec<R>,
-        shape: S,
-    ) -> PyResult<Vec<I>> {
-        chunk_descriptions
-            .into_iter()
-            .map(|raw| {
-                // TODO: Prefer to get the store once, and assume it is the same for all chunks
-                let store = self.get_store_from_config(raw.store_config())?;
-                let path = raw.path();
-                let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
-                raw.into_item(store, key, shape)
-            })
-            .collect()
     }
 
     fn retrieve_chunk_bytes<'a, I: ChunksItem>(
@@ -282,7 +265,7 @@ impl CodecPipelineImpl {
     fn retrieve_chunks_and_apply_index(
         &self,
         py: Python,
-        chunk_descriptions: Vec<chunk_item::RawWithIndices>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<chunk_item::WithSubset>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
@@ -293,8 +276,6 @@ impl CodecPipelineImpl {
         }
         let output = Self::nparray_to_unsafe_cell_slice(value);
         let output_shape: Vec<u64> = value.shape_zarr()?;
-        let chunk_descriptions =
-            self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
@@ -388,10 +369,8 @@ impl CodecPipelineImpl {
     fn retrieve_chunks<'py>(
         &self,
         py: Python<'py>,
-        chunk_descriptions: Vec<chunk_item::Raw>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<chunk_item::Basic>, // FIXME: Ref / iterable?
     ) -> PyResult<Vec<Bound<'py, PyArray1<u8>>>> {
-        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, ())?;
-
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
             chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
@@ -439,7 +418,7 @@ impl CodecPipelineImpl {
     fn store_chunks_with_indices(
         &self,
         py: Python,
-        chunk_descriptions: Vec<chunk_item::RawWithIndices>,
+        chunk_descriptions: Vec<chunk_item::WithSubset>,
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         enum InputValue<'a> {
@@ -460,10 +439,7 @@ impl CodecPipelineImpl {
         } else {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))
         };
-
         let input_shape: Vec<u64> = value.shape_zarr()?;
-        let chunk_descriptions =
-            self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
@@ -526,7 +502,8 @@ impl CodecPipelineImpl {
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<CodecPipelineImpl>()?;
-    m.add_class::<chunk_item::Raw>()?;
+    m.add_class::<chunk_item::Basic>()?;
+    m.add_class::<chunk_item::WithSubset>()?;
     Ok(())
 }
 

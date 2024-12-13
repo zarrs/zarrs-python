@@ -7,6 +7,10 @@ from enum import Enum, auto
 import numpy
 import numpy.typing
 
+class Basic:
+    def __new__(cls, byte_interface: typing.Any, chunk_spec: typing.Any): ...
+    ...
+
 class CodecPipelineImpl:
     def __new__(
         cls,
@@ -20,19 +24,15 @@ class CodecPipelineImpl:
     ): ...
     def retrieve_chunks_and_apply_index(
         self,
-        chunk_descriptions: typing.Sequence[
-            tuple[Raw, typing.Sequence[slice], typing.Sequence[slice]]
-        ],
+        chunk_descriptions: typing.Sequence[WithSubset],
         value: numpy.NDArray[typing.Any],
     ) -> None: ...
     def retrieve_chunks(
-        self, chunk_descriptions: typing.Sequence[Raw]
+        self, chunk_descriptions: typing.Sequence[Basic]
     ) -> list[numpy.typing.NDArray[numpy.uint8]]: ...
     def store_chunks_with_indices(
         self,
-        chunk_descriptions: typing.Sequence[
-            tuple[Raw, typing.Sequence[slice], typing.Sequence[slice]]
-        ],
+        chunk_descriptions: typing.Sequence[WithSubset],
         value: numpy.NDArray[typing.Any],
     ) -> None: ...
 
@@ -42,14 +42,13 @@ class FilesystemStoreConfig:
 class HttpStoreConfig:
     endpoint: str
 
-class Raw:
+class WithSubset:
     def __new__(
         cls,
-        store: StoreConfig,
-        path: str,
-        chunk_shape: typing.Sequence[int],
-        dtype: str,
-        fill_value: typing.Sequence[int],
+        item: Basic,
+        chunk_subset: typing.Sequence[slice],
+        subset: typing.Sequence[slice],
+        shape: typing.Sequence[int],
     ): ...
     ...
 
