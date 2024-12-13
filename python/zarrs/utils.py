@@ -3,18 +3,19 @@ from __future__ import annotations
 import operator
 import os
 from functools import reduce
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 from zarr.core.indexing import SelectorTuple, is_integer
+
+from zarrs._internal import Raw
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from types import EllipsisType
 
-    from zarr.abc.store import ByteGetter, ByteSetter, Store
+    from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.common import ChunkCoords
 
 
 # adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
@@ -64,8 +65,8 @@ def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[sli
 
 def convert_chunk_to_primitive(
     byte_interface: ByteGetter | ByteSetter, chunk_spec: ArraySpec
-) -> tuple[Store, str, ChunkCoords, str, Any]:
-    return (
+) -> Raw:
+    return Raw(
         byte_interface.store,
         byte_interface.path,
         chunk_spec.shape,
@@ -150,7 +151,7 @@ def make_chunk_info_for_rust_with_indices(
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
     ],
     drop_axes: tuple[int, ...],
-) -> list[tuple[tuple[Store, str, ChunkCoords, str, Any], list[slice], list[slice]]]:
+) -> list[tuple[Raw, list[slice], list[slice]]]:
     chunk_info_with_indices = []
     for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
         chunk_info = convert_chunk_to_primitive(byte_getter, chunk_spec)
@@ -179,8 +180,8 @@ def make_chunk_info_for_rust(
     batch_info: Iterable[
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
     ],
-) -> list[tuple[Store, str, ChunkCoords, str, Any]]:
-    return list(
+) -> list[Raw]:
+    return [
         convert_chunk_to_primitive(byte_getter, chunk_spec)
         for (byte_getter, chunk_spec, _, _) in batch_info
-    )
+    ]

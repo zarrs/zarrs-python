@@ -21,32 +21,17 @@ class CodecPipelineImpl:
     def retrieve_chunks_and_apply_index(
         self,
         chunk_descriptions: typing.Sequence[
-            tuple[
-                tuple[
-                    StoreConfig, str, typing.Sequence[int], str, typing.Sequence[int]
-                ],
-                typing.Sequence[slice],
-                typing.Sequence[slice],
-            ]
+            tuple[Raw, typing.Sequence[slice], typing.Sequence[slice]]
         ],
         value: numpy.NDArray[typing.Any],
     ) -> None: ...
     def retrieve_chunks(
-        self,
-        chunk_descriptions: typing.Sequence[
-            tuple[StoreConfig, str, typing.Sequence[int], str, typing.Sequence[int]]
-        ],
+        self, chunk_descriptions: typing.Sequence[Raw]
     ) -> list[numpy.typing.NDArray[numpy.uint8]]: ...
     def store_chunks_with_indices(
         self,
         chunk_descriptions: typing.Sequence[
-            tuple[
-                tuple[
-                    StoreConfig, str, typing.Sequence[int], str, typing.Sequence[int]
-                ],
-                typing.Sequence[slice],
-                typing.Sequence[slice],
-            ]
+            tuple[Raw, typing.Sequence[slice], typing.Sequence[slice]]
         ],
         value: numpy.NDArray[typing.Any],
     ) -> None: ...
@@ -56,6 +41,17 @@ class FilesystemStoreConfig:
 
 class HttpStoreConfig:
     endpoint: str
+
+class Raw:
+    def __new__(
+        cls,
+        store: StoreConfig,
+        path: str,
+        chunk_shape: typing.Sequence[int],
+        dtype: str,
+        fill_value: typing.Sequence[int],
+    ): ...
+    ...
 
 class StoreConfig(Enum):
     Filesystem = auto()

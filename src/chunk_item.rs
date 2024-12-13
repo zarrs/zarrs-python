@@ -1,10 +1,9 @@
 use std::num::NonZeroU64;
 
 use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
-    types::{PySlice, PySliceMethods},
-    Bound, PyErr, PyResult,
+    exceptions::{PyRuntimeError, PyValueError}, pyclass, pymethods, types::{PySlice, PySliceMethods}, Bound, PyErr, PyResult
 };
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
     array::{ChunkRepresentation, DataType, FillValue},
     array_subset::ArraySubset,
@@ -14,18 +13,31 @@ use zarrs::{
 
 use crate::{utils::PyErrExt, StoreConfig};
 
-pub(crate) type Raw = (
-    // store
-    StoreConfig,
-    // path
-    String,
-    // shape
-    Vec<u64>,
-    // data type
-    String,
-    // fill value bytes
-    Vec<u8>,
-);
+#[derive(Debug, Clone)]
+#[gen_stub_pyclass]
+#[pyclass]
+pub(crate) struct Raw {
+    pub store: StoreConfig,
+    pub path: String,
+    pub chunk_shape: Vec<u64>,
+    pub dtype: String,
+    pub fill_value: Vec<u8>,
+}
+
+#[gen_stub_pymethods]
+#[pymethods]
+impl Raw {
+    #[new]
+    pub fn new(
+        store: StoreConfig,
+        path: String,
+        chunk_shape: Vec<u64>,
+        dtype: String,
+        fill_value: Vec<u8>,
+    ) -> Self {
+        Self { store, path, chunk_shape, dtype, fill_value }
+    }
+}
 
 pub(crate) type RawWithIndices<'a> = (
     Raw,
@@ -94,11 +106,11 @@ impl ChunksItem for WithSubset {
 
 impl IntoItem<Basic, ()> for Raw {
     fn store_config(&self) -> &StoreConfig {
-        &self.0
+        &self.store
     }
 
     fn path(&self) -> &str {
-        &self.1
+        &self.path
     }
 
     fn into_item(
@@ -107,23 +119,18 @@ impl IntoItem<Basic, ()> for Raw {
         key: StoreKey,
         (): (),
     ) -> PyResult<Basic> {
-        let (_, _, chunk_shape, dtype, fill_value) = self;
-        let representation = get_chunk_representation(chunk_shape, &dtype, fill_value)?;
-        Ok(Basic {
-            store,
-            key,
-            representation,
-        })
+        let representation = get_chunk_representation(self.chunk_shape, &self.dtype, self.fill_value)?;
+        Ok(Basic { store, key, representation })
     }
 }
 
 impl IntoItem<WithSubset, &[u64]> for RawWithIndices<'_> {
     fn store_config(&self) -> &StoreConfig {
-        &self.0 .0
+        &self.0.store
     }
 
     fn path(&self) -> &str {
-        &self.0 .1
+        &self.0.path
     }
 
     fn into_item(
@@ -133,7 +140,7 @@ impl IntoItem<WithSubset, &[u64]> for RawWithIndices<'_> {
         shape: &[u64],
     ) -> PyResult<WithSubset> {
         let (raw, selection, chunk_selection) = self;
-        let chunk_shape = raw.2.clone();
+        let chunk_shape = raw.chunk_shape.clone();
         let item = raw.into_item(store.clone(), key, ())?;
         Ok(WithSubset {
             item,
