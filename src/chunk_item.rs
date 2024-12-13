@@ -92,7 +92,7 @@ impl ChunksItem for WithSubset {
     }
 }
 
-impl<'a> IntoItem<Basic, ()> for Raw<'a> {
+impl IntoItem<Basic, ()> for Raw<'_> {
     fn store_config(&self) -> &StoreConfig {
         &self.0
     }
