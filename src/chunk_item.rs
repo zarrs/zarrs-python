@@ -75,7 +75,8 @@ impl WithSubset {
         subset: Vec<Bound<'_, PySlice>>,
         shape: Vec<u64>,
     ) -> PyResult<Self> {
-        let chunk_subset = selection_to_array_subset(&chunk_subset, &shape)?;
+        let chunk_subset =
+            selection_to_array_subset(&chunk_subset, &item.representation.shape_u64())?;
         let subset = selection_to_array_subset(&subset, &shape)?;
         Ok(Self {
             item,
