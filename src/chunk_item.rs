@@ -14,7 +14,7 @@ use zarrs::{
 
 use crate::{utils::PyErrExt, StoreConfig};
 
-pub(crate) type Raw<'a> = (
+pub(crate) type Raw = (
     // store
     StoreConfig,
     // path
@@ -28,7 +28,7 @@ pub(crate) type Raw<'a> = (
 );
 
 pub(crate) type RawWithIndices<'a> = (
-    Raw<'a>,
+    Raw,
     // out selection
     Vec<Bound<'a, PySlice>>,
     // chunk selection
@@ -92,7 +92,7 @@ impl ChunksItem for WithSubset {
     }
 }
 
-impl IntoItem<Basic, ()> for Raw<'_> {
+impl IntoItem<Basic, ()> for Raw {
     fn store_config(&self) -> &StoreConfig {
         &self.0
     }
