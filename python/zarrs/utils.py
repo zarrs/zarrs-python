@@ -162,9 +162,9 @@ def make_chunk_info_for_rust_with_indices(
         chunk_info_with_indices.append(
             WithSubset(
                 chunk_info,
-                out_selection_as_slices,
-                chunk_selection_as_slices,
-                shape,
+                chunk_subset=chunk_selection_as_slices,
+                subset=out_selection_as_slices,
+                shape=shape,
             )
         )
     return chunk_info_with_indices
