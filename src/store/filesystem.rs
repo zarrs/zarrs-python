@@ -6,7 +6,7 @@ use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorag
 
 use crate::utils::PyErrExt;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[gen_stub_pyclass]
 #[pyclass]
 pub struct FilesystemStoreConfig {

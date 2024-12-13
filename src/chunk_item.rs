@@ -11,26 +11,22 @@ use zarrs::{
     array::{ChunkRepresentation, DataType, FillValue},
     array_subset::ArraySubset,
     metadata::v3::{array::data_type::DataTypeMetadataV3, MetadataV3},
-    storage::{MaybeBytes, ReadableWritableListableStorage, StorageError, StoreKey},
+    storage::StoreKey,
 };
 
 use crate::{store::StoreConfig, utils::PyErrExt};
 
 pub(crate) trait ChunksItem {
-    fn store(&self) -> ReadableWritableListableStorage;
+    fn store_config(&self) -> StoreConfig;
     fn key(&self) -> &StoreKey;
     fn representation(&self) -> &ChunkRepresentation;
-
-    fn get(&self) -> Result<MaybeBytes, StorageError> {
-        self.store().get(self.key())
-    }
 }
 
 #[derive(Clone)]
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct Basic {
-    store: ReadableWritableListableStorage,
+    store: StoreConfig,
     key: StoreKey,
     representation: ChunkRepresentation,
 }
@@ -47,7 +43,7 @@ impl Basic {
         let dtype: String = chunk_spec.getattr("dtype")?.call_method0("__str__")?.extract()?;
         let fill_value = chunk_spec.getattr("fill_value")?.call_method0("tobytes")?.extract()?;
         Ok(Self {
-            store: (&store).try_into()?,
+            store,
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
             representation: get_chunk_representation(chunk_shape, &dtype, fill_value)?,
         })
@@ -84,7 +80,7 @@ impl WithSubset {
 }
 
 impl ChunksItem for Basic {
-    fn store(&self) -> ReadableWritableListableStorage {
+    fn store_config(&self) -> StoreConfig {
         self.store.clone()
     }
     fn key(&self) -> &StoreKey {
@@ -96,7 +92,7 @@ impl ChunksItem for Basic {
 }
 
 impl ChunksItem for WithSubset {
-    fn store(&self) -> ReadableWritableListableStorage {
+    fn store_config(&self) -> StoreConfig {
         self.item.store.clone()
     }
     fn key(&self) -> &StoreKey {

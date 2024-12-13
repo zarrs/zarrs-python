@@ -6,7 +6,7 @@ use zarrs::storage::ReadableWritableListableStorage;
 
 use super::opendal_builder_to_sync_store;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[gen_stub_pyclass]
 #[pyclass]
 pub struct HttpStoreConfig {
