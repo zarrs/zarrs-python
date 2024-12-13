@@ -141,6 +141,7 @@ def make_chunk_info_for_rust_with_indices(
     drop_axes: tuple[int, ...],
     shape: tuple[int, ...],
 ) -> list[WithSubset]:
+    shape = shape if shape else (1,)  # constant array
     chunk_info_with_indices: list[WithSubset] = []
     for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
         chunk_info = Basic(byte_getter, chunk_spec)
