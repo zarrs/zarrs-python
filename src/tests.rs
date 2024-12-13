@@ -14,11 +14,13 @@ fn test_nparray_to_unsafe_cell_slice_empty() -> PyResult<()> {
     Python::with_gil(|py| {
         let arr: Bound<'_, PyUntypedArray> = PyModule::from_code(
             py,
-            c_str!("def empty_array():
+            c_str!(
+                "def empty_array():
                 import numpy as np
-                return np.empty(0, dtype=np.uint8)"),
-                c_str!(""),
-                c_str!(""),
+                return np.empty(0, dtype=np.uint8)"
+            ),
+            c_str!(""),
+            c_str!(""),
         )?
         .getattr("empty_array")?
         .call0()?

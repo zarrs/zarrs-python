@@ -40,8 +40,14 @@ impl Basic {
         let path: String = byte_interface.getattr("path")?.extract()?;
 
         let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
-        let dtype: String = chunk_spec.getattr("dtype")?.call_method0("__str__")?.extract()?;
-        let fill_value = chunk_spec.getattr("fill_value")?.call_method0("tobytes")?.extract()?;
+        let dtype: String = chunk_spec
+            .getattr("dtype")?
+            .call_method0("__str__")?
+            .extract()?;
+        let fill_value = chunk_spec
+            .getattr("fill_value")?
+            .call_method0("tobytes")?
+            .extract()?;
         Ok(Self {
             store,
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
