@@ -11,10 +11,10 @@ use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
-use store::StoreConfig;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use store::StoreConfig;
 use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
@@ -51,16 +51,21 @@ pub struct CodecPipelineImpl {
 impl CodecPipelineImpl {
     fn store<I: ChunksItem>(&self, item: &I) -> PyResult<ReadableWritableListableStorage> {
         use std::collections::btree_map::Entry::{Occupied, Vacant};
-        Ok(match self.stores.lock().map_py_err::<PyRuntimeError>()?.entry(item.store_config()) {
-            Occupied(e) => e.get().clone(),
-            Vacant(e) => e.insert((&item.store_config()).try_into()?).clone(),
-        })
+        match self
+            .stores
+            .lock()
+            .map_py_err::<PyRuntimeError>()?
+            .entry(item.store_config())
+        {
+            Occupied(e) => Ok(e.get().clone()),
+            Vacant(e) => Ok(e.insert((&item.store_config()).try_into()?).clone()),
+        }
     }
-    
+
     fn get<I: ChunksItem>(&self, item: &I) -> PyResult<MaybeBytes> {
         self.store(item)?.get(item.key()).map_py_err::<PyKeyError>()
     }
-    
+
     fn retrieve_chunk_bytes<'a, I: ChunksItem>(
         &self,
         item: &I,
@@ -119,24 +124,21 @@ impl CodecPipelineImpl {
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        if !chunk_subset.inbounds(&item.representation().shape_u64()) {
-            return Err(PyErr::new::<PyValueError, _>(
-                "chunk subset is out of bounds".to_string(),
-            ));
+        let array_shape = item.representation().shape_u64();
+        if !chunk_subset.inbounds(&array_shape) {
+            return Err(PyErr::new::<PyValueError, _>(format!(
+                "chunk subset ({chunk_subset}) is out of bounds for array shape ({array_shape:?})"
+            )));
         }
+        let data_type_size = item.representation().data_type().size();
 
-        if chunk_subset.start().iter().all(|&o| o == 0)
-            && chunk_subset.shape() == item.representation().shape_u64()
-        {
+        if chunk_subset.start().iter().all(|&o| o == 0) && chunk_subset.shape() == array_shape {
             // Fast path if the chunk subset spans the entire chunk, no read required
             self.store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
         } else {
             // Validate the chunk subset bytes
             chunk_subset_bytes
-                .validate(
-                    chunk_subset.num_elements(),
-                    item.representation().data_type().size(),
-                )
+                .validate(chunk_subset.num_elements(), data_type_size)
                 .map_py_err::<PyValueError>()?;
 
             // Retrieve the chunk
@@ -151,10 +153,10 @@ impl CodecPipelineImpl {
                 // - output bytes and output subset bytes are compatible (same data type)
                 update_array_bytes(
                     chunk_bytes_old,
-                    &item.representation().shape_u64(),
+                    &array_shape,
                     chunk_subset,
                     &chunk_subset_bytes,
-                    item.representation().data_type().size(),
+                    data_type_size,
                 )
             };
 
