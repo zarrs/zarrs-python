@@ -12,8 +12,7 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
-use std::sync::{Arc, Mutex};
-use store::StoreConfig;
+use std::sync::Arc;
 use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::codec::{
     ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder, StoragePartialDecoder,
@@ -23,7 +22,7 @@ use zarrs::array::{
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
-use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
+use zarrs::storage::StorageHandle;
 
 mod chunk_item;
 mod concurrency;
@@ -40,7 +39,6 @@ use utils::{PyErrExt, PyUntypedArrayExt};
 #[pyclass]
 pub struct CodecPipelineImpl {
     pub(crate) codec_chain: Arc<CodecChain>,
-    pub(crate) store: Mutex<Option<ReadableWritableListableStorage>>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
@@ -48,24 +46,6 @@ pub struct CodecPipelineImpl {
 }
 
 impl CodecPipelineImpl {
-    fn get_store_from_config(
-        &self,
-        config: &StoreConfig,
-    ) -> PyResult<ReadableWritableListableStorage> {
-        let mut gstore = self.store.lock().map_err(|_| {
-            PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
-        })?;
-
-        // TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
-        if let Some(gstore) = gstore.as_ref() {
-            Ok(gstore.clone())
-        } else {
-            let store: ReadableWritableListableStorage = config.try_into()?;
-            *gstore = Some(store.clone());
-            Ok(store)
-        }
-    }
-
     fn retrieve_chunk_bytes<'a, I: ChunksItem>(
         item: &I,
         codec_chain: &CodecChain,
@@ -254,7 +234,6 @@ impl CodecPipelineImpl {
 
         Ok(Self {
             codec_chain,
-            store: Mutex::new(None),
             codec_options,
             chunk_concurrent_minimum,
             chunk_concurrent_maximum,
