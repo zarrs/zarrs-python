@@ -117,10 +117,11 @@ class ZarrsCodecPipeline(CodecPipeline):
         batch_info: Iterable[
             tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]
         ],
-        out: NDBuffer,
+        out: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-        out = out.as_ndarray_like()  # FIXME: Error if array is not in host memory
+        # FIXME: Error if array is not in host memory
+        out: NDArrayLike = out.as_ndarray_like()
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
@@ -149,7 +150,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         batch_info: Iterable[
             tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
         ],
-        value: NDBuffer,
+        value: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         # FIXME: Error if array is not in host memory
