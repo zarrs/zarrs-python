@@ -7,9 +7,6 @@ use pyo3::{
     Bound, FromPyObject, PyAny, PyErr, PyResult,
 };
 use pyo3_stub_gen::derive::gen_stub_pyclass_enum;
-
-pub use filesystem::FilesystemStoreConfig;
-pub use http::HttpStoreConfig;
 use zarrs::storage::{
     storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
 };
@@ -18,6 +15,11 @@ use crate::{runtime::tokio_block_on, utils::PyErrExt};
 
 mod filesystem;
 mod http;
+mod manager;
+
+pub use self::filesystem::FilesystemStoreConfig;
+pub use self::http::HttpStoreConfig;
+pub(crate) use self::manager::StoreManager;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[gen_stub_pyclass_enum]

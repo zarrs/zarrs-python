@@ -69,6 +69,7 @@ pub(crate) struct WithSubset {
 #[pymethods]
 impl WithSubset {
     #[new]
+    #[allow(clippy::needless_pass_by_value)]
     fn new(
         item: Basic,
         chunk_subset: Vec<Bound<'_, PySlice>>,
