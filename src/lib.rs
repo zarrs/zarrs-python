@@ -1,17 +1,18 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
-use chunk_item::{ChunksItem, IntoItem};
+use chunk_item::ChunksItem;
 use concurrency::ChunkConcurrentLimitAndCodecOptions;
 use numpy::npyffi::PyArrayObject;
 use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
-use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use store::StoreConfig;
 use unsafe_cell_slice::UnsafeCellSlice;
@@ -23,7 +24,7 @@ use zarrs::array::{
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
-use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
+use zarrs::storage::{MaybeBytes, ReadableWritableListableStorage, StorageHandle};
 
 mod chunk_item;
 mod concurrency;
@@ -39,8 +40,8 @@ use utils::{PyErrExt, PyUntypedArrayExt};
 #[gen_stub_pyclass]
 #[pyclass]
 pub struct CodecPipelineImpl {
+    pub(crate) stores: Mutex<BTreeMap<StoreConfig, ReadableWritableListableStorage>>,
     pub(crate) codec_chain: Arc<CodecChain>,
-    pub(crate) store: Mutex<Option<ReadableWritableListableStorage>>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
@@ -48,47 +49,30 @@ pub struct CodecPipelineImpl {
 }
 
 impl CodecPipelineImpl {
-    fn get_store_from_config(
-        &self,
-        config: &StoreConfig,
-    ) -> PyResult<ReadableWritableListableStorage> {
-        let mut gstore = self.store.lock().map_err(|_| {
-            PyErr::new::<PyRuntimeError, _>("failed to lock the store mutex".to_string())
-        })?;
-
-        // TODO: Request upstream change to get store on codec pipeline initialisation, do not want to do all of this here
-        if let Some(gstore) = gstore.as_ref() {
-            Ok(gstore.clone())
-        } else {
-            let store: ReadableWritableListableStorage = config.try_into()?;
-            *gstore = Some(store.clone());
-            Ok(store)
+    fn store<I: ChunksItem>(&self, item: &I) -> PyResult<ReadableWritableListableStorage> {
+        use std::collections::btree_map::Entry::{Occupied, Vacant};
+        match self
+            .stores
+            .lock()
+            .map_py_err::<PyRuntimeError>()?
+            .entry(item.store_config())
+        {
+            Occupied(e) => Ok(e.get().clone()),
+            Vacant(e) => Ok(e.insert((&item.store_config()).try_into()?).clone()),
         }
     }
 
-    fn collect_chunk_descriptions<R: IntoItem<I, S>, I, S: Copy>(
-        &self,
-        chunk_descriptions: Vec<R>,
-        shape: S,
-    ) -> PyResult<Vec<I>> {
-        chunk_descriptions
-            .into_iter()
-            .map(|raw| {
-                // TODO: Prefer to get the store once, and assume it is the same for all chunks
-                let store = self.get_store_from_config(raw.store_config())?;
-                let path = raw.path();
-                let key = StoreKey::new(path).map_py_err::<PyValueError>()?;
-                raw.into_item(store, key, shape)
-            })
-            .collect()
+    fn get<I: ChunksItem>(&self, item: &I) -> PyResult<MaybeBytes> {
+        self.store(item)?.get(item.key()).map_py_err::<PyKeyError>()
     }
 
     fn retrieve_chunk_bytes<'a, I: ChunksItem>(
+        &self,
         item: &I,
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = item.get().map_py_err::<PyRuntimeError>()?;
+        let value_encoded = self.get(item).map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
@@ -105,6 +89,7 @@ impl CodecPipelineImpl {
     }
 
     fn store_chunk_bytes<I: ChunksItem>(
+        &self,
         item: &I,
         codec_chain: &CodecChain,
         value_decoded: ArrayBytes,
@@ -118,7 +103,7 @@ impl CodecPipelineImpl {
             .map_py_err::<PyValueError>()?;
 
         if value_decoded.is_fill_value(item.representation().fill_value()) {
-            item.store().erase(item.key())
+            self.store(item)?.erase(item.key())
         } else {
             let value_encoded = codec_chain
                 .encode(value_decoded, item.representation(), codec_options)
@@ -126,40 +111,38 @@ impl CodecPipelineImpl {
                 .map_py_err::<PyRuntimeError>()?;
 
             // Store the encoded chunk
-            item.store().set(item.key(), value_encoded.into())
+            self.store(item)?.set(item.key(), value_encoded.into())
         }
         .map_py_err::<PyRuntimeError>()
     }
 
     fn store_chunk_subset_bytes<I: ChunksItem>(
+        &self,
         item: &I,
         codec_chain: &CodecChain,
         chunk_subset_bytes: ArrayBytes,
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        if !chunk_subset.inbounds(&item.representation().shape_u64()) {
-            return Err(PyErr::new::<PyValueError, _>(
-                "chunk subset is out of bounds".to_string(),
-            ));
+        let array_shape = item.representation().shape_u64();
+        if !chunk_subset.inbounds(&array_shape) {
+            return Err(PyErr::new::<PyValueError, _>(format!(
+                "chunk subset ({chunk_subset}) is out of bounds for array shape ({array_shape:?})"
+            )));
         }
+        let data_type_size = item.representation().data_type().size();
 
-        if chunk_subset.start().iter().all(|&o| o == 0)
-            && chunk_subset.shape() == item.representation().shape_u64()
-        {
+        if chunk_subset.start().iter().all(|&o| o == 0) && chunk_subset.shape() == array_shape {
             // Fast path if the chunk subset spans the entire chunk, no read required
-            Self::store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
+            self.store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
         } else {
             // Validate the chunk subset bytes
             chunk_subset_bytes
-                .validate(
-                    chunk_subset.num_elements(),
-                    item.representation().data_type().size(),
-                )
+                .validate(chunk_subset.num_elements(), data_type_size)
                 .map_py_err::<PyValueError>()?;
 
             // Retrieve the chunk
-            let chunk_bytes_old = Self::retrieve_chunk_bytes(item, codec_chain, codec_options)?;
+            let chunk_bytes_old = self.retrieve_chunk_bytes(item, codec_chain, codec_options)?;
 
             // Update the chunk
             let chunk_bytes_new = unsafe {
@@ -170,15 +153,15 @@ impl CodecPipelineImpl {
                 // - output bytes and output subset bytes are compatible (same data type)
                 update_array_bytes(
                     chunk_bytes_old,
-                    &item.representation().shape_u64(),
+                    &array_shape,
                     chunk_subset,
                     &chunk_subset_bytes,
-                    item.representation().data_type().size(),
+                    data_type_size,
                 )
             };
 
             // Store the updated chunk
-            Self::store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
+            self.store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
         }
     }
 
@@ -270,8 +253,8 @@ impl CodecPipelineImpl {
         let num_threads = num_threads.unwrap_or(rayon::current_num_threads());
 
         Ok(Self {
+            stores: Mutex::default(),
             codec_chain,
-            store: Mutex::new(None),
             codec_options,
             chunk_concurrent_minimum,
             chunk_concurrent_maximum,
@@ -282,7 +265,7 @@ impl CodecPipelineImpl {
     fn retrieve_chunks_and_apply_index(
         &self,
         py: Python,
-        chunk_descriptions: Vec<chunk_item::RawWithIndices>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<chunk_item::WithSubset>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
@@ -293,8 +276,6 @@ impl CodecPipelineImpl {
         }
         let output = Self::nparray_to_unsafe_cell_slice(value);
         let output_shape: Vec<u64> = value.shape_zarr()?;
-        let chunk_descriptions =
-            self.collect_chunk_descriptions(chunk_descriptions, &output_shape)?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
@@ -310,7 +291,7 @@ impl CodecPipelineImpl {
                     && item.chunk_subset.shape() == item.representation().shape_u64()
                 {
                     // See zarrs::array::Array::retrieve_chunk_into
-                    let chunk_encoded = item.get().map_py_err::<PyRuntimeError>()?;
+                    let chunk_encoded = self.get(&item)?;
                     if let Some(chunk_encoded) = chunk_encoded {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -345,7 +326,7 @@ impl CodecPipelineImpl {
                     }
                 } else {
                     // Partially decode the chunk into the output buffer
-                    let storage_handle = Arc::new(StorageHandle::new(item.store().clone()));
+                    let storage_handle = Arc::new(StorageHandle::new(self.store(&item)?));
                     // NOTE: Normally a storage transformer would exist between the storage handle and the input handle
                     // but zarr-python does not support them nor forward them to the codec pipeline
                     let input_handle = Arc::new(StoragePartialDecoder::new(
@@ -388,10 +369,8 @@ impl CodecPipelineImpl {
     fn retrieve_chunks<'py>(
         &self,
         py: Python<'py>,
-        chunk_descriptions: Vec<chunk_item::Raw>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<chunk_item::Basic>, // FIXME: Ref / iterable?
     ) -> PyResult<Vec<Bound<'py, PyArray1<u8>>>> {
-        let chunk_descriptions = self.collect_chunk_descriptions(chunk_descriptions, ())?;
-
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
             chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
@@ -401,7 +380,7 @@ impl CodecPipelineImpl {
 
         let chunk_bytes = py.allow_threads(move || {
             let get_chunk_subset = |item: chunk_item::Basic| {
-                let chunk_encoded = item.get().map_py_err::<PyRuntimeError>()?;
+                let chunk_encoded = self.get(&item).map_py_err::<PyRuntimeError>()?;
                 Ok(if let Some(chunk_encoded) = chunk_encoded {
                     let chunk_encoded: Vec<u8> = chunk_encoded.into();
                     self.codec_chain
@@ -439,7 +418,7 @@ impl CodecPipelineImpl {
     fn store_chunks_with_indices(
         &self,
         py: Python,
-        chunk_descriptions: Vec<chunk_item::RawWithIndices>,
+        chunk_descriptions: Vec<chunk_item::WithSubset>,
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         enum InputValue<'a> {
@@ -460,10 +439,7 @@ impl CodecPipelineImpl {
         } else {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))
         };
-
         let input_shape: Vec<u64> = value.shape_zarr()?;
-        let chunk_descriptions =
-            self.collect_chunk_descriptions(chunk_descriptions, &input_shape)?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
@@ -482,7 +458,7 @@ impl CodecPipelineImpl {
                             item.item.representation().data_type(),
                         )
                         .map_py_err::<PyRuntimeError>()?;
-                    Self::store_chunk_subset_bytes(
+                    self.store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,
                         chunk_subset_bytes,
@@ -499,7 +475,7 @@ impl CodecPipelineImpl {
                         constant_value,
                     );
 
-                    Self::store_chunk_subset_bytes(
+                    self.store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,
                         chunk_subset_bytes,
@@ -526,6 +502,8 @@ impl CodecPipelineImpl {
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<CodecPipelineImpl>()?;
+    m.add_class::<chunk_item::Basic>()?;
+    m.add_class::<chunk_item::WithSubset>()?;
     Ok(())
 }
 

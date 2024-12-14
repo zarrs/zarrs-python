@@ -2,74 +2,92 @@ use std::num::NonZeroU64;
 
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
-    types::{PySlice, PySliceMethods},
-    Bound, PyErr, PyResult,
+    pyclass, pymethods,
+    types::{PyAnyMethods as _, PySlice, PySliceMethods as _},
+    Bound, PyAny, PyErr, PyResult,
 };
+use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
     array::{ChunkRepresentation, DataType, FillValue},
     array_subset::ArraySubset,
     metadata::v3::{array::data_type::DataTypeMetadataV3, MetadataV3},
-    storage::{MaybeBytes, ReadableWritableListableStorage, StorageError, StoreKey},
+    storage::StoreKey,
 };
 
-use crate::{utils::PyErrExt, StoreConfig};
-
-pub(crate) type Raw<'a> = (
-    // store
-    StoreConfig,
-    // path
-    String,
-    // shape
-    Vec<u64>,
-    // data type
-    String,
-    // fill value bytes
-    Vec<u8>,
-);
-
-pub(crate) type RawWithIndices<'a> = (
-    Raw<'a>,
-    // out selection
-    Vec<Bound<'a, PySlice>>,
-    // chunk selection
-    Vec<Bound<'a, PySlice>>,
-);
-
-pub(crate) trait IntoItem<T, S>: std::marker::Sized {
-    fn store_config(&self) -> &StoreConfig;
-    fn path(&self) -> &str;
-    fn into_item(
-        self,
-        store: ReadableWritableListableStorage,
-        key: StoreKey,
-        shape: S,
-    ) -> PyResult<T>;
-}
+use crate::{store::StoreConfig, utils::PyErrExt};
 
 pub(crate) trait ChunksItem {
-    fn store(&self) -> ReadableWritableListableStorage;
+    fn store_config(&self) -> StoreConfig;
     fn key(&self) -> &StoreKey;
     fn representation(&self) -> &ChunkRepresentation;
-
-    fn get(&self) -> Result<MaybeBytes, StorageError> {
-        self.store().get(self.key())
-    }
 }
 
+#[derive(Clone)]
+#[gen_stub_pyclass]
+#[pyclass]
 pub(crate) struct Basic {
-    store: ReadableWritableListableStorage,
+    store: StoreConfig,
     key: StoreKey,
     representation: ChunkRepresentation,
 }
 
+#[gen_stub_pymethods]
+#[pymethods]
+impl Basic {
+    #[new]
+    fn new(byte_interface: &Bound<'_, PyAny>, chunk_spec: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let store: StoreConfig = byte_interface.getattr("store")?.extract()?;
+        let path: String = byte_interface.getattr("path")?.extract()?;
+
+        let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
+        let dtype: String = chunk_spec
+            .getattr("dtype")?
+            .call_method0("__str__")?
+            .extract()?;
+        let fill_value = chunk_spec
+            .getattr("fill_value")?
+            .call_method0("tobytes")?
+            .extract()?;
+        Ok(Self {
+            store,
+            key: StoreKey::new(path).map_py_err::<PyValueError>()?,
+            representation: get_chunk_representation(chunk_shape, &dtype, fill_value)?,
+        })
+    }
+}
+
+#[derive(Clone)]
+#[gen_stub_pyclass]
+#[pyclass]
 pub(crate) struct WithSubset {
     pub item: Basic,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
 }
 
+#[gen_stub_pymethods]
+#[pymethods]
+impl WithSubset {
+    #[new]
+    fn new(
+        item: Basic,
+        chunk_subset: Vec<Bound<'_, PySlice>>,
+        subset: Vec<Bound<'_, PySlice>>,
+        shape: Vec<u64>,
+    ) -> PyResult<Self> {
+        let chunk_subset =
+            selection_to_array_subset(&chunk_subset, &item.representation.shape_u64())?;
+        let subset = selection_to_array_subset(&subset, &shape)?;
+        Ok(Self {
+            item,
+            chunk_subset,
+            subset,
+        })
+    }
+}
+
 impl ChunksItem for Basic {
-    fn store(&self) -> ReadableWritableListableStorage {
+    fn store_config(&self) -> StoreConfig {
         self.store.clone()
     }
     fn key(&self) -> &StoreKey {
@@ -81,7 +99,7 @@ impl ChunksItem for Basic {
 }
 
 impl ChunksItem for WithSubset {
-    fn store(&self) -> ReadableWritableListableStorage {
+    fn store_config(&self) -> StoreConfig {
         self.item.store.clone()
     }
     fn key(&self) -> &StoreKey {
@@ -89,57 +107,6 @@ impl ChunksItem for WithSubset {
     }
     fn representation(&self) -> &ChunkRepresentation {
         &self.item.representation
-    }
-}
-
-impl<'a> IntoItem<Basic, ()> for Raw<'a> {
-    fn store_config(&self) -> &StoreConfig {
-        &self.0
-    }
-
-    fn path(&self) -> &str {
-        &self.1
-    }
-
-    fn into_item(
-        self,
-        store: ReadableWritableListableStorage,
-        key: StoreKey,
-        (): (),
-    ) -> PyResult<Basic> {
-        let (_, _, chunk_shape, dtype, fill_value) = self;
-        let representation = get_chunk_representation(chunk_shape, &dtype, fill_value)?;
-        Ok(Basic {
-            store,
-            key,
-            representation,
-        })
-    }
-}
-
-impl IntoItem<WithSubset, &[u64]> for RawWithIndices<'_> {
-    fn store_config(&self) -> &StoreConfig {
-        &self.0 .0
-    }
-
-    fn path(&self) -> &str {
-        &self.0 .1
-    }
-
-    fn into_item(
-        self,
-        store: ReadableWritableListableStorage,
-        key: StoreKey,
-        shape: &[u64],
-    ) -> PyResult<WithSubset> {
-        let (raw, selection, chunk_selection) = self;
-        let chunk_shape = raw.2.clone();
-        let item = raw.into_item(store.clone(), key, ())?;
-        Ok(WithSubset {
-            item,
-            chunk_subset: selection_to_array_subset(&chunk_selection, &chunk_shape)?,
-            subset: selection_to_array_subset(&selection, shape)?,
-        })
     }
 }
 

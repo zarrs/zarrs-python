@@ -19,6 +19,7 @@ use crate::{runtime::tokio_block_on, utils::PyErrExt};
 mod filesystem;
 mod http;
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[gen_stub_pyclass_enum]
 pub enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
