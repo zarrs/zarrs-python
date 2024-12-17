@@ -2,9 +2,14 @@
 # ruff: noqa: E501, F401
 
 import typing
+from enum import Enum, auto
 
 import numpy
 import numpy.typing
+
+class Basic:
+    def __new__(cls, byte_interface: typing.Any, chunk_spec: typing.Any): ...
+    ...
 
 class CodecPipelineImpl:
     def __new__(
@@ -19,29 +24,34 @@ class CodecPipelineImpl:
     ): ...
     def retrieve_chunks_and_apply_index(
         self,
-        chunk_descriptions: typing.Sequence[
-            tuple[
-                tuple[str, typing.Sequence[int], str, typing.Sequence[int]],
-                typing.Sequence[slice],
-                typing.Sequence[slice],
-            ]
-        ],
+        chunk_descriptions: typing.Sequence[WithSubset],
         value: numpy.NDArray[typing.Any],
     ) -> None: ...
     def retrieve_chunks(
-        self,
-        chunk_descriptions: typing.Sequence[
-            tuple[str, typing.Sequence[int], str, typing.Sequence[int]]
-        ],
+        self, chunk_descriptions: typing.Sequence[Basic]
     ) -> list[numpy.typing.NDArray[numpy.uint8]]: ...
     def store_chunks_with_indices(
         self,
-        chunk_descriptions: typing.Sequence[
-            tuple[
-                tuple[str, typing.Sequence[int], str, typing.Sequence[int]],
-                typing.Sequence[slice],
-                typing.Sequence[slice],
-            ]
-        ],
+        chunk_descriptions: typing.Sequence[WithSubset],
         value: numpy.NDArray[typing.Any],
     ) -> None: ...
+
+class FilesystemStoreConfig:
+    root: str
+
+class HttpStoreConfig:
+    endpoint: str
+
+class WithSubset:
+    def __new__(
+        cls,
+        item: Basic,
+        chunk_subset: typing.Sequence[slice],
+        subset: typing.Sequence[slice],
+        shape: typing.Sequence[int],
+    ): ...
+    ...
+
+class StoreConfig(Enum):
+    Filesystem = auto()
+    Http = auto()
