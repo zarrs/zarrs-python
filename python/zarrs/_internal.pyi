@@ -25,7 +25,7 @@ class CodecPipelineImpl:
     def retrieve_chunks_and_apply_index(
         self,
         chunk_descriptions: typing.Sequence[WithSubset],
-        value: numpy.NDArray[typing.Any],
+        value: numpy.typing.NDArray[typing.Any],
     ) -> None: ...
     def retrieve_chunks(
         self, chunk_descriptions: typing.Sequence[Basic]
@@ -33,7 +33,7 @@ class CodecPipelineImpl:
     def store_chunks_with_indices(
         self,
         chunk_descriptions: typing.Sequence[WithSubset],
-        value: numpy.NDArray[typing.Any],
+        value: numpy.typing.NDArray[typing.Any],
     ) -> None: ...
 
 class FilesystemStoreConfig:
