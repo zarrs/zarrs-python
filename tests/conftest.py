@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 from zarr import config
 from zarr.core.common import ChunkCoords
-from zarr.storage import LocalStore, MemoryStore, ZipStore, FsspecStore
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, ZipStore
 
 from zarrs.utils import (  # noqa: F401
     CollapsedDimensionError,
