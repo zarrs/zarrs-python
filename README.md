@@ -32,8 +32,8 @@ We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class b
 
 At the moment, we only support a subset of the `zarr-python` stores:
 
-- [x] [LocalStore](https://zarr.readthedocs.io/en/main/_autoapi/zarr/storage/local/index.html) (FileSystem)
-- [RemoteStore](https://zarr.readthedocs.io/en/main/_autoapi/zarr/storage/remote/index.html)
+- [x] [LocalStore](https://zarr.readthedocs.io/en/latest/_autoapi/zarr/storage/index.html#zarr.storage.LocalStore) (FileSystem)
+- [FsspecStore](https://zarr.readthedocs.io/en/latest/_autoapi/zarr/storage/index.html#zarr.storage.FsspecStore)
   - [x] [HTTPFileSystem](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.implementations.http.HTTPFileSystem)
 
 A `NotImplementedError` will be raised if a store is not supported.
@@ -48,7 +48,6 @@ Standard `zarr.config` options control some functionality (see the defaults in t
   - Defaults to the number of threads in the global `rayon` thread pool if set to `None`, which is [typically the number of logical CPUs](https://docs.rs/rayon/latest/rayon/struct.ThreadPoolBuilder.html#method.num_threads).
 - `array.write_empty_chunks`: whether or not to store empty chunks.
   - Defaults to false if `None`. Note that checking for emptiness has some overhead, see [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#store-empty-chunks) for more info.
-  - This option name is proposed in [zarr-python #2429](https://github.com/zarr-developers/zarr-python/pull/2429)
 
 The `ZarrsCodecPipeline` specific options are:
 - `codec_pipeline.chunk_concurrent_maximum`: the maximum number of chunks stored/retrieved concurrently.

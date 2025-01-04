@@ -38,7 +38,7 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                 let root: String = store.getattr("root")?.call_method0("__str__")?.extract()?;
                 Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(root)))
             }
-            "RemoteStore" => {
+            "FsspecStore" => {
                 let fs = store.getattr("fs")?;
                 let fs_name = fs.get_type().name()?;
                 let fs_name = fs_name.to_str()?;
@@ -51,7 +51,7 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                         &storage_options,
                     )?)),
                     _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
-                        "zarrs-python does not support {fs_name} (RemoteStore) stores"
+                        "zarrs-python does not support {fs_name} (FsspecStore) stores"
                     ))),
                 }
             }

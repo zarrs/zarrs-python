@@ -8,8 +8,7 @@ import numpy.typing as npt
 import pytest
 from zarr import config
 from zarr.core.common import ChunkCoords
-from zarr.storage import LocalStore, MemoryStore, ZipStore
-from zarr.storage.remote import RemoteStore
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, ZipStore
 
 from zarrs.utils import (  # noqa: F401
     CollapsedDimensionError,
@@ -38,13 +37,13 @@ def _setup_codec_pipeline():
 
 async def parse_store(
     store: Literal["local", "memory", "remote", "zip"], path: str
-) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
+) -> LocalStore | MemoryStore | FsspecStore | ZipStore:
     if store == "local":
         return await LocalStore.open(path)
     if store == "memory":
         return await MemoryStore.open()
     if store == "remote":
-        return await RemoteStore.open(url=path)
+        return await FsspecStore.open(url=path)
     if store == "zip":
         return await ZipStore.open(path + "/zarr.zip")
     raise AssertionError

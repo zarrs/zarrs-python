@@ -33,7 +33,6 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
     return CodecPipelineImpl(
         codec_metadata_json,
         validate_checksums=config.get("codec_pipeline.validate_checksums", None),
-        # TODO: upstream zarr-python array.write_empty_chunks is not merged yet #2429
         store_empty_chunks=config.get("array.write_empty_chunks", None),
         chunk_concurrent_minimum=config.get(
             "codec_pipeline.chunk_concurrent_minimum", None
@@ -74,7 +73,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         # TODO: upstream zarr-python has not settled on how to deal with configs yet
         # Should they be checked when an array is created, or when an operation is performed?
         # https://github.com/zarr-developers/zarr-python/issues/2409
-        # https://github.com/zarr-developers/zarr-python/pull/2429
+        # https://github.com/zarr-developers/zarr-python/pull/2429#issuecomment-2566976567
         return cls(
             codec_metadata_json=codec_metadata_json,
             codecs=tuple(codecs),

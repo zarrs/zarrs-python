@@ -4,7 +4,7 @@ import aiohttp
 import numpy as np
 import pytest
 import zarr
-from zarr.storage.remote import RemoteStore
+from zarr.storage import FsspecStore
 
 ARR_REF = np.array(
     [
@@ -30,7 +30,7 @@ def test_zarrs_http():
 
 @pytest.mark.xfail(reason="Storage options are not supported for HTTP store")
 def test_zarrs_http_kwargs():
-    store = RemoteStore.from_url(
+    store = FsspecStore.from_url(
         URL, storage_options={"auth": aiohttp.BasicAuth("user", "pass")}
     )
     arr = zarr.open(store)
