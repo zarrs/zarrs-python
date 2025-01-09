@@ -154,17 +154,26 @@ impl CodecPipelineImpl {
             .unwrap()
     }
 
+    fn py_untyped_array_to_array_object<'a>(
+        value: &Bound<'a, PyUntypedArray>,
+    ) -> &'a PyArrayObject {
+        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
+        let array_object: &PyArrayObject = unsafe {
+            // SAFETY: array_object_ptr cannot be null
+            array_object_ptr
+                .as_ref()
+                .expect("pointer is convertible to a reference")
+        };
+        array_object
+    }
+
     fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
         if !value.is_c_contiguous() {
             return Err(PyErr::new::<PyValueError, _>(
                 "input array must be a C contiguous array".to_string(),
             ));
         }
-        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        let array_object: &PyArrayObject = unsafe {
-            // SAFETY: array_object_ptr cannot be null
-            &*array_object_ptr
-        };
+        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let slice = unsafe {
@@ -183,11 +192,7 @@ impl CodecPipelineImpl {
                 "input array must be a C contiguous array".to_string(),
             ));
         }
-        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        let array_object: &PyArrayObject = unsafe {
-            // SAFETY: array_object_ptr cannot be null
-            &*array_object_ptr
-        };
+        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let output = unsafe {
