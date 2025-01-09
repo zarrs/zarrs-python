@@ -154,18 +154,12 @@ impl CodecPipelineImpl {
             .unwrap()
     }
 
-    fn py_untyped_array_to_array_object<'a>(
-        value: &Bound<'a, PyUntypedArray>,
-    ) -> &'a PyArrayObject {
+    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        unsafe {
+        let array_object: &PyArrayObject = unsafe {
             // SAFETY: array_object_ptr cannot be null
             &*array_object_ptr
-        }
-    }
-
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
-        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
+        };
         let array_data = array_object.data.cast::<u8>();
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let slice = unsafe {
@@ -179,7 +173,11 @@ impl CodecPipelineImpl {
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> UnsafeCellSlice<'a, u8> {
-        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
+        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
+        let array_object: &PyArrayObject = unsafe {
+            // SAFETY: array_object_ptr cannot be null
+            &*array_object_ptr
+        };
         let array_data = array_object.data.cast::<u8>();
         let array_len = value.len() * Self::pyarray_itemsize(value);
         let output = unsafe {
