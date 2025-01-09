@@ -154,7 +154,12 @@ impl CodecPipelineImpl {
             .unwrap()
     }
 
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
+        if !value.is_c_contiguous() {
+            return Err(PyErr::new::<PyValueError, _>(
+                "input array must be a C contiguous array".to_string(),
+            ));
+        }
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &PyArrayObject = unsafe {
             // SAFETY: array_object_ptr cannot be null
@@ -167,12 +172,17 @@ impl CodecPipelineImpl {
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts(array_data, array_len)
         };
-        slice
+        Ok(slice)
     }
 
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
-    ) -> UnsafeCellSlice<'a, u8> {
+    ) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
+        if !value.is_c_contiguous() {
+            return Err(PyErr::new::<PyValueError, _>(
+                "input array must be a C contiguous array".to_string(),
+            ));
+        }
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &PyArrayObject = unsafe {
             // SAFETY: array_object_ptr cannot be null
@@ -185,7 +195,7 @@ impl CodecPipelineImpl {
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts_mut(array_data, array_len)
         };
-        UnsafeCellSlice::new(output)
+        Ok(UnsafeCellSlice::new(output))
     }
 }
 
@@ -246,12 +256,7 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-        let output = Self::nparray_to_unsafe_cell_slice(value);
+        let output = Self::nparray_to_unsafe_cell_slice(value)?;
         let output_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
@@ -395,13 +400,7 @@ impl CodecPipelineImpl {
         }
 
         // Get input array
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-
-        let input_slice = Self::nparray_to_slice(value);
+        let input_slice = Self::nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
             InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
         } else {
