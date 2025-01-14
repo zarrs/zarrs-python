@@ -155,7 +155,7 @@ impl CodecPipelineImpl {
     }
 
     fn py_untyped_array_to_array_object<'a>(
-        value: &Bound<'a, PyUntypedArray>,
+        value: &'a Bound<'_, PyUntypedArray>,
     ) -> &'a PyArrayObject {
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
         let array_object: &PyArrayObject = unsafe {
