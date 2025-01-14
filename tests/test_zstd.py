@@ -3,7 +3,7 @@ import pytest
 from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ZstdCodec
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 
 @pytest.mark.parametrize("checksum", [True, False])
