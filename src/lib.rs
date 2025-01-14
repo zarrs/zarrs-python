@@ -158,8 +158,8 @@ impl CodecPipelineImpl {
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> &'a PyArrayObject {
         let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        let array_object: &PyArrayObject = unsafe {
-            // SAFETY: array_object_ptr cannot be null
+        let array_object: &'a PyArrayObject = unsafe {
+            // SAFETY: array_object_ptr cannot be null and the array object pointed to by array_object_ptr is valid for 'a
             array_object_ptr
                 .as_ref()
                 .expect("pointer is convertible to a reference")
