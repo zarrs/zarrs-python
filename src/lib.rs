@@ -2,6 +2,7 @@
 #![allow(clippy::module_name_repetitions)]
 
 use std::borrow::Cow;
+use std::ptr::NonNull;
 use std::sync::Arc;
 
 use numpy::npyffi::PyArrayObject;
@@ -157,12 +158,13 @@ impl CodecPipelineImpl {
     fn py_untyped_array_to_array_object<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> &'a PyArrayObject {
-        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
+        // TODO: Upstream a PyUntypedArray.as_array_ref()?
+        //       https://github.com/ilan-gold/zarrs-python/pull/80/files/75be39184905d688ac04a5f8bca08c5241c458cd#r1918365296
+        let array_object_ptr: NonNull<PyArrayObject> = NonNull::new(value.as_array_ptr())
+            .expect("bug in numpy crate: Bound<'_, PyUntypedArray>::as_array_ptr unexpectedly returned a null pointer");
         let array_object: &'a PyArrayObject = unsafe {
-            // SAFETY: array_object_ptr cannot be null and the array object pointed to by array_object_ptr is valid for 'a
-            array_object_ptr
-                .as_ref()
-                .expect("pointer is convertible to a reference")
+            // SAFETY: the array object pointed to by array_object_ptr is valid for 'a
+            array_object_ptr.as_ref()
         };
         array_object
     }
