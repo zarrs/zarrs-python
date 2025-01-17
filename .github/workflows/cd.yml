@@ -147,3 +147,4 @@ jobs:
         with:
           name: ${{ needs.version.outputs.version }}
           prerelease: ${{ needs.version.outputs.is_prerelease }}
+          generateReleaseNotes: true
