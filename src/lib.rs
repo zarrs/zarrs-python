@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 
 use numpy::npyffi::PyArrayObject;
-use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{IntoPyArray, PyArray1, PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
@@ -145,16 +145,6 @@ impl CodecPipelineImpl {
         }
     }
 
-    fn pyarray_itemsize(value: &Bound<'_, PyUntypedArray>) -> usize {
-        // TODO: is this and the below a bug? why doesn't .itemsize() work?
-        value
-            .dtype()
-            .getattr("itemsize")
-            .unwrap()
-            .extract::<usize>()
-            .unwrap()
-    }
-
     fn py_untyped_array_to_array_object<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
     ) -> &'a PyArrayObject {
@@ -177,7 +167,7 @@ impl CodecPipelineImpl {
         }
         let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * Self::pyarray_itemsize(value);
+        let array_len = value.len() * value.dtype().itemsize();
         let slice = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
             debug_assert!(!array_data.is_null());
@@ -196,7 +186,7 @@ impl CodecPipelineImpl {
         }
         let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * Self::pyarray_itemsize(value);
+        let array_len = value.len() * value.dtype().itemsize();
         let output = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
             debug_assert!(!array_data.is_null());
