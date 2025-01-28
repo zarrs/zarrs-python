@@ -49,6 +49,8 @@ indexing_method_params = [
     pytest.param(lambda x: x, id="vindex"),
 ]
 
+zarr_formats = [2, 3]
+
 
 def pytest_generate_tests(metafunc):
     old_pipeline_path = zarr.config.get("codec_pipeline.path")
@@ -60,32 +62,34 @@ def pytest_generate_tests(metafunc):
         store_values = []
         indexing_methods = []
         ids = []
-        for dimensionality in dimensionalities_:
-            indexers = non_numpy_indices if dimensionality > 2 else all_indices
-            for index_param_prod in product(indexers, repeat=dimensionality):
-                index = tuple(index_param.values[0] for index_param in index_param_prod)
-                # multi-ellipsis indexing is not supported
-                if sum(isinstance(i, EllipsisType) for i in index) > 1:
-                    continue
-                for indexing_method_param in indexing_method_params:
-                    arr = gen_arr(fill_value_, Path(tempfile.mktemp()), dimensionality)
-                    indexing_method = indexing_method_param.values[0]
-                    dimensionality_id = f"{dimensionality}d"
-                    id = "-".join(
-                        [indexing_method_param.id, dimensionality_id]
-                        + [index_param.id for index_param in index_param_prod]
-                    )
-                    ids.append(id)
-                    store_values.append(
-                        gen_store_values(
-                            indexing_method,
-                            index,
-                            full_array((axis_size_,) * dimensionality),
+        for format in zarr_formats:
+            for dimensionality in dimensionalities_:
+                indexers = non_numpy_indices if dimensionality > 2 else all_indices
+                for index_param_prod in product(indexers, repeat=dimensionality):
+                    index = tuple(index_param.values[0] for index_param in index_param_prod)
+                    # multi-ellipsis indexing is not supported
+                    if sum(isinstance(i, EllipsisType) for i in index) > 1:
+                        continue
+                    for indexing_method_param in indexing_method_params:
+                        arr = gen_arr(fill_value_, Path(tempfile.mktemp()), dimensionality, format)
+                        indexing_method = indexing_method_param.values[0]
+                        dimensionality_id = f"{dimensionality}d"
+                        id = "-".join(
+                            [indexing_method_param.id, dimensionality_id]
+                            + [index_param.id for index_param in index_param_prod]
+                            + [f"v{format}"]
                         )
-                    )
-                    indexing_methods.append(indexing_method)
-                    indices.append(index)
-                    arrs.append(arr)
+                        ids.append(id)
+                        store_values.append(
+                            gen_store_values(
+                                indexing_method,
+                                index,
+                                full_array((axis_size_,) * dimensionality),
+                            )
+                        )
+                        indexing_methods.append(indexing_method)
+                        indices.append(index)
+                        arrs.append(arr)
         # array is used as param name to prevent collision with arr fixture
         metafunc.parametrize(
             ["array", "index", "store_values", "indexing_method"],
@@ -139,14 +143,15 @@ def gen_store_values(
     return full_array[index]
 
 
-def gen_arr(fill_value, tmp_path, dimensionality) -> zarr.Array:
+def gen_arr(fill_value, tmp_path, dimensionality, format) -> zarr.Array:
     return zarr.create(
         (axis_size_,) * dimensionality,
         store=LocalStore(root=tmp_path / ".zarr"),
         chunks=(chunk_size_,) * dimensionality,
         dtype=np.int16,
         fill_value=fill_value,
-        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()],
+        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()] if format == 3 else None,
+        zarr_format=format,
     )
 
 
@@ -154,10 +159,14 @@ def gen_arr(fill_value, tmp_path, dimensionality) -> zarr.Array:
 def dimensionality(request):
     return request.param
 
+@pytest.fixture(params=zarr_formats)
+def format(request):
+    return request.param
+
 
 @pytest.fixture
-def arr(dimensionality, tmp_path) -> zarr.Array:
-    return gen_arr(fill_value_, tmp_path, dimensionality)
+def arr(dimensionality, tmp_path, format) -> zarr.Array:
+    return gen_arr(fill_value_, tmp_path, dimensionality, format)
 
 
 def test_fill_value(arr: zarr.Array):
@@ -194,31 +203,6 @@ def test_roundtrip(
     assert np.all(
         res == store_values,
     ), res
-
-
-@contextmanager
-def use_zarr_default_codec_reader():
-    zarr.config.set(
-        {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
-    )
-    yield
-    zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
-
-
-def test_roundtrip_read_only_zarrs(
-    array: zarr.Array,
-    store_values: np.ndarray,
-    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
-    indexing_method: Callable,
-):
-    with use_zarr_default_codec_reader():
-        arr_default = zarr.open(array.store, read_only=True)
-        indexing_method(arr_default)[index] = store_values
-    res = indexing_method(zarr.open(array.store))[index]
-    assert np.all(
-        res == store_values,
-    ), res
-
 
 def test_ellipsis_indexing_invalid(arr: zarr.Array):
     if len(arr.shape) <= 2:

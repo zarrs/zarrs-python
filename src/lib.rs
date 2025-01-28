@@ -337,54 +337,6 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunks<'py>(
-        &self,
-        py: Python<'py>,
-        chunk_descriptions: Vec<chunk_item::Basic>, // FIXME: Ref / iterable?
-    ) -> PyResult<Vec<Bound<'py, PyArray1<u8>>>> {
-        // Adjust the concurrency based on the codec chain and the first chunk description
-        let Some((chunk_concurrent_limit, codec_options)) =
-            chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
-        else {
-            return Ok(vec![]);
-        };
-
-        let chunk_bytes = py.allow_threads(move || {
-            let get_chunk_subset = |item: chunk_item::Basic| {
-                Ok(if let Some(chunk_encoded) = self.stores.get(&item)? {
-                    let chunk_encoded: Vec<u8> = chunk_encoded.into();
-                    self.codec_chain
-                        .decode(
-                            Cow::Owned(chunk_encoded),
-                            item.representation(),
-                            &codec_options,
-                        )
-                        .map_py_err::<PyRuntimeError>()?
-                } else {
-                    // The chunk is missing so we need to create one.
-                    let num_elements = item.representation().num_elements();
-                    let data_type_size = item.representation().data_type().size();
-                    let chunk_shape = ArraySize::new(data_type_size, num_elements);
-                    ArrayBytes::new_fill_value(chunk_shape, item.representation().fill_value())
-                }
-                .into_fixed()
-                .map_py_err::<PyRuntimeError>()?
-                .into_owned())
-            };
-            iter_concurrent_limit!(
-                chunk_concurrent_limit,
-                chunk_descriptions,
-                map,
-                get_chunk_subset
-            )
-            .collect::<PyResult<Vec<Vec<u8>>>>()
-        })?;
-        Ok(chunk_bytes
-            .into_iter()
-            .map(|x| x.into_pyarray(py))
-            .collect())
-    }
-
     fn store_chunks_with_indices(
         &self,
         py: Python,
