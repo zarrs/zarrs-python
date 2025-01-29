@@ -2,10 +2,11 @@
 #![allow(clippy::module_name_repetitions)]
 
 use std::borrow::Cow;
+use std::ptr::NonNull;
 use std::sync::Arc;
 
 use numpy::npyffi::PyArrayObject;
-use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{IntoPyArray, PyArray1, PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
@@ -144,50 +145,54 @@ impl CodecPipelineImpl {
         }
     }
 
-    fn pyarray_itemsize(value: &Bound<'_, PyUntypedArray>) -> usize {
-        // TODO: is this and the below a bug? why doesn't .itemsize() work?
-        value
-            .dtype()
-            .getattr("itemsize")
-            .unwrap()
-            .extract::<usize>()
-            .unwrap()
-    }
-
     fn py_untyped_array_to_array_object<'a>(
-        value: &Bound<'a, PyUntypedArray>,
+        value: &'a Bound<'_, PyUntypedArray>,
     ) -> &'a PyArrayObject {
-        let array_object_ptr: *mut PyArrayObject = value.as_array_ptr();
-        unsafe {
-            // SAFETY: array_object_ptr cannot be null
-            &*array_object_ptr
-        }
+        // TODO: Upstream a PyUntypedArray.as_array_ref()?
+        //       https://github.com/ilan-gold/zarrs-python/pull/80/files/75be39184905d688ac04a5f8bca08c5241c458cd#r1918365296
+        let array_object_ptr: NonNull<PyArrayObject> = NonNull::new(value.as_array_ptr())
+            .expect("bug in numpy crate: Bound<'_, PyUntypedArray>::as_array_ptr unexpectedly returned a null pointer");
+        let array_object: &'a PyArrayObject = unsafe {
+            // SAFETY: the array object pointed to by array_object_ptr is valid for 'a
+            array_object_ptr.as_ref()
+        };
+        array_object
     }
 
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a [u8] {
+    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
+        if !value.is_c_contiguous() {
+            return Err(PyErr::new::<PyValueError, _>(
+                "input array must be a C contiguous array".to_string(),
+            ));
+        }
         let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * Self::pyarray_itemsize(value);
+        let array_len = value.len() * value.dtype().itemsize();
         let slice = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts(array_data, array_len)
         };
-        slice
+        Ok(slice)
     }
 
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
-    ) -> UnsafeCellSlice<'a, u8> {
+    ) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
+        if !value.is_c_contiguous() {
+            return Err(PyErr::new::<PyValueError, _>(
+                "input array must be a C contiguous array".to_string(),
+            ));
+        }
         let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
         let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * Self::pyarray_itemsize(value);
+        let array_len = value.len() * value.dtype().itemsize();
         let output = unsafe {
             // SAFETY: array_data is a valid pointer to a u8 array of length array_len
             debug_assert!(!array_data.is_null());
             std::slice::from_raw_parts_mut(array_data, array_len)
         };
-        UnsafeCellSlice::new(output)
+        Ok(UnsafeCellSlice::new(output))
     }
 }
 
@@ -248,12 +253,7 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-        let output = Self::nparray_to_unsafe_cell_slice(value);
+        let output = Self::nparray_to_unsafe_cell_slice(value)?;
         let output_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
@@ -349,13 +349,7 @@ impl CodecPipelineImpl {
         }
 
         // Get input array
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-
-        let input_slice = Self::nparray_to_slice(value);
+        let input_slice = Self::nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
             InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
         } else {

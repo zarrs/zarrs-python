@@ -1,6 +1,6 @@
 [package]
 name = "zarrs-python"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 publish = false
 
@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.23.2", features = ["abi3-py311"] }
-zarrs = "0.18.0"
+zarrs = { version = "0.19.0", features = ["async"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
@@ -19,9 +19,9 @@ numpy = "0.23.0"
 unsafe_cell_slice = "0.2.0"
 serde_json = "1.0.128"
 pyo3-stub-gen = "0.6.2"
-opendal = { version = "0.50.2", features = ["services-http"] }
+opendal = { version = "0.51.0", features = ["services-http"] }
 tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
-zarrs_opendal = "0.4.0"
+zarrs_opendal = "0.5.0"
 
 [profile.release]
 lto = true
