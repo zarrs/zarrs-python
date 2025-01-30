@@ -122,3 +122,6 @@ ignore = [
 "**/*.pyi" = ["ICN001"]
 [tool.ruff.lint.isort]
 known-first-party = ["zarrs"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
