@@ -26,6 +26,7 @@ from ._internal import CodecPipelineImpl
 from .utils import (
     CollapsedDimensionError,
     DiscontiguousArrayError,
+    make_chunk_info_for_rust,
     make_chunk_info_for_rust_with_indices,
 )
 
@@ -133,7 +134,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
-        # FIXME: Error if array is not in host memory
+        out: NDArrayLike = out.as_ndarray_like()
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
@@ -141,16 +142,21 @@ class ZarrsCodecPipeline(CodecPipeline):
                 batch_info, drop_axes, out.shape
             )
         except (DiscontiguousArrayError, CollapsedDimensionError):
-            await self.python_impl.read(batch_info, out, drop_axes)
-            return None
+            chunks_desc = make_chunk_info_for_rust(batch_info)
         else:
-            out: NDArrayLike = out.as_ndarray_like()
             await asyncio.to_thread(
                 self.impl.retrieve_chunks_and_apply_index,
                 chunks_desc,
                 out,
             )
             return None
+        chunks = await asyncio.to_thread(self.impl.retrieve_chunks, chunks_desc)
+        for chunk, (_, spec, selection, out_selection) in zip(chunks, batch_info):
+            chunk_reshaped = chunk.view(spec.dtype).reshape(spec.shape)
+            chunk_selected = chunk_reshaped[selection]
+            if drop_axes:
+                chunk_selected = np.squeeze(chunk_selected, axis=drop_axes)
+            out[out_selection] = chunk_selected
 
     async def write(
         self,
@@ -160,19 +166,14 @@ class ZarrsCodecPipeline(CodecPipeline):
         value: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        try:
-            chunks_desc = make_chunk_info_for_rust_with_indices(
-                batch_info, drop_axes, value.shape
-            )
-        except (DiscontiguousArrayError, CollapsedDimensionError):
-            await self.python_impl.write(batch_info, value, drop_axes)
-            return None
-        else:
-            # FIXME: Error if array is not in host memory
-            value_np: NDArrayLike | np.ndarray = value.as_ndarray_like()
-            if not value_np.dtype.isnative:
-                value_np = np.ascontiguousarray(value_np, dtype=value_np.dtype.newbyteorder("="))
-            elif not value_np.flags.c_contiguous:
-                value_np = np.ascontiguousarray(value_np)
-            await asyncio.to_thread(self.impl.store_chunks_with_indices, chunks_desc, value_np)
-            return None
+        # FIXME: Error if array is not in host memory
+        value: NDArrayLike | np.ndarray = value.as_ndarray_like()
+        if not value.dtype.isnative:
+            value = np.ascontiguousarray(value, dtype=value.dtype.newbyteorder("="))
+        elif not value.flags.c_contiguous:
+            value = np.ascontiguousarray(value)
+        chunks_desc = make_chunk_info_for_rust_with_indices(
+            batch_info, drop_axes, value.shape
+        )
+        await asyncio.to_thread(self.impl.store_chunks_with_indices, chunks_desc, value)
+        return None

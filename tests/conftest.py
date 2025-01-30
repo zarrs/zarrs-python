@@ -111,6 +111,72 @@ zarr_python_default_codec_pipeline_failures = [
     # "test_roundtrip_read_only_zarrs[vindex-2d-contiguous_in_chunk_array-contiguous_in_chunk_array]",
 ]
 
+zarrs_python_no_discontinuous_writes = [
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-slice_in_chunk-v2]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-slice_across_chunks-v2]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-full_slice-v2]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-int-v2]",
+    "test_roundtrip[oindex-2d-slice_in_chunk-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-slice_across_chunks-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-full_slice-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-int-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-ellipsis-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-slice_in_chunk-v2]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-slice_across_chunks-v2]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-full_slice-v2]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-int-v2]",
+    "test_roundtrip[vindex-2d-slice_in_chunk-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-2d-slice_across_chunks-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-2d-full_slice-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-2d-int-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-contiguous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-contiguous_in_chunk_array-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-across_chunks_indices_array-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-across_chunks_indices_array-v2]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-contiguous_in_chunk_array-v2]",
+    "test_roundtrip[oindex-1d-discontinuous_in_chunk_array-v2]",
+    "test_roundtrip[vindex-1d-discontinuous_in_chunk_array-v2]",
+    # v3
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-slice_in_chunk-v3]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-slice_across_chunks-v3]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-full_slice-v3]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-int-v3]",
+    "test_roundtrip[oindex-2d-slice_in_chunk-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-slice_across_chunks-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-full_slice-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-int-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-ellipsis-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-slice_in_chunk-v3]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-slice_across_chunks-v3]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-full_slice-v3]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-int-v3]",
+    "test_roundtrip[vindex-2d-slice_in_chunk-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-slice_across_chunks-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-full_slice-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-int-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-contiguous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-contiguous_in_chunk_array-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-across_chunks_indices_array-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-2d-discontinuous_in_chunk_array-across_chunks_indices_array-v3]",
+    "test_roundtrip[vindex-2d-discontinuous_in_chunk_array-contiguous_in_chunk_array-v3]",
+    "test_roundtrip[oindex-1d-discontinuous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-1d-discontinuous_in_chunk_array-v3]",
+]
+
+# vindexing with two contiguous arrays would be converted to two slices but
+# in numpy indexing actually requires dropping a dimension, which in turn boils
+# down to integer indexing, which we can't do i.e., [np.array(1, 2), np.array(1, 2)] -> [slice(1, 3), slice(1, 3)]
+# is not a correct conversion, and thus we don't support the write operation
+zarrs_python_no_collapsed_dim = [
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-contiguous_in_chunk_array-v3]",
+    "test_roundtrip[vindex-2d-contiguous_in_chunk_array-contiguous_in_chunk_array-v2]"
+]
 
 def pytest_collection_modifyitems(
     config: pytest.Config, items: Iterable[pytest.Item]
@@ -119,5 +185,17 @@ def pytest_collection_modifyitems(
         if item.name in zarr_python_default_codec_pipeline_failures:
             xfail_marker = pytest.mark.xfail(
                 reason="This test fails with the zarr-python default codec pipeline."
+            )
+            item.add_marker(xfail_marker)
+        if item.name in zarrs_python_no_discontinuous_writes:
+            xfail_marker = pytest.mark.xfail(
+                raises=DiscontiguousArrayError,
+                reason="zarrs discontinuous writes are not supported.",
+            )
+            item.add_marker(xfail_marker)
+        if item.name in zarrs_python_no_collapsed_dim:
+            xfail_marker = pytest.mark.xfail(
+                raises=CollapsedDimensionError,
+                reason="zarrs vindexing with multiple contiguous arrays is not supported.",
             )
             item.add_marker(xfail_marker)

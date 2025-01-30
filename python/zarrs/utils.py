@@ -169,3 +169,14 @@ def make_chunk_info_for_rust_with_indices(
             )
         )
     return chunk_info_with_indices
+
+
+def make_chunk_info_for_rust(
+    batch_info: Iterable[
+        tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+    ],
+) -> list[Basic]:
+    return [
+        Basic(byte_interface, chunk_spec)
+        for (byte_interface, chunk_spec, _, _) in batch_info
+    ]
