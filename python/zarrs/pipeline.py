@@ -30,6 +30,10 @@ from .utils import (
 )
 
 
+class FillValueNoneError(Exception):
+    pass
+
+
 class UnsupportedDataTypeError(Exception):
     pass
 
@@ -52,12 +56,17 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
 def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, None]:
     for codec in codecs:
         if codec.__class__.__name__ == "V2Codec":
-            compressor = codec.to_dict()["compressor"].get_config()
-            if compressor["id"] == "zstd":
+            codec_dict = codec.to_dict()
+            compressor = {}
+            if codec_dict.get("compressor", None) is not None:
+                compressor = codec_dict["compressor"].get_config()
+            elif codec_dict.get("filter", None) is not None:
+                compressor = codec_dict["filter"].get_config()
+            if compressor.get("id", None) == "zstd":
                 yield {
                     "name": "zstd",
                     "configuration": {
-                        "level": compressor["level"],
+                        "level": int(compressor["level"]),
                         "checksum": compressor["checksum"],
                     },
                 }
@@ -149,8 +158,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
-            if any(info[1].dtype in ["object"] for info in batch_info):
-                raise UnsupportedDataTypeError()
+            self._raise_error_on_batch_info_error(batch_info)
             chunks_desc = make_chunk_info_for_rust_with_indices(
                 batch_info, drop_axes, out.shape
             )
@@ -158,6 +166,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             DiscontiguousArrayError,
             CollapsedDimensionError,
             UnsupportedDataTypeError,
+            FillValueNoneError,
         ):
             await self.python_impl.read(batch_info, out, drop_axes)
             return None
@@ -179,8 +188,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         try:
-            if any(info[1].dtype in ["object"] for info in batch_info):
-                raise UnsupportedDataTypeError()
+            self._raise_error_on_batch_info_error(batch_info)
             chunks_desc = make_chunk_info_for_rust_with_indices(
                 batch_info, drop_axes, value.shape
             )
@@ -188,6 +196,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             DiscontiguousArrayError,
             CollapsedDimensionError,
             UnsupportedDataTypeError,
+            FillValueNoneError,
         ):
             await self.python_impl.write(batch_info, value, drop_axes)
             return None
@@ -204,3 +213,17 @@ class ZarrsCodecPipeline(CodecPipeline):
                 self.impl.store_chunks_with_indices, chunks_desc, value_np
             )
             return None
+
+    def _raise_error_on_batch_info_error(
+        self,
+        batch_info: Iterable[
+            tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+        ],
+    ):
+        if any(
+            info.dtype in ["object"] or info.dtype.kind in {"V", "S"}
+            for (_, info, _, _) in batch_info
+        ):
+            raise UnsupportedDataTypeError()
+        if any(info.fill_value is None for (_, info, _, _) in batch_info):
+            raise FillValueNoneError()

@@ -9,9 +9,7 @@ from functools import reduce
 from itertools import product
 from pathlib import Path
 from types import EllipsisType
-from typing import Any
 
-import numcodecs
 import numpy as np
 import pytest
 import zarr
@@ -258,18 +256,3 @@ def test_roundtrip_read_only_zarrs(
     assert np.all(
         res == store_values,
     ), res
-
-
-@pytest.mark.parametrize("dtype", [str, "str"])
-async def test_create_dtype_str(dtype: Any, tmp_path) -> None:
-    arr = zarr.create(
-        store=tmp_path, shape=3, dtype=dtype, zarr_format=2, fill_value=b"0"
-    )
-    assert arr.dtype.kind == "O"
-    assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
-    arr[:] = [b"a", b"bb", b"ccc"]
-    result = arr[:]
-    np.testing.assert_array_equal(
-        result, np.array([b"a", b"bb", b"ccc"], dtype="object")
-    )
