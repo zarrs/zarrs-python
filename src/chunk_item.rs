@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 use pyo3::{
     exceptions::{PyRuntimeError, PyValueError},
     pyclass, pymethods,
-    types::{PyAnyMethods as _, PySlice, PySliceMethods as _},
+    types::{PyAnyMethods as _, PyBytes, PyBytesMethods, PySlice, PySliceMethods as _},
     Bound, PyAny, PyErr, PyResult,
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
@@ -44,14 +44,22 @@ impl Basic {
             .getattr("dtype")?
             .call_method0("__str__")?
             .extract()?;
-        let fill_value = chunk_spec
-            .getattr("fill_value")?
-            .call_method0("tobytes")?
-            .extract()?;
+        let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
+        let fill_value_bytes: Vec<u8>;
+        if let Ok(fill_value_downcast) = fill_value.downcast::<PyBytes>() {
+            fill_value_bytes = fill_value_downcast.as_bytes().to_vec();
+        } else if fill_value.hasattr("tobytes")? {
+            fill_value_bytes = fill_value.call_method0("tobytes")?.extract()?;
+        } else {
+            return Err(PyErr::new::<PyValueError, _>(format!(
+                "Unsupported fill value {:?}",
+                fill_value
+            )));
+        }
         Ok(Self {
             store,
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
-            representation: get_chunk_representation(chunk_shape, &dtype, fill_value)?,
+            representation: get_chunk_representation(chunk_shape, &dtype, fill_value_bytes)?,
         })
     }
 }

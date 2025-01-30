@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generator, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from zarr.abc.codec import Codec, CodecPipeline
@@ -12,7 +12,7 @@ from zarr.core import BatchedCodecPipeline
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Generator, Iterable, Iterator
     from typing import Any, Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
@@ -30,6 +30,10 @@ from .utils import (
 )
 
 
+class UnsupportedDataTypeError(Exception):
+    pass
+
+
 def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
     return CodecPipelineImpl(
         codec_metadata_json,
@@ -44,16 +48,24 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
         num_threads=config.get("threading.max_workers", None),
     )
 
+
 def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, None]:
     for codec in codecs:
         if codec.__class__.__name__ == "V2Codec":
             compressor = codec.to_dict()["compressor"].get_config()
             if compressor["id"] == "zstd":
-                yield { "name": "zstd", "configuration": { "level": compressor["level"], "checksum": compressor["checksum"] } }
+                yield {
+                    "name": "zstd",
+                    "configuration": {
+                        "level": compressor["level"],
+                        "checksum": compressor["checksum"],
+                    },
+                }
             # TODO: get the endianness added to V2Codec API
             yield BytesCodec().to_dict()
         else:
             yield codec.to_dict()
+
 
 class ZarrsCodecPipelineState(TypedDict):
     codec_metadata_json: str
@@ -137,10 +149,16 @@ class ZarrsCodecPipeline(CodecPipeline):
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
+            if any(info[1].dtype in ["object"] for info in batch_info):
+                raise UnsupportedDataTypeError()
             chunks_desc = make_chunk_info_for_rust_with_indices(
                 batch_info, drop_axes, out.shape
             )
-        except (DiscontiguousArrayError, CollapsedDimensionError):
+        except (
+            DiscontiguousArrayError,
+            CollapsedDimensionError,
+            UnsupportedDataTypeError,
+        ):
             await self.python_impl.read(batch_info, out, drop_axes)
             return None
         else:
@@ -161,18 +179,28 @@ class ZarrsCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         try:
+            if any(info[1].dtype in ["object"] for info in batch_info):
+                raise UnsupportedDataTypeError()
             chunks_desc = make_chunk_info_for_rust_with_indices(
                 batch_info, drop_axes, value.shape
             )
-        except (DiscontiguousArrayError, CollapsedDimensionError):
+        except (
+            DiscontiguousArrayError,
+            CollapsedDimensionError,
+            UnsupportedDataTypeError,
+        ):
             await self.python_impl.write(batch_info, value, drop_axes)
             return None
         else:
             # FIXME: Error if array is not in host memory
             value_np: NDArrayLike | np.ndarray = value.as_ndarray_like()
             if not value_np.dtype.isnative:
-                value_np = np.ascontiguousarray(value_np, dtype=value_np.dtype.newbyteorder("="))
+                value_np = np.ascontiguousarray(
+                    value_np, dtype=value_np.dtype.newbyteorder("=")
+                )
             elif not value_np.flags.c_contiguous:
                 value_np = np.ascontiguousarray(value_np)
-            await asyncio.to_thread(self.impl.store_chunks_with_indices, chunks_desc, value_np)
+            await asyncio.to_thread(
+                self.impl.store_chunks_with_indices, chunks_desc, value_np
+            )
             return None

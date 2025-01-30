@@ -9,7 +9,9 @@ from functools import reduce
 from itertools import product
 from pathlib import Path
 from types import EllipsisType
+from typing import Any
 
+import numcodecs
 import numpy as np
 import pytest
 import zarr
@@ -66,12 +68,16 @@ def pytest_generate_tests(metafunc):
             for dimensionality in dimensionalities_:
                 indexers = non_numpy_indices if dimensionality > 2 else all_indices
                 for index_param_prod in product(indexers, repeat=dimensionality):
-                    index = tuple(index_param.values[0] for index_param in index_param_prod)
+                    index = tuple(
+                        index_param.values[0] for index_param in index_param_prod
+                    )
                     # multi-ellipsis indexing is not supported
                     if sum(isinstance(i, EllipsisType) for i in index) > 1:
                         continue
                     for indexing_method_param in indexing_method_params:
-                        arr = gen_arr(fill_value_, Path(tempfile.mktemp()), dimensionality, format)
+                        arr = gen_arr(
+                            fill_value_, Path(tempfile.mktemp()), dimensionality, format
+                        )
                         indexing_method = indexing_method_param.values[0]
                         dimensionality_id = f"{dimensionality}d"
                         id = "-".join(
@@ -150,7 +156,9 @@ def gen_arr(fill_value, tmp_path, dimensionality, format) -> zarr.Array:
         chunks=(chunk_size_,) * dimensionality,
         dtype=np.int16,
         fill_value=fill_value,
-        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()] if format == 3 else None,
+        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
+        if format == 3
+        else None,
         zarr_format=format,
     )
 
@@ -158,6 +166,7 @@ def gen_arr(fill_value, tmp_path, dimensionality, format) -> zarr.Array:
 @pytest.fixture(params=dimensionalities_)
 def dimensionality(request):
     return request.param
+
 
 @pytest.fixture(params=zarr_formats)
 def format(request):
@@ -204,6 +213,7 @@ def test_roundtrip(
         res == store_values,
     ), res
 
+
 def test_ellipsis_indexing_invalid(arr: zarr.Array):
     if len(arr.shape) <= 2:
         pytest.skip(
@@ -224,3 +234,42 @@ def test_pickle(arr: zarr.Array, tmp_path: Path):
     with Path.open(tmp_path / "arr.pickle", "rb") as f:
         object.__setattr__(arr._async_array, "codec_pipeline", pickle.load(f))
     assert (arr[:] == expected).all()
+
+
+@contextmanager
+def use_zarr_default_codec_reader():
+    zarr.config.set(
+        {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
+    )
+    yield
+    zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
+
+
+def test_roundtrip_read_only_zarrs(
+    array: zarr.Array,
+    store_values: np.ndarray,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
+    indexing_method: Callable,
+):
+    with use_zarr_default_codec_reader():
+        arr_default = zarr.open(array.store, read_only=True)
+        indexing_method(arr_default)[index] = store_values
+    res = indexing_method(zarr.open(array.store))[index]
+    assert np.all(
+        res == store_values,
+    ), res
+
+
+@pytest.mark.parametrize("dtype", [str, "str"])
+async def test_create_dtype_str(dtype: Any, tmp_path) -> None:
+    arr = zarr.create(
+        store=tmp_path, shape=3, dtype=dtype, zarr_format=2, fill_value=b"0"
+    )
+    assert arr.dtype.kind == "O"
+    assert arr.metadata.to_dict()["dtype"] == "|O"
+    assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
+    arr[:] = [b"a", b"bb", b"ccc"]
+    result = arr[:]
+    np.testing.assert_array_equal(
+        result, np.array([b"a", b"bb", b"ccc"], dtype="object")
+    )
