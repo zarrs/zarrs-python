@@ -4,6 +4,7 @@ import operator
 import pickle
 import tempfile
 from collections.abc import Callable
+from contextlib import contextmanager
 from functools import reduce
 from itertools import product
 from pathlib import Path
@@ -223,3 +224,26 @@ def test_pickle(arr: zarr.Array, tmp_path: Path):
     with Path.open(tmp_path / "arr.pickle", "rb") as f:
         object.__setattr__(arr._async_array, "codec_pipeline", pickle.load(f))
     assert (arr[:] == expected).all()
+
+@contextmanager
+def use_zarr_default_codec_reader():
+    zarr.config.set(
+        {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
+    )
+    yield
+    zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
+
+
+def test_roundtrip_read_only_zarrs(
+    array: zarr.Array,
+    store_values: np.ndarray,
+    index: tuple[int | slice | np.ndarray | EllipsisType, ...],
+    indexing_method: Callable,
+):
+    with use_zarr_default_codec_reader():
+        arr_default = zarr.open(array.store, read_only=True)
+        indexing_method(arr_default)[index] = store_values
+    res = indexing_method(zarr.open(array.store))[index]
+    assert np.all(
+        res == store_values,
+    ), res

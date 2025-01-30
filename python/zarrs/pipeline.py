@@ -3,16 +3,15 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generator, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.codecs import BytesCodec
-from zarr.core import BatchedCodecPipeline
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Generator, Iterable, Iterator
     from typing import Any, Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
@@ -66,7 +65,6 @@ class ZarrsCodecPipeline(CodecPipeline):
     codecs: tuple[Codec, ...]
     impl: CodecPipelineImpl
     codec_metadata_json: str
-    python_impl: BatchedCodecPipeline
 
     def __getstate__(self) -> ZarrsCodecPipelineState:
         return {"codec_metadata_json": self.codec_metadata_json, "codecs": self.codecs}
@@ -75,7 +73,6 @@ class ZarrsCodecPipeline(CodecPipeline):
         self.codecs = state["codecs"]
         self.codec_metadata_json = state["codec_metadata_json"]
         self.impl = get_codec_pipeline_impl(self.codec_metadata_json)
-        self.python_impl = BatchedCodecPipeline.from_codecs(self.codecs)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         raise NotImplementedError("evolve_from_array_spec")
@@ -92,7 +89,6 @@ class ZarrsCodecPipeline(CodecPipeline):
             codec_metadata_json=codec_metadata_json,
             codecs=tuple(codecs),
             impl=get_codec_pipeline_impl(codec_metadata_json),
-            python_impl=BatchedCodecPipeline.from_codecs(codecs),
         )
 
     @property
@@ -134,6 +130,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         out: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
     ) -> None:
+        # FIXME: Error if array is not in host memory
         out: NDArrayLike = out.as_ndarray_like()
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
