@@ -4,7 +4,6 @@ import operator
 import pickle
 import tempfile
 from collections.abc import Callable
-from contextlib import contextmanager
 from functools import reduce
 from itertools import product
 from pathlib import Path
