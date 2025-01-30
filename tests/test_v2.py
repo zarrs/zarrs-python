@@ -40,7 +40,6 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
     ("dtype", "fill_value"),
     [
@@ -188,7 +187,6 @@ def test_v2_filters_codecs(
 
 
 @pytest.mark.filterwarnings("ignore")
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array_defaults(store: Store):
     """
     Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
