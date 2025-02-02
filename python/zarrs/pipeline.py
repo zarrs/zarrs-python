@@ -60,16 +60,40 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
             compressor = {}
             if codec_dict.get("compressor", None) is not None:
                 compressor = codec_dict["compressor"].get_config()
+                if compressor.get("id", None) == "zstd":
+                    yield {
+                        "name": "zstd",
+                        "configuration": {
+                            "level": int(compressor["level"]),
+                            "checksum": compressor["checksum"],
+                        },
+                    }
+                elif compressor.get("id", None) == "blosc":
+                    as_dict = {
+                        "name": "blosc",
+                        "configuration": {
+                            "cname": compressor["cname"],
+                            "clevel": int(compressor["clevel"]),
+                            "blocksize": int(compressor["blocksize"]),
+                        },
+                    }
+                    if typesize := compressor.get("typesize", None) is not None:
+                        as_dict["typesize"] = typesize
+                    if shuffle := compressor.get("shuffler", None) is not None:
+                        # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v3/array/codec/blosc.rs#L46-L54
+                        match shuffle:
+                            case 0:
+                                as_dict["shuffle"] = "noshuffle"
+                            case 1:
+                                as_dict["shuffle"] = "shuffle"
+                            case 2:
+                                as_dict["shuffle"] = "bitshuffle"
+                    yield as_dict
+                else:
+                    yield compressor
             elif codec_dict.get("filter", None) is not None:
-                compressor = codec_dict["filter"].get_config()
-            if compressor.get("id", None) == "zstd":
-                yield {
-                    "name": "zstd",
-                    "configuration": {
-                        "level": int(compressor["level"]),
-                        "checksum": compressor["checksum"],
-                    },
-                }
+                filter_ = codec_dict["filter"].get_config()
+                yield filter_
             # TODO: get the endianness added to V2Codec API
             # TODO: how to handle this with strings, which don't need this but zarrs
             # complains about its absence if its not there
@@ -225,5 +249,6 @@ class ZarrsCodecPipeline(CodecPipeline):
         # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293
         if any(info.dtype.kind in {"V", "S"} for (_, info, _, _) in batch_info):
             raise UnsupportedDataTypeError()
+        # TODO: is there some sort of default documented somewhere?
         if any(info.fill_value is None for (_, info, _, _) in batch_info):
             raise FillValueNoneError()
