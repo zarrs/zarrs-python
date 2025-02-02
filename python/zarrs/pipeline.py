@@ -26,12 +26,9 @@ from ._internal import CodecPipelineImpl
 from .utils import (
     CollapsedDimensionError,
     DiscontiguousArrayError,
+    FillValueNoneError,
     make_chunk_info_for_rust_with_indices,
 )
-
-
-class FillValueNoneError(Exception):
-    pass
 
 
 class UnsupportedDataTypeError(Exception):
@@ -184,7 +181,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         if not out.dtype.isnative:
             raise RuntimeError("Non-native byte order not supported")
         try:
-            self._raise_error_on_batch_info_error(batch_info)
+            self._raise_error_on_unsupported_batch_dtype(batch_info)
             chunks_desc = make_chunk_info_for_rust_with_indices(
                 batch_info, drop_axes, out.shape
             )
@@ -214,7 +211,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         try:
-            self._raise_error_on_batch_info_error(batch_info)
+            self._raise_error_on_unsupported_batch_dtype(batch_info)
             chunks_desc = make_chunk_info_for_rust_with_indices(
                 batch_info, drop_axes, value.shape
             )
@@ -240,15 +237,15 @@ class ZarrsCodecPipeline(CodecPipeline):
             )
             return None
 
-    def _raise_error_on_batch_info_error(
+    def _raise_error_on_unsupported_batch_dtype(
         self,
         batch_info: Iterable[
             tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
         ],
     ):
         # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293
-        if any(info.dtype.kind in {"V", "S"} for (_, info, _, _) in batch_info):
+        if any(
+            info.dtype.kind in {"V", "S", "U", "M", "m"}
+            for (_, info, _, _) in batch_info
+        ):
             raise UnsupportedDataTypeError()
-        # TODO: is there some sort of default documented somewhere?
-        if any(info.fill_value is None for (_, info, _, _) in batch_info):
-            raise FillValueNoneError()

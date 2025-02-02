@@ -48,6 +48,8 @@ impl Basic {
         let fill_value_bytes: Vec<u8>;
         if let Ok(fill_value_downcast) = fill_value.downcast::<PyBytes>() {
             fill_value_bytes = fill_value_downcast.as_bytes().to_vec();
+        } else if fill_value.hasattr("tobytes")? {
+            fill_value_bytes = fill_value.call_method0("tobytes")?.extract()?;
         } else if let Ok(fill_value_downcast) = fill_value.downcast::<PyInt>() {
             let fill_value_usize: usize = fill_value_downcast.extract()?;
             if fill_value_usize == (0 as usize) && dtype == "object" {
@@ -62,8 +64,6 @@ impl Basic {
                     fill_value_usize, dtype
                 )));
             }
-        } else if fill_value.hasattr("tobytes")? {
-            fill_value_bytes = fill_value.call_method0("tobytes")?.extract()?;
         } else {
             return Err(PyErr::new::<PyValueError, _>(format!(
                 "Unsupported fill value {:?}",
