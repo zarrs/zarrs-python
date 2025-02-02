@@ -71,6 +71,8 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
                     },
                 }
             # TODO: get the endianness added to V2Codec API
+            # TODO: how to handle this with strings, which don't need this but zarrs
+            # complains about its absence if its not there
             yield BytesCodec().to_dict()
         else:
             yield codec.to_dict()
@@ -220,10 +222,8 @@ class ZarrsCodecPipeline(CodecPipeline):
             tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
         ],
     ):
-        if any(
-            info.dtype in ["object"] or info.dtype.kind in {"V", "S"}
-            for (_, info, _, _) in batch_info
-        ):
+        # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293
+        if any(info.dtype.kind in {"V", "S"} for (_, info, _, _) in batch_info):
             raise UnsupportedDataTypeError()
         if any(info.fill_value is None for (_, info, _, _) in batch_info):
             raise FillValueNoneError()
