@@ -51,14 +51,31 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl:
 
 
 def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, None]:
+    # See https://github.com/LDeakin/zarrs/blob/9070e12ea06c297532347af3668be9927ba35fa1/zarrs_metadata/src/v2_to_v3.rs#L69
     for codec in codecs:
         if codec.__class__.__name__ == "V2Codec":
             codec_dict = codec.to_dict()
-            compressor = {}
+            has_array_to_bytes = False
+            if codec_dict.get("filters", None) is not None:
+                for filter in codec_dict.get("filters"):
+                    filter = filter.get_config()
+                    name = filter.pop("id")
+                    if name in [
+                        "vlen-array",
+                        "vlen-bytes",
+                        "vlen-utf8",
+                        "zfpy",
+                        "pcodec",
+                    ]:
+                        has_array_to_bytes = True
+                    as_dict = {"name": name, "configuration": filter}
+                    yield as_dict
+            if not has_array_to_bytes:
+                yield BytesCodec().to_dict()
             if codec_dict.get("compressor", None) is not None:
                 compressor = codec_dict["compressor"].get_config()
                 if compressor.get("id", None) == "zstd":
-                    yield {
+                    as_dict = {
                         "name": "zstd",
                         "configuration": {
                             "level": int(compressor["level"]),
@@ -85,16 +102,10 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
                                 as_dict["shuffle"] = "shuffle"
                             case 2:
                                 as_dict["shuffle"] = "bitshuffle"
-                    yield as_dict
                 else:
-                    yield compressor
-            elif codec_dict.get("filter", None) is not None:
-                filter_ = codec_dict["filter"].get_config()
-                yield filter_
-            # TODO: get the endianness added to V2Codec API
-            # TODO: how to handle this with strings, which don't need this but zarrs
-            # complains about its absence if its not there
-            yield BytesCodec().to_dict()
+                    name = compressor.pop("id")
+                    as_dict = {"name": name, "configuration": compressor}
+                yield as_dict
         else:
             yield codec.to_dict()
 

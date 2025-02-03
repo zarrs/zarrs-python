@@ -264,6 +264,9 @@ impl CodecPipelineImpl {
         };
 
         py.allow_threads(move || {
+            // FIXME: the `decode_into` methods only support fixed length data types.
+            // For variable length data types, need a codepath with non `_into` methods.
+            // Collect all the subsets and copy into value on the Python side?
             let update_chunk_subset = |item: chunk_item::WithSubset| {
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if item.chunk_subset.start().iter().all(|&o| o == 0)
@@ -351,6 +354,7 @@ impl CodecPipelineImpl {
         // Get input array
         let input_slice = Self::nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
+            // FIXME: Handle variable length data types, convert value to bytes and offsets
             InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
         } else {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))

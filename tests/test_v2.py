@@ -158,10 +158,17 @@ def test_v2_encode_decode_with_data(dtype_value, tmp_path):
 
 @pytest.mark.parametrize("dtype", [str, "str"])
 async def test_create_dtype_str(dtype: Any, tmp_path: Path) -> None:
-    arr = zarr.create(store=tmp_path, shape=3, dtype=dtype, zarr_format=2)
+    arr = zarr.create(
+        store=tmp_path,
+        shape=3,
+        dtype=dtype,
+        zarr_format=2,
+        # https://github.com/zarr-developers/zarr-python/issues/2627
+        filters=zarr.codecs.vlen_utf8.VLenUTF8(),
+    )
     assert arr.dtype.kind == "O"
     assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
+    assert arr.metadata.filters == (zarr.codecs.vlen_utf8.VLenUTF8(),)
     arr[:] = [b"a", b"bb", b"ccc"]
     result = arr[:]
     np.testing.assert_array_equal(
