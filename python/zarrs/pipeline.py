@@ -64,17 +64,19 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
                         "vlen-array",
                         "vlen-bytes",
                         "vlen-utf8",
-                        "zfpy",
-                        "pcodec",
                     ]:
                         has_array_to_bytes = True
                     as_dict = {"name": name, "configuration": filter}
                     yield as_dict
-            if not has_array_to_bytes:
-                yield BytesCodec().to_dict()
+            compressor = {}
             if codec_dict.get("compressor", None) is not None:
                 compressor = codec_dict["compressor"].get_config()
-                if compressor.get("id", None) == "zstd":
+                if compressor.get("id") in ["zfpy", "pcodec"]:
+                    has_array_to_bytes = True
+            if not has_array_to_bytes:
+                yield BytesCodec().to_dict()
+            if compressor:
+                if compressor.get("id") == "zstd":
                     as_dict = {
                         "name": "zstd",
                         "configuration": {
@@ -82,7 +84,7 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
                             "checksum": compressor["checksum"],
                         },
                     }
-                elif compressor.get("id", None) == "blosc":
+                elif compressor.get("id") == "blosc":
                     as_dict = {
                         "name": "blosc",
                         "configuration": {
