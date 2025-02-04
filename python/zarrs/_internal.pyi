@@ -4,7 +4,6 @@
 import typing
 from enum import Enum, auto
 
-import numpy
 import numpy.typing
 
 class Basic:
@@ -27,9 +26,6 @@ class CodecPipelineImpl:
         chunk_descriptions: typing.Sequence[WithSubset],
         value: numpy.typing.NDArray[typing.Any],
     ) -> None: ...
-    def retrieve_chunks(
-        self, chunk_descriptions: typing.Sequence[Basic]
-    ) -> list[numpy.typing.NDArray[numpy.uint8]]: ...
     def store_chunks_with_indices(
         self,
         chunk_descriptions: typing.Sequence[WithSubset],
