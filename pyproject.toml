@@ -30,7 +30,7 @@ dependencies = [
     'donfig',
     'pytest',
     'universal_pathlib>=0.2.0',
-    'zarr @ git+https://github.com/zarr-developers/zarr-python.git#main',
+    "zarr",
 ]
 
 [project.optional-dependencies]
@@ -122,6 +122,3 @@ ignore = [
 "**/*.pyi" = ["ICN001"]
 [tool.ruff.lint.isort]
 known-first-party = ["zarrs"]
-
-[tool.hatch.metadata]
-allow-direct-references = true
