@@ -273,9 +273,10 @@ class ZarrsCodecPipeline(CodecPipeline):
             tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
         ],
     ):
-        # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293
+        # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293 for VSUMm
+        # Further, our pipeline does not support variable-length objects due to limitations on decode_into, so object is also out
         if any(
-            info.dtype.kind in {"V", "S", "U", "M", "m"}
+            info.dtype.kind in {"V", "S", "U", "M", "m", "O"}
             for (_, info, _, _) in batch_info
         ):
             raise UnsupportedDataTypeError()
