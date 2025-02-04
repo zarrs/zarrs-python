@@ -35,6 +35,7 @@ def _setup_codec_pipeline():
     config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
     pass
 
+
 async def parse_store(
     store: Literal["local", "memory", "remote", "zip"], path: str
 ) -> LocalStore | MemoryStore | FsspecStore | ZipStore:
