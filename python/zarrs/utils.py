@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.indexing import SelectorTuple, is_integer
-from zarr.core.metadata.v3 import DataType, parse_fill_value
+from zarr.core.metadata.v2 import _default_fill_value
 
 from zarrs._internal import Basic, WithSubset
 
@@ -139,22 +139,10 @@ def get_shape_for_selector(
     return resulting_shape_from_index(shape, selector_tuple, drop_axes, pad=pad)
 
 
-def get_implicit_fill_value(dtype: np.dtype, fill_value: Any):
-    if fill_value is not None:
-        return fill_value
-    dtype_str = str(dtype)
-    if dtype_str == "bool":
-        fill_value = False
-    elif np.issubdtype(dtype, np.integer):
-        fill_value = 0
-    elif np.issubdtype(dtype, np.floating):
-        fill_value = 0.0
-    elif dtype_str == "object":
-        # v2 object dtype used 0 as a sentinel value for fill values to actually indicate ""
-        return 0
-    else:
-        raise FillValueNoneError()
-    return parse_fill_value(fill_value, DataType.parse(dtype))
+def get_implicit_fill_value(dtype: np.dtype, fill_value: Any) -> Any:
+    if fill_value is None:
+        fill_value = _default_fill_value(dtype)
+    return fill_value
 
 
 def make_chunk_info_for_rust_with_indices(
