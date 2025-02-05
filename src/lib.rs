@@ -23,6 +23,7 @@ use zarrs::metadata::v3::MetadataV3;
 
 mod chunk_item;
 mod concurrency;
+mod metadata_v2;
 mod runtime;
 mod store;
 #[cfg(test)]
@@ -31,6 +32,7 @@ mod utils;
 
 use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
+use crate::metadata_v2::codec_metadata_v2_to_v3;
 use crate::store::StoreManager;
 use crate::utils::{PyErrExt as _, PyUntypedArrayExt as _};
 
@@ -424,6 +426,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CodecPipelineImpl>()?;
     m.add_class::<chunk_item::Basic>()?;
     m.add_class::<chunk_item::WithSubset>()?;
+    m.add_function(wrap_pyfunction!(codec_metadata_v2_to_v3, m)?)?;
     Ok(())
 }
 

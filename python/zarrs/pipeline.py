@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, TypedDict
 
 import numpy as np
 from zarr.abc.codec import Codec, CodecPipeline
-from zarr.codecs import BytesCodec
 from zarr.core import BatchedCodecPipeline
 from zarr.core.config import config
 
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
     from zarr.core.common import ChunkCoords
     from zarr.core.indexing import SelectorTuple
 
-from ._internal import CodecPipelineImpl
+from ._internal import CodecPipelineImpl, codec_metadata_v2_to_v3
 from .utils import (
     CollapsedDimensionError,
     DiscontiguousArrayError,
@@ -62,63 +61,23 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl | Non
 
 
 def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, None]:
-    # See https://github.com/LDeakin/zarrs/blob/9070e12ea06c297532347af3668be9927ba35fa1/zarrs_metadata/src/v2_to_v3.rs#L69
     for codec in codecs:
         if codec.__class__.__name__ == "V2Codec":
             codec_dict = codec.to_dict()
-            has_array_to_bytes = False
             if codec_dict.get("filters", None) is not None:
-                for filter in codec_dict.get("filters"):
-                    filter = filter.get_config()
-                    name = filter.pop("id")
-                    if name in [
-                        "vlen-array",
-                        "vlen-bytes",
-                        "vlen-utf8",
-                    ]:
-                        has_array_to_bytes = True
-                    as_dict = {"name": name, "configuration": filter}
-                    yield as_dict
-            compressor = {}
+                filters = [
+                    json.dumps(filter.get_config())
+                    for filter in codec_dict.get("filters")
+                ]
+            else:
+                filters = None
             if codec_dict.get("compressor", None) is not None:
-                compressor = codec_dict["compressor"].get_config()
-                if compressor.get("id") in ["zfpy", "pcodec"]:
-                    has_array_to_bytes = True
-            if not has_array_to_bytes:
-                yield BytesCodec().to_dict()
-            if compressor:
-                if compressor.get("id") == "zstd":
-                    as_dict = {
-                        "name": "zstd",
-                        "configuration": {
-                            "level": int(compressor["level"]),
-                            "checksum": compressor["checksum"],
-                        },
-                    }
-                elif compressor.get("id") == "blosc":
-                    as_dict = {
-                        "name": "blosc",
-                        "configuration": {
-                            "cname": compressor["cname"],
-                            "clevel": int(compressor["clevel"]),
-                            "blocksize": int(compressor["blocksize"]),
-                        },
-                    }
-                    if typesize := compressor.get("typesize", None) is not None:
-                        as_dict["typesize"] = typesize
-                    if shuffle := compressor.get("shuffler", None) is not None:
-                        # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v3/array/codec/blosc.rs#L46-L54
-                        match shuffle:
-                            case 0:
-                                as_dict["shuffle"] = "noshuffle"
-                            case 1:
-                                as_dict["shuffle"] = "shuffle"
-                            case 2:
-                                as_dict["shuffle"] = "bitshuffle"
-                else:
-                    name = compressor.pop("id")
-                    as_dict = {"name": name, "configuration": compressor}
-                yield as_dict
+                compressor = json.dumps(codec_dict.get("compressor").get_config())
+            else:
+                compressor = None
+            codecs_v3 = codec_metadata_v2_to_v3(filters, compressor)
+            for codec in codecs_v3:
+                yield json.loads(codec)
         else:
             yield codec.to_dict()
 
