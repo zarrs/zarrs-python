@@ -31,19 +31,17 @@ pub(crate) struct Basic {
     representation: ChunkRepresentation,
 }
 
-fn fill_value_to_bytes(dtype: &str, fill_value: Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     if dtype == "string" {
         // Match zarr-python 2.x.x string fill value behaviour with a 0 fill value
         if let Ok(fill_value_downcast) = fill_value.downcast::<PyInt>() {
             let fill_value_usize: usize = fill_value_downcast.extract()?;
             if fill_value_usize == 0 {
                 return Ok("0".as_bytes().to_vec());
-            } else {
-                return Err(PyErr::new::<PyValueError, _>(format!(
-                    "Cannot understand non-zero integer {:?} fill value for dtype {:?}",
-                    fill_value_usize, dtype
-                )));
             }
+            Err(PyErr::new::<PyValueError, _>(format!(
+                    "Cannot understand non-zero integer {fill_value_usize} fill value for dtype {dtype}"
+                )))?;
         }
     }
 
@@ -53,8 +51,7 @@ fn fill_value_to_bytes(dtype: &str, fill_value: Bound<'_, PyAny>) -> PyResult<Ve
         Ok(fill_value.call_method0("tobytes")?.extract()?)
     } else {
         Err(PyErr::new::<PyValueError, _>(format!(
-            "Unsupported fill value {:?}",
-            fill_value
+            "Unsupported fill value {fill_value:?}"
         )))
     }
 }
@@ -78,7 +75,7 @@ impl Basic {
             dtype = String::from("string");
         }
         let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
-        let fill_value_bytes = fill_value_to_bytes(&dtype, fill_value)?;
+        let fill_value_bytes = fill_value_to_bytes(&dtype, &fill_value)?;
         Ok(Self {
             store,
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
