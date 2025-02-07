@@ -31,6 +31,34 @@ pub(crate) struct Basic {
     representation: ChunkRepresentation,
 }
 
+fn fill_value_to_bytes(dtype: &str, fill_value: Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+    if dtype == "string" {
+        // Match zarr-python 2.x.x string fill value behaviour with a 0 fill value
+        if let Ok(fill_value_downcast) = fill_value.downcast::<PyInt>() {
+            let fill_value_usize: usize = fill_value_downcast.extract()?;
+            if fill_value_usize == 0 {
+                return Ok("0".as_bytes().to_vec());
+            } else {
+                return Err(PyErr::new::<PyValueError, _>(format!(
+                    "Cannot understand non-zero integer {:?} fill value for dtype {:?}",
+                    fill_value_usize, dtype
+                )));
+            }
+        }
+    }
+
+    if let Ok(fill_value_downcast) = fill_value.downcast::<PyBytes>() {
+        Ok(fill_value_downcast.as_bytes().to_vec())
+    } else if fill_value.hasattr("tobytes")? {
+        Ok(fill_value.call_method0("tobytes")?.extract()?)
+    } else {
+        Err(PyErr::new::<PyValueError, _>(format!(
+            "Unsupported fill value {:?}",
+            fill_value
+        )))
+    }
+}
+
 #[gen_stub_pymethods]
 #[pymethods]
 impl Basic {
@@ -44,32 +72,13 @@ impl Basic {
             .getattr("dtype")?
             .call_method0("__str__")?
             .extract()?;
-        let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
-        let fill_value_bytes: Vec<u8>;
-        if let Ok(fill_value_downcast) = fill_value.downcast::<PyBytes>() {
-            fill_value_bytes = fill_value_downcast.as_bytes().to_vec();
-        } else if fill_value.hasattr("tobytes")? {
-            fill_value_bytes = fill_value.call_method0("tobytes")?.extract()?;
-        } else if let Ok(fill_value_downcast) = fill_value.downcast::<PyInt>() {
-            let fill_value_usize: usize = fill_value_downcast.extract()?;
-            if fill_value_usize == (0 as usize) && dtype == "object" {
-                // https://github.com/LDeakin/zarrs/pull/140
-                fill_value_bytes = "".as_bytes().to_vec();
-                // zarrs doesn't understand `object` which is the output of `np.dtype("|O").__str__()`
-                // but maps it to "string" internally https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L288
-                dtype = String::from("string");
-            } else {
-                return Err(PyErr::new::<PyValueError, _>(format!(
-                    "Cannot understand non-zero integer {:?} fill value for dtype {:?}",
-                    fill_value_usize, dtype
-                )));
-            }
-        } else {
-            return Err(PyErr::new::<PyValueError, _>(format!(
-                "Unsupported fill value {:?}",
-                fill_value
-            )));
+        if dtype == "object" {
+            // zarrs doesn't understand `object` which is the output of `np.dtype("|O").__str__()`
+            // but maps it to "string" internally https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L288
+            dtype = String::from("string");
         }
+        let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
+        let fill_value_bytes = fill_value_to_bytes(&dtype, fill_value)?;
         Ok(Self {
             store,
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
