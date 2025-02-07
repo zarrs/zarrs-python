@@ -160,25 +160,14 @@ def test_v2_encode_decode_with_data(dtype_value, tmp_path):
 async def test_create_dtype_str(dtype: Any, tmp_path) -> None:
     # see https://github.com/zarr-developers/zarr-python/issues/2627 for why this test
     # is probably wrong
-
-    # This is a hopeful test of an upcoming change to v2 str fill behaviour
-    # See https://github.com/zarr-developers/zarr-python/issues/2792
-    from packaging import version
-
-    if version.parse(zarr.__version__) > version.parse("3.0.2"):
-        zarr_v2_str_fill = b"0"
-    else:
-        # "" is a regression from zarr-python 2.x behaviour
-        zarr_v2_str_fill = b""
-
-    arr = zarr.create(store=tmp_path, shape=4, dtype=dtype, zarr_format=2)
+    arr = zarr.create(store=tmp_path, shape=3, dtype=dtype, zarr_format=2)
     assert arr.dtype.kind == "O"
     assert arr.metadata.to_dict()["dtype"] == "|O"
     assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
-    arr[:3] = [b"a", b"bb", b"ccc"]
+    arr[:] = [b"a", b"bb", b"ccc"]
     result = arr[:]
     np.testing.assert_array_equal(
-        result, np.array([b"a", b"bb", b"ccc", zarr_v2_str_fill], dtype="object")
+        result, np.array([b"a", b"bb", b"ccc"], dtype="object")
     )
 
 
