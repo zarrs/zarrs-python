@@ -34,10 +34,11 @@ pub(crate) struct Basic {
 fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     if dtype == "string" {
         // Match zarr-python 2.x.x string fill value behaviour with a 0 fill value
+        // See https://github.com/zarr-developers/zarr-python/issues/2792#issuecomment-2644362122
         if let Ok(fill_value_downcast) = fill_value.downcast::<PyInt>() {
             let fill_value_usize: usize = fill_value_downcast.extract()?;
             if fill_value_usize == 0 {
-                return Ok("0".as_bytes().to_vec());
+                return Ok(vec![]);
             }
             Err(PyErr::new::<PyValueError, _>(format!(
                     "Cannot understand non-zero integer {fill_value_usize} fill value for dtype {dtype}"
