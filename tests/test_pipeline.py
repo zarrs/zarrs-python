@@ -49,6 +49,8 @@ indexing_method_params = [
     pytest.param(lambda x: x, id="vindex"),
 ]
 
+zarr_formats = [2, 3]
+
 
 def pytest_generate_tests(metafunc):
     old_pipeline_path = zarr.config.get("codec_pipeline.path")
@@ -60,32 +62,38 @@ def pytest_generate_tests(metafunc):
         store_values = []
         indexing_methods = []
         ids = []
-        for dimensionality in dimensionalities_:
-            indexers = non_numpy_indices if dimensionality > 2 else all_indices
-            for index_param_prod in product(indexers, repeat=dimensionality):
-                index = tuple(index_param.values[0] for index_param in index_param_prod)
-                # multi-ellipsis indexing is not supported
-                if sum(isinstance(i, EllipsisType) for i in index) > 1:
-                    continue
-                for indexing_method_param in indexing_method_params:
-                    arr = gen_arr(fill_value_, Path(tempfile.mktemp()), dimensionality)
-                    indexing_method = indexing_method_param.values[0]
-                    dimensionality_id = f"{dimensionality}d"
-                    id = "-".join(
-                        [indexing_method_param.id, dimensionality_id]
-                        + [index_param.id for index_param in index_param_prod]
+        for format in zarr_formats:
+            for dimensionality in dimensionalities_:
+                indexers = non_numpy_indices if dimensionality > 2 else all_indices
+                for index_param_prod in product(indexers, repeat=dimensionality):
+                    index = tuple(
+                        index_param.values[0] for index_param in index_param_prod
                     )
-                    ids.append(id)
-                    store_values.append(
-                        gen_store_values(
-                            indexing_method,
-                            index,
-                            full_array((axis_size_,) * dimensionality),
+                    # multi-ellipsis indexing is not supported
+                    if sum(isinstance(i, EllipsisType) for i in index) > 1:
+                        continue
+                    for indexing_method_param in indexing_method_params:
+                        arr = gen_arr(
+                            fill_value_, Path(tempfile.mktemp()), dimensionality, format
                         )
-                    )
-                    indexing_methods.append(indexing_method)
-                    indices.append(index)
-                    arrs.append(arr)
+                        indexing_method = indexing_method_param.values[0]
+                        dimensionality_id = f"{dimensionality}d"
+                        id = "-".join(
+                            [indexing_method_param.id, dimensionality_id]
+                            + [index_param.id for index_param in index_param_prod]
+                            + [f"v{format}"]
+                        )
+                        ids.append(id)
+                        store_values.append(
+                            gen_store_values(
+                                indexing_method,
+                                index,
+                                full_array((axis_size_,) * dimensionality),
+                            )
+                        )
+                        indexing_methods.append(indexing_method)
+                        indices.append(index)
+                        arrs.append(arr)
         # array is used as param name to prevent collision with arr fixture
         metafunc.parametrize(
             ["array", "index", "store_values", "indexing_method"],
@@ -139,14 +147,17 @@ def gen_store_values(
     return full_array[index]
 
 
-def gen_arr(fill_value, tmp_path, dimensionality) -> zarr.Array:
+def gen_arr(fill_value, tmp_path, dimensionality, format) -> zarr.Array:
     return zarr.create(
         (axis_size_,) * dimensionality,
         store=LocalStore(root=tmp_path / ".zarr"),
         chunks=(chunk_size_,) * dimensionality,
         dtype=np.int16,
         fill_value=fill_value,
-        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()],
+        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
+        if format == 3
+        else None,
+        zarr_format=format,
     )
 
 
@@ -155,9 +166,14 @@ def dimensionality(request):
     return request.param
 
 
+@pytest.fixture(params=zarr_formats)
+def format(request):
+    return request.param
+
+
 @pytest.fixture
-def arr(dimensionality, tmp_path) -> zarr.Array:
-    return gen_arr(fill_value_, tmp_path, dimensionality)
+def arr(dimensionality, tmp_path, format) -> zarr.Array:
+    return gen_arr(fill_value_, tmp_path, dimensionality, format)
 
 
 def test_fill_value(arr: zarr.Array):
@@ -196,6 +212,28 @@ def test_roundtrip(
     ), res
 
 
+def test_ellipsis_indexing_invalid(arr: zarr.Array):
+    if len(arr.shape) <= 2:
+        pytest.skip(
+            "Ellipsis indexing works for 1D and 2D arrays in zarr-python despite a shape mismatch"
+        )
+    stored_value = np.array([1, 2, 3])
+    with pytest.raises(ValueError):  # noqa: PT011
+        # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
+        # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
+        arr[2, ...] = stored_value
+
+
+def test_pickle(arr: zarr.Array, tmp_path: Path):
+    arr[:] = np.arange(reduce(operator.mul, arr.shape, 1)).reshape(arr.shape)
+    expected = arr[:]
+    with Path.open(tmp_path / "arr.pickle", "wb") as f:
+        pickle.dump(arr._async_array.codec_pipeline, f)
+    with Path.open(tmp_path / "arr.pickle", "rb") as f:
+        object.__setattr__(arr._async_array, "codec_pipeline", pickle.load(f))
+    assert (arr[:] == expected).all()
+
+
 @contextmanager
 def use_zarr_default_codec_reader():
     zarr.config.set(
@@ -218,25 +256,3 @@ def test_roundtrip_read_only_zarrs(
     assert np.all(
         res == store_values,
     ), res
-
-
-def test_ellipsis_indexing_invalid(arr: zarr.Array):
-    if len(arr.shape) <= 2:
-        pytest.skip(
-            "Ellipsis indexing works for 1D and 2D arrays in zarr-python despite a shape mismatch"
-        )
-    stored_value = np.array([1, 2, 3])
-    with pytest.raises(ValueError):  # noqa: PT011
-        # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
-        # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
-        arr[2, ...] = stored_value
-
-
-def test_pickle(arr: zarr.Array, tmp_path: Path):
-    arr[:] = np.arange(reduce(operator.mul, arr.shape, 1)).reshape(arr.shape)
-    expected = arr[:]
-    with Path.open(tmp_path / "arr.pickle", "wb") as f:
-        pickle.dump(arr._async_array.codec_pipeline, f)
-    with Path.open(tmp_path / "arr.pickle", "rb") as f:
-        object.__setattr__(arr._async_array, "codec_pipeline", pickle.load(f))
-    assert (arr[:] == expected).all()

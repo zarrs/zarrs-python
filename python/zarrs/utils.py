@@ -3,10 +3,12 @@ from __future__ import annotations
 import operator
 import os
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from zarr.core.array_spec import ArraySpec
 from zarr.core.indexing import SelectorTuple, is_integer
+from zarr.core.metadata.v2 import _default_fill_value
 
 from zarrs._internal import Basic, WithSubset
 
@@ -15,7 +17,6 @@ if TYPE_CHECKING:
     from types import EllipsisType
 
     from zarr.abc.store import ByteGetter, ByteSetter
-    from zarr.core.array_spec import ArraySpec
 
 
 # adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
@@ -28,6 +29,10 @@ class DiscontiguousArrayError(Exception):
 
 
 class CollapsedDimensionError(Exception):
+    pass
+
+
+class FillValueNoneError(Exception):
     pass
 
 
@@ -134,6 +139,12 @@ def get_shape_for_selector(
     return resulting_shape_from_index(shape, selector_tuple, drop_axes, pad=pad)
 
 
+def get_implicit_fill_value(dtype: np.dtype, fill_value: Any) -> Any:
+    if fill_value is None:
+        fill_value = _default_fill_value(dtype)
+    return fill_value
+
+
 def make_chunk_info_for_rust_with_indices(
     batch_info: Iterable[
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
@@ -144,6 +155,14 @@ def make_chunk_info_for_rust_with_indices(
     shape = shape if shape else (1,)  # constant array
     chunk_info_with_indices: list[WithSubset] = []
     for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
+        if chunk_spec.fill_value is None:
+            chunk_spec = ArraySpec(
+                chunk_spec.shape,
+                chunk_spec.dtype,
+                get_implicit_fill_value(chunk_spec.dtype, chunk_spec.fill_value),
+                chunk_spec.config,
+                chunk_spec.prototype,
+            )
         chunk_info = Basic(byte_getter, chunk_spec)
         out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
@@ -169,14 +188,3 @@ def make_chunk_info_for_rust_with_indices(
             )
         )
     return chunk_info_with_indices
-
-
-def make_chunk_info_for_rust(
-    batch_info: Iterable[
-        tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
-    ],
-) -> list[Basic]:
-    return [
-        Basic(byte_interface, chunk_spec)
-        for (byte_interface, chunk_spec, _, _) in batch_info
-    ]

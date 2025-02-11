@@ -21,7 +21,7 @@ You can then use your `zarr` as normal (with some caveats)!
 
 ## API
 
-We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class but it is not meant to be instantiated and we do not guarantee the stability of its API beyond what is required so that `zarr-python` can use it.  Therefore, it is not documented here.  We also export two errors, `DiscontiguousArrayError` and `CollapsedDimensionError` that can be thrown in the process of converting to indexers that `zarrs` can understand (see below for more details).
+We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class but it is not meant to be instantiated and we do not guarantee the stability of its API beyond what is required so that `zarr-python` can use it.  Therefore, it is not documented here.
 
 At the moment, we only support a subset of the `zarr-python` stores:
 
@@ -86,7 +86,7 @@ Chunk concurrency is typically favored because:
 
 ## Supported Indexing Methods
 
-We **do not** officially support the following indexing methods.  Some of these methods may error out, others may not:
+The following methods will trigger use with the old zarr-python pipeline:
 
 1. Any `oindex` or `vindex` integer `np.ndarray` indexing with dimensionality >=3 i.e.,
 
@@ -116,6 +116,9 @@ We **do not** officially support the following indexing methods.  Some of these 
    arr[0:10, ..., 0:5]
    ```
 
-Otherwise, we believe that we support your indexing case: slices, ints, and all integer `np.ndarray` indices in 2D for reading, contiguous integer `np.ndarray` indices along one axis for writing etc.  Please file an issue if you believe we have more holes in our coverage than we are aware of or you wish to contribute!  For example, we have an [issue in zarrs for integer-array indexing](https://github.com/LDeakin/zarrs/issues/52) that would unblock a lot of these issues!
 
-That being said, using non-contiguous integer `np.ndarray` indexing for reads may not be as fast as expected given the performance of other supported methods.  Until `zarrs` supports integer indexing, only fetching chunks is done in `rust` while indexing then occurs in `python`.
+Furthermore, using anything except contiguous (i.e., slices or consecutive integer) `np.ndarray` for numeric data will fall back to the default `zarr-python` implementation.
+
+Please file an issue if you believe we have more holes in our coverage than we are aware of or you wish to contribute!  For example, we have an [issue in zarrs for integer-array indexing](https://github.com/LDeakin/zarrs/issues/52) that would unblock a lot the use of the rust pipeline for that use-case (very useful for mini-batch training perhaps!).
+
+Further, any codecs not supported by `zarrs` will also automatically fall back to the python implementation.

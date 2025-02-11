@@ -6,7 +6,7 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 
 use numpy::npyffi::PyArrayObject;
-use numpy::{IntoPyArray, PyArray1, PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
@@ -23,6 +23,7 @@ use zarrs::metadata::v3::MetadataV3;
 
 mod chunk_item;
 mod concurrency;
+mod metadata_v2;
 mod runtime;
 mod store;
 #[cfg(test)]
@@ -31,6 +32,7 @@ mod utils;
 
 use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
+use crate::metadata_v2::codec_metadata_v2_to_v3;
 use crate::store::StoreManager;
 use crate::utils::{PyErrExt as _, PyUntypedArrayExt as _};
 
@@ -264,6 +266,9 @@ impl CodecPipelineImpl {
         };
 
         py.allow_threads(move || {
+            // FIXME: the `decode_into` methods only support fixed length data types.
+            // For variable length data types, need a codepath with non `_into` methods.
+            // Collect all the subsets and copy into value on the Python side?
             let update_chunk_subset = |item: chunk_item::WithSubset| {
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if item.chunk_subset.start().iter().all(|&o| o == 0)
@@ -337,54 +342,6 @@ impl CodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunks<'py>(
-        &self,
-        py: Python<'py>,
-        chunk_descriptions: Vec<chunk_item::Basic>, // FIXME: Ref / iterable?
-    ) -> PyResult<Vec<Bound<'py, PyArray1<u8>>>> {
-        // Adjust the concurrency based on the codec chain and the first chunk description
-        let Some((chunk_concurrent_limit, codec_options)) =
-            chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
-        else {
-            return Ok(vec![]);
-        };
-
-        let chunk_bytes = py.allow_threads(move || {
-            let get_chunk_subset = |item: chunk_item::Basic| {
-                Ok(if let Some(chunk_encoded) = self.stores.get(&item)? {
-                    let chunk_encoded: Vec<u8> = chunk_encoded.into();
-                    self.codec_chain
-                        .decode(
-                            Cow::Owned(chunk_encoded),
-                            item.representation(),
-                            &codec_options,
-                        )
-                        .map_py_err::<PyRuntimeError>()?
-                } else {
-                    // The chunk is missing so we need to create one.
-                    let num_elements = item.representation().num_elements();
-                    let data_type_size = item.representation().data_type().size();
-                    let chunk_shape = ArraySize::new(data_type_size, num_elements);
-                    ArrayBytes::new_fill_value(chunk_shape, item.representation().fill_value())
-                }
-                .into_fixed()
-                .map_py_err::<PyRuntimeError>()?
-                .into_owned())
-            };
-            iter_concurrent_limit!(
-                chunk_concurrent_limit,
-                chunk_descriptions,
-                map,
-                get_chunk_subset
-            )
-            .collect::<PyResult<Vec<Vec<u8>>>>()
-        })?;
-        Ok(chunk_bytes
-            .into_iter()
-            .map(|x| x.into_pyarray(py))
-            .collect())
-    }
-
     fn store_chunks_with_indices(
         &self,
         py: Python,
@@ -399,6 +356,7 @@ impl CodecPipelineImpl {
         // Get input array
         let input_slice = Self::nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
+            // FIXME: Handle variable length data types, convert value to bytes and offsets
             InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
         } else {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))
@@ -468,6 +426,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CodecPipelineImpl>()?;
     m.add_class::<chunk_item::Basic>()?;
     m.add_class::<chunk_item::WithSubset>()?;
+    m.add_function(wrap_pyfunction!(codec_metadata_v2_to_v3, m)?)?;
     Ok(())
 }
 
