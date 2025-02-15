@@ -30,7 +30,7 @@ dependencies = [
     'donfig',
     'pytest',
     'universal_pathlib>=0.2.0',
-    "zarr",
+    "zarr>=3.0.3",
 ]
 
 [project.optional-dependencies]
