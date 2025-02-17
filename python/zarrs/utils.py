@@ -159,7 +159,7 @@ def make_chunk_info_for_rust_with_indices(
         chunk_spec,
         chunk_selection,
         out_selection,
-        _is_complete,
+        _,
     ) in batch_info:
         if chunk_spec.fill_value is None:
             chunk_spec = ArraySpec(
