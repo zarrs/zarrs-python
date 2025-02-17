@@ -155,7 +155,7 @@ class ZarrsCodecPipeline(CodecPipeline):
     async def read(
         self,
         batch_info: Iterable[
-            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]
+            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]
         ],
         out: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),  # FIXME: unused
@@ -191,7 +191,7 @@ class ZarrsCodecPipeline(CodecPipeline):
     async def write(
         self,
         batch_info: Iterable[
-            tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+            tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]
         ],
         value: NDBuffer,  # type: ignore
         drop_axes: tuple[int, ...] = (),
@@ -229,13 +229,13 @@ class ZarrsCodecPipeline(CodecPipeline):
     def _raise_error_on_unsupported_batch_dtype(
         self,
         batch_info: Iterable[
-            tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+            tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]
         ],
     ):
         # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293 for VSUMm
         # Further, our pipeline does not support variable-length objects due to limitations on decode_into, so object is also out
         if any(
             info.dtype.kind in {"V", "S", "U", "M", "m", "O"}
-            for (_, info, _, _) in batch_info
+            for (_, info, _, _, _) in batch_info
         ):
             raise UnsupportedDataTypeError()

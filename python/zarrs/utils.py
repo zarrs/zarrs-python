@@ -147,14 +147,20 @@ def get_implicit_fill_value(dtype: np.dtype, fill_value: Any) -> Any:
 
 def make_chunk_info_for_rust_with_indices(
     batch_info: Iterable[
-        tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]
+        tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]
     ],
     drop_axes: tuple[int, ...],
     shape: tuple[int, ...],
 ) -> list[WithSubset]:
     shape = shape if shape else (1,)  # constant array
     chunk_info_with_indices: list[WithSubset] = []
-    for byte_getter, chunk_spec, chunk_selection, out_selection in batch_info:
+    for (
+        byte_getter,
+        chunk_spec,
+        chunk_selection,
+        out_selection,
+        _,
+    ) in batch_info:
         if chunk_spec.fill_value is None:
             chunk_spec = ArraySpec(
                 chunk_spec.shape,
