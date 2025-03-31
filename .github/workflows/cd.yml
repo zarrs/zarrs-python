@@ -59,10 +59,10 @@ jobs:
             # If we're running on rhel centos, install needed packages.
             if command -v yum &> /dev/null; then
                 yum update -y && yum install -y perl-core
-            fi
-            # https://github.com/PyO3/maturin-action/discussions/152
-            if [[ "${{ matrix.os }}" == "linux" && "${{ matrix.target }}" == "x86_64" && "${{ matrix.manylinux }}" == "2_28" ]]; then
-                apt update -y && apt install -y clang
+              # https://github.com/PyO3/maturin-action/discussions/152
+              if [[ "${{ matrix.os }}" == "linux" && "${{ matrix.target }}" == "x86_64" && "${{ matrix.manylinux }}" == "2_28" ]]; then
+                  yum update -y && yum install -y clang
+              fi
             fi
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
       - run: twine check --strict dist/*
