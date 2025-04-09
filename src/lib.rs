@@ -2,8 +2,10 @@
 #![allow(clippy::module_name_repetitions)]
 
 use std::borrow::Cow;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
+use std::collections::HashMap;
 use std::ptr::NonNull;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use numpy::npyffi::PyArrayObject;
 use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
@@ -14,12 +16,16 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
-use zarrs::array::codec::{ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder};
+use zarrs::array::codec::{
+    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder,
+};
 use zarrs::array::{
-    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize, CodecChain, FillValue,
+    copy_fill_value_into, update_array_bytes, ArrayBytes, ArraySize, ChunkRepresentation,
+    CodecChain, FillValue,
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
+use zarrs::storage::StoreKey;
 
 mod chunk_item;
 mod concurrency;
@@ -46,6 +52,7 @@ pub struct CodecPipelineImpl {
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
     pub(crate) num_threads: usize,
+    partial_decoder_cache: Arc<Mutex<HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>>>>,
 }
 
 impl CodecPipelineImpl {
@@ -245,6 +252,7 @@ impl CodecPipelineImpl {
             chunk_concurrent_minimum,
             chunk_concurrent_maximum,
             num_threads,
+            partial_decoder_cache: Arc::new(Mutex::new(HashMap::new().into())),
         })
     }
 
@@ -308,18 +316,34 @@ impl CodecPipelineImpl {
                         }
                     }
                 } else {
-                    let input_handle = Arc::new(self.stores.decoder(&item)?);
-                    let partial_decoder = self
-                        .codec_chain
-                        .clone()
-                        .partial_decoder(input_handle, item.representation(), &codec_options)
-                        .map_py_err::<PyValueError>()?;
+                    let key = item.key().clone();
+                    let partial_decoder: PyResult<Arc<dyn ArrayPartialDecoderTraits>> = match self
+                        .partial_decoder_cache
+                        .lock()
+                        .map_py_err::<PyRuntimeError>()?
+                        .entry(key)
+                    {
+                        Occupied(e) => Ok(e.get().clone()),
+                        Vacant(e) => {
+                            let input_handle = self.stores.decoder(&item)?;
+                            let partial_decoder = self
+                                .codec_chain
+                                .clone()
+                                .partial_decoder(
+                                    Arc::new(input_handle),
+                                    item.representation(),
+                                    &codec_options,
+                                )
+                                .map_py_err::<PyValueError>()?;
+                            Ok(e.insert(partial_decoder).clone())
+                        }
+                    };
                     unsafe {
                         // SAFETY:
                         // - output is an array with output_shape elements of the item.representation data type,
                         // - item.subset is within the bounds of output_shape.
                         // - item.chunk_subset has the same number of elements as item.subset.
-                        partial_decoder.partial_decode_into(
+                        partial_decoder?.partial_decode_into(
                             &item.chunk_subset,
                             &output,
                             &output_shape,
