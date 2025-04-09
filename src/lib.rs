@@ -7,6 +7,7 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 
 use chunk_item::WithSubset;
+use itertools::Itertools;
 use numpy::npyffi::PyArrayObject;
 use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
@@ -272,19 +273,17 @@ impl CodecPipelineImpl {
         };
 
         // Assemble partial decoders ahead of time and in parallel
-        let mut item_map: HashMap<StoreKey, &WithSubset> = HashMap::new().into();
-        chunk_descriptions
+        let partial_chunk_descriptions = chunk_descriptions
             .iter()
+            .unique_by(|item| item.key())
             .filter(|item| !(is_whole_chunk(item)))
-            .for_each(|item| {
-                item_map.insert(item.key().clone(), item);
-            });
+            .collect::<Vec<_>>();
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
             HashMap::new().into();
-        if item_map.len() > 0 {
-            let key_decoder_pairs = item_map
+        if partial_chunk_descriptions.len() > 0 {
+            let key_decoder_pairs = partial_chunk_descriptions
                 .into_par_iter()
-                .map(|(key, item)| {
+                .map(|item| {
                     let input_handle = self.stores.decoder(item)?;
                     let partial_decoder = self
                         .codec_chain
@@ -295,7 +294,7 @@ impl CodecPipelineImpl {
                             &codec_options,
                         )
                         .map_py_err::<PyValueError>()?;
-                    Ok((key.clone(), partial_decoder))
+                    Ok((item.key().clone(), partial_decoder))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
             partial_decoder_cache.extend(key_decoder_pairs);
