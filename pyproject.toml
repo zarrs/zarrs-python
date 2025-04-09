@@ -83,6 +83,7 @@ filterwarnings = [
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
     "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
     "ignore:Duplicate name:UserWarning",                                            # from ZipFile
+    "ignore:.*not part in the Zarr format 3.*:UserWarning",
 ]
 markers = ["gpu: mark a test as requiring CuPy and GPU"]
 
