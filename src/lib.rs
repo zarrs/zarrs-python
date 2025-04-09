@@ -275,8 +275,8 @@ impl CodecPipelineImpl {
         // Assemble partial decoders ahead of time and in parallel
         let partial_chunk_descriptions = chunk_descriptions
             .iter()
-            .unique_by(|item| item.key())
             .filter(|item| !(is_whole_chunk(item)))
+            .unique_by(|item| item.key())
             .collect::<Vec<_>>();
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
             HashMap::new().into();
