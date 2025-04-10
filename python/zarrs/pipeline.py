@@ -72,7 +72,13 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
             else:
                 filters = None
             if codec_dict.get("compressor", None) is not None:
-                compressor = json.dumps(codec_dict.get("compressor").get_config())
+                compressor_json = codec_dict.get("compressor").get_config()
+                # https://github.com/zarr-developers/numcodecs/pull/713 means
+                # typesize is always present, but it's not expected
+                # to be on v2 blosc codecs by zarrs.
+                if compressor_json["id"] == "blosc":
+                    compressor_json.pop("typesize", None)
+                compressor = json.dumps(compressor_json)
             else:
                 compressor = None
             codecs_v3 = codec_metadata_v2_to_v3(filters, compressor)
