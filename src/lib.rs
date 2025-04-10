@@ -353,7 +353,7 @@ impl CodecPipelineImpl {
                         // - output is an array with output_shape elements of the item.representation data type,
                         // - item.subset is within the bounds of output_shape.
                         // - item.chunk_subset has the same number of elements as item.subset.
-                        partial_decoder?.partial_decode_into(
+                        partial_decoder.partial_decode_into(
                             &item.chunk_subset,
                             &output,
                             &output_shape,
