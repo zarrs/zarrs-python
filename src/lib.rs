@@ -281,9 +281,11 @@ impl CodecPipelineImpl {
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
             HashMap::new().into();
         if partial_chunk_descriptions.len() > 0 {
-            let key_decoder_pairs = partial_chunk_descriptions
-                .into_par_iter()
-                .map(|item| {
+            let key_decoder_pairs = iter_concurrent_limit!(
+                chunk_concurrent_limit,
+                partial_chunk_descriptions,
+                map,
+                |item| {
                     let input_handle = self.stores.decoder(item)?;
                     let partial_decoder = self
                         .codec_chain
@@ -295,8 +297,9 @@ impl CodecPipelineImpl {
                         )
                         .map_py_err::<PyValueError>()?;
                     Ok((item.key().clone(), partial_decoder))
-                })
-                .collect::<PyResult<Vec<_>>>()?;
+                }
+            )
+            .collect::<PyResult<Vec<_>>>()?;
             partial_decoder_cache.extend(key_decoder_pairs);
         }
 
