@@ -345,13 +345,9 @@ impl CodecPipelineImpl {
                     }
                 } else {
                     let key = item.key();
-                    let partial_decoder: PyResult<&Arc<dyn ArrayPartialDecoderTraits>> =
-                        match partial_decoder_cache.get(key) {
-                            Some(e) => Ok(e),
-                            None => Err(PyRuntimeError::new_err(format!(
-                                "Partial decoder not found for key: {key}"
-                            ))),
-                        };
+                    let partial_decoder = partial_decoder_cache.get(key).ok_or_else(|| {
+                        PyRuntimeError::new_err(format!("Partial decoder not found for key: {key}"))
+                    })?;
                     unsafe {
                         // SAFETY:
                         // - output is an array with output_shape elements of the item.representation data type,
