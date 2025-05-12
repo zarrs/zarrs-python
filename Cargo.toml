@@ -1,6 +1,6 @@
 [package]
 name = "zarrs-python"
-version = "0.1.2"
+version = "0.1.4"
 edition = "2021"
 publish = false
 
@@ -20,10 +20,12 @@ openssl = { version = "0.10", features = ["vendored"] }
 numpy = "0.23.0"
 unsafe_cell_slice = "0.2.0"
 serde_json = "1.0.128"
-pyo3-stub-gen = "0.6.2"
+pyo3-stub-gen = "0.7.0"
 opendal = { version = "0.51.0", features = ["services-http"] }
 tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
 zarrs_opendal = { git = "https://github.com/LDeakin/zarrs.git", rev = "1354a0fb830144146a7bf6b5cff31f1f429a6f63" }
+zarrs_metadata = "0.3.7" # require recent zarr-python compatibility fixes (remove with zarrs 0.20)
+itertools = "0.9.0"
 
 [profile.release]
 lto = true

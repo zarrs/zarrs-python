@@ -2,9 +2,12 @@
 #![allow(clippy::module_name_repetitions)]
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
+use chunk_item::WithSubset;
+use itertools::Itertools;
 use numpy::npyffi::PyArrayObject;
 use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
@@ -14,13 +17,17 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
-use zarrs::array::codec::{ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder};
+use utils::is_whole_chunk;
+use zarrs::array::codec::{
+    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder,
+};
 use zarrs::array::{
     copy_fill_value_into, update_array_bytes, ArrayBytes, ArrayBytesFixedDisjointView, ArraySize,
     CodecChain, FillValue,
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::metadata::v3::MetadataV3;
+use zarrs::storage::StoreKey;
 
 mod chunk_item;
 mod concurrency;
@@ -259,6 +266,37 @@ impl CodecPipelineImpl {
         else {
             return Ok(());
         };
+
+        // Assemble partial decoders ahead of time and in parallel
+        let partial_chunk_descriptions = chunk_descriptions
+            .iter()
+            .filter(|item| !(is_whole_chunk(item)))
+            .unique_by(|item| item.key())
+            .collect::<Vec<_>>();
+        let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
+            HashMap::new().into();
+        if partial_chunk_descriptions.len() > 0 {
+            let key_decoder_pairs = iter_concurrent_limit!(
+                chunk_concurrent_limit,
+                partial_chunk_descriptions,
+                map,
+                |item| {
+                    let input_handle = self.stores.decoder(item)?;
+                    let partial_decoder = self
+                        .codec_chain
+                        .clone()
+                        .partial_decoder(
+                            Arc::new(input_handle),
+                            item.representation(),
+                            &codec_options,
+                        )
+                        .map_py_err::<PyValueError>()?;
+                    Ok((item.key().clone(), partial_decoder))
+                }
+            )
+            .collect::<PyResult<Vec<_>>>()?;
+            partial_decoder_cache.extend(key_decoder_pairs);
+        }
 
         py.allow_threads(move || {
             // FIXME: the `decode_into` methods only support fixed length data types.

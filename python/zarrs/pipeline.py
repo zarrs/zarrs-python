@@ -72,7 +72,8 @@ def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, N
             else:
                 filters = None
             if codec_dict.get("compressor", None) is not None:
-                compressor = json.dumps(codec_dict.get("compressor").get_config())
+                compressor_json = codec_dict.get("compressor").get_config()
+                compressor = json.dumps(compressor_json)
             else:
                 compressor = None
             codecs_v3 = codec_metadata_v2_to_v3(filters, compressor)
@@ -233,9 +234,9 @@ class ZarrsCodecPipeline(CodecPipeline):
         ],
     ):
         # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293 for VSUMm
-        # Further, our pipeline does not support variable-length objects due to limitations on decode_into, so object is also out
+        # Further, our pipeline does not support variable-length objects due to limitations on decode_into, so object/np.dtypes.StringDType is also out
         if any(
-            info.dtype.kind in {"V", "S", "U", "M", "m", "O"}
+            info.dtype.kind in {"V", "S", "U", "M", "m", "O", "T"}
             for (_, info, _, _, _) in batch_info
         ):
             raise UnsupportedDataTypeError()
