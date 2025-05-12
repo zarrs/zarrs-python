@@ -1,6 +1,7 @@
 use pyo3::{exceptions::PyRuntimeError, pyfunction, PyErr, PyResult};
 use zarrs::metadata::{
-    v2::{array::ArrayMetadataV2Order, MetadataV2}, v3::MetadataV3,
+    v2::{array::ArrayMetadataV2Order, MetadataV2},
+    v3::MetadataV3,
 };
 
 #[pyfunction]
@@ -36,7 +37,7 @@ pub fn codec_metadata_v2_to_v3(
     // However, CodecPipeline.from_codecs does not supply this information, and CodecPipeline.evolve_from_array_spec is seemingly never called.
     let metadata = zarrs::metadata::v2_to_v3::codec_metadata_v2_to_v3(
         ArrayMetadataV2Order::C,
-        0,                         // unused with C order
+        0,                        // unused with C order
         &MetadataV3::new("bool"), // FIXME
         None,
         &filters,
