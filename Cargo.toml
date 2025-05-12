@@ -10,9 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.23.2", features = ["abi3-py311"] }
-zarrs = { git = "https://github.com/LDeakin/zarrs.git", rev = "1354a0fb830144146a7bf6b5cff31f1f429a6f63", features = [
-    "async",
-] }
+zarrs = { version = "0.20.0-beta.1", features = ["async"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
@@ -23,8 +21,7 @@ serde_json = "1.0.128"
 pyo3-stub-gen = "0.7.0"
 opendal = { version = "0.51.0", features = ["services-http"] }
 tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
-zarrs_opendal = { git = "https://github.com/LDeakin/zarrs.git", rev = "1354a0fb830144146a7bf6b5cff31f1f429a6f63" }
-zarrs_metadata = "0.3.7" # require recent zarr-python compatibility fixes (remove with zarrs 0.20)
+zarrs_opendal = "0.7.1"
 itertools = "0.9.0"
 
 [profile.release]
