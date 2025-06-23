@@ -8,7 +8,8 @@ use pyo3::{
 };
 use pyo3_stub_gen::derive::gen_stub_pyclass_enum;
 use zarrs::storage::{
-    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
+    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
+    AsyncReadableWritableListableStorage, ReadableWritableListableStorage,
 };
 
 use crate::{runtime::tokio_block_on, utils::PyErrExt};
@@ -19,7 +20,7 @@ mod manager;
 
 pub use self::filesystem::FilesystemStoreConfig;
 pub use self::http::HttpStoreConfig;
-pub(crate) use self::manager::StoreManager;
+pub(crate) use self::manager::{AsyncStoreManager, StoreManager};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[gen_stub_pyclass_enum]
@@ -72,6 +73,16 @@ impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
         }
     }
 }
+impl TryFrom<&StoreConfig> for AsyncReadableWritableListableStorage {
+    type Error = PyErr;
+
+    fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
+        match value {
+            StoreConfig::Filesystem(config) => todo!("No Filesystem store error"),
+            StoreConfig::Http(config) => config.try_into(),
+        }
+    }
+}
 
 fn opendal_builder_to_sync_store<B: Builder>(
     builder: B,
@@ -81,5 +92,15 @@ fn opendal_builder_to_sync_store<B: Builder>(
         .finish();
     let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
     let store = Arc::new(AsyncToSyncStorageAdapter::new(store, tokio_block_on()));
+    Ok(store)
+}
+
+fn opendal_builder_to_async_store<B: Builder>(
+    builder: B,
+) -> PyResult<AsyncReadableWritableListableStorage> {
+    let operator = opendal::Operator::new(builder)
+        .map_py_err::<PyValueError>()?
+        .finish();
+    let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
     Ok(store)
 }
