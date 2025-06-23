@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.indexing import SelectorTuple, is_integer
-from zarr.core.metadata.v2 import _default_fill_value
 
 from zarrs._internal import Basic, WithSubset
 
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
     from types import EllipsisType
 
     from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.dtype import ZDType
 
 
 # adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
@@ -139,9 +139,9 @@ def get_shape_for_selector(
     return resulting_shape_from_index(shape, selector_tuple, drop_axes, pad=pad)
 
 
-def get_implicit_fill_value(dtype: np.dtype, fill_value: Any) -> Any:
+def get_implicit_fill_value(dtype: ZDType, fill_value: Any) -> Any:
     if fill_value is None:
-        fill_value = _default_fill_value(dtype)
+        fill_value = dtype.default_scalar()
     return fill_value
 
 

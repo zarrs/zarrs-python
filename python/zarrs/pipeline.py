@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
     from zarr.core.indexing import SelectorTuple
+    from zarr.dtype import ZDType
 
 from ._internal import CodecPipelineImpl, codec_metadata_v2_to_v3
 from .utils import (
@@ -134,7 +135,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         yield from self.codecs
 
     def validate(
-        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+        self, *, shape: ChunkCoords, dtype: ZDType, chunk_grid: ChunkGrid
     ) -> None:
         raise NotImplementedError("validate")
 
@@ -236,7 +237,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         # https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L289-L293 for VSUMm
         # Further, our pipeline does not support variable-length objects due to limitations on decode_into, so object/np.dtypes.StringDType is also out
         if any(
-            info.dtype.kind in {"V", "S", "U", "M", "m", "O", "T"}
+            info.dtype.to_native_dtype().kind in {"V", "S", "U", "M", "m", "O", "T"}
             for (_, info, _, _, _) in batch_info
         ):
             raise UnsupportedDataTypeError()
