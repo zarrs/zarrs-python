@@ -67,7 +67,7 @@ def test_codec_pipeline(store) -> None:
     ],
 )
 async def test_v2_encode_decode(
-    dtype, expected_dtype, fill_value, fill_value_json
+    dtype, expected_dtype, fill_value, fill_value_json, tmp_path
 ) -> None:
     with config.set(
         {
@@ -75,7 +75,7 @@ async def test_v2_encode_decode(
             "array.v2_default_compressor.bytes": None,
         }
     ):
-        store = zarr.storage.MemoryStore()
+        store = zarr.storage.LocalStore(tmp_path)
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
             name="foo",
