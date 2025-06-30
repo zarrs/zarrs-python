@@ -5,7 +5,10 @@ use std::{
 
 use pyo3::{exceptions::PyRuntimeError, PyResult};
 use zarrs::{
-    array::codec::{AsyncStoragePartialDecoder, StoragePartialDecoder},
+    array::{
+        codec::{AsyncStoragePartialDecoder, StoragePartialDecoder},
+        DataTypeSize,
+    },
     storage::{
         AsyncReadableWritableListableStorage, Bytes, MaybeBytes, ReadableWritableListableStorage,
         StorageHandle,
@@ -93,12 +96,24 @@ impl AsyncStoreManager {
         &self,
         item: &WithSubset,
     ) -> PyResult<Option<Vec<Bytes>>> {
+        let rep = item.item.representation();
+        let shape = rep.shape().iter().map(|i| i.get()).collect::<Vec<_>>();
+        let size = match rep.element_size() {
+            DataTypeSize::Fixed(size) => Ok(size),
+            DataTypeSize::Variable => Err(PyRuntimeError::new_err(
+                "Variable length data types not supported in zarrs-python",
+            )),
+        }?;
         self.store(item)?
             .get_partial_values_key(
                 item.key(),
-                &item.chunk_subset.byte_ranges(&array_shape, element_size)?,
+                &item
+                    .chunk_subset
+                    .byte_ranges(&shape, size)
+                    .map_py_err::<PyRuntimeError>()?,
             )
             .await
+            .map_py_err::<PyRuntimeError>()
     }
 
     pub(crate) async fn set<I: ChunksItem>(&self, item: &I, value: Bytes) -> PyResult<()> {

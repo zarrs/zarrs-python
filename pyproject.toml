@@ -30,7 +30,7 @@ dependencies = [
     'donfig',
     'pytest',
     'universal_pathlib>=0.2.0',
-    "zarr>=3.0.3",
+    "zarr>=3.0.3,<3.1",
 ]
 
 [project.optional-dependencies]
@@ -100,7 +100,7 @@ select = [
     "W",       # Warning detected by Pycodestyle
     "UP",      # pyupgrade
     "I",       # isort
-    "TCH",     # manage type checking blocks
+    "TC",      # manage type checking blocks
     "TID251",  # Banned imports
     "ICN",     # Follow import conventions
     "PTH",     # Pathlib instead of os.path
