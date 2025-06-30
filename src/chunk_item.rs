@@ -68,6 +68,7 @@ impl Basic {
         let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
         let mut dtype: String = chunk_spec
             .getattr("dtype")?
+            .call_method0("to_native_dtype")?
             .call_method0("__str__")?
             .extract()?;
         if dtype == "object" {
