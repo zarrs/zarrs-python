@@ -29,6 +29,7 @@ test = [
     "fsspec>2024",
     "pytest",
     "pytest-asyncio",
+    "pytest-xdist",
 ]
 doc = ["sphinx>=7.4.6", "myst-parser"]
 dev = [
