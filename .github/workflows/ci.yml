@@ -51,10 +51,10 @@ jobs:
 
       - name: Install python deps + Build
         run: |
-          uv pip install --system -e ".[test,dev]" --verbose
+          uv sync --verbose
 
       - name: Python Tests
-        run: pytest -n auto
+        run: uv run pytest -n auto
 
       - name: Rust Tests
         run: cargo test
@@ -63,5 +63,5 @@ jobs:
         # see “Type hints” section in contributing.md
         run: |
           cargo run --bin stub_gen
-          pre-commit run --all-files --show-diff-on-failure || true
+          uv run pre-commit run --all-files --show-diff-on-failure || true
           git diff --exit-code HEAD
