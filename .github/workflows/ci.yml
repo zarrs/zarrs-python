@@ -41,9 +41,9 @@ jobs:
           python-version: "3.x"
 
       - name: Install UV
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
         with:
-          version: "0.5.0"
+          version: "0.7.19"
           enable-cache: true
           cache-dependency-glob:  |
             pyproject.toml
