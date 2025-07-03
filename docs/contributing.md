@@ -27,8 +27,6 @@ pip install --group dev -e .
 > The above commands initially build the `Rust` package, but it will not be rebuilt upon edits.
 > You will need to manually rebuild it using `uv run maturin develop`.
 
-For benchmarking/speed testing, it is advisable to build a release version of the `Rust` package by passing the `-r` flag to `maturin`.
-
 For more information on the `Rust`-`Python` bridge, see the [`PyO3` docs](https://pyo3.rs/v0.22.6/).
 
 ## Testing
@@ -41,6 +39,8 @@ uv run pytest -n auto
 ```
 
 Most tests have been copied from the `zarr-python` repository with the exception of `test_pipeline.py` which we have written.
+
+For benchmarking/speed testing, it is advisable to build a release version of the `Rust` package by passing the `-r` flag to `maturin`.
 
 ## Type hints
 
