@@ -27,6 +27,7 @@ dependencies = [
 test = [
     "aiohttp",
     "fsspec>2024",
+    "numcodecs>=0.16.1",
     "pytest",
     "pytest-asyncio",
     "pytest-xdist",
