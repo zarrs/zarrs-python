@@ -41,9 +41,9 @@ jobs:
           python-version: "3.x"
 
       - name: Install UV
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
         with:
-          version: "0.5.0"
+          version: "0.7.19"
           enable-cache: true
           cache-dependency-glob:  |
             pyproject.toml
@@ -51,7 +51,7 @@ jobs:
 
       - name: Install python deps + Build
         run: |
-          uv pip install --system -e ".[test,dev]" --verbose
+          uv pip install --system -e . --group dev --verbose
 
       - name: Python Tests
         run: pytest -n auto
