@@ -16,7 +16,6 @@ class CodecPipelineImpl:
         metadata: builtins.str,
         *,
         validate_checksums: builtins.bool | None = None,
-        store_empty_chunks: builtins.bool | None = None,
         chunk_concurrent_minimum: builtins.int | None = None,
         chunk_concurrent_maximum: builtins.int | None = None,
         num_threads: builtins.int | None = None,
@@ -30,6 +29,7 @@ class CodecPipelineImpl:
         self,
         chunk_descriptions: typing.Sequence[WithSubset],
         value: numpy.typing.NDArray[typing.Any],
+        write_empty_chunks: builtins.bool,
     ) -> None: ...
 
 class FilesystemStoreConfig:
