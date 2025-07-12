@@ -2,20 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypedDict
+from warnings import warn
 
 import numpy as np
 from zarr.abc.codec import Codec, CodecPipeline
+from zarr.codecs._v2 import V2Codec
 from zarr.core import BatchedCodecPipeline
 from zarr.core.config import config
+from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator
     from typing import Any, Self
 
-    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
@@ -40,10 +42,14 @@ class UnsupportedMetadataError(Exception):
     pass
 
 
-def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl | None:
+def get_codec_pipeline_impl(
+    metadata: ArrayMetadata, store: Store
+) -> CodecPipelineImpl | None:
     try:
+        array_metadata_json = json.dumps(metadata.to_dict())
         return CodecPipelineImpl(
-            codec_metadata_json,
+            array_metadata_json,
+            store_config=store,
             validate_checksums=config.get("codec_pipeline.validate_checksums", None),
             store_empty_chunks=config.get("array.write_empty_chunks", None),
             chunk_concurrent_minimum=config.get(
@@ -55,10 +61,11 @@ def get_codec_pipeline_impl(codec_metadata_json: str) -> CodecPipelineImpl | Non
             num_threads=config.get("threading.max_workers", None),
         )
     except TypeError as e:
-        if re.match(r"codec (delta|zlib) is not supported", str(e)):
-            return None
-        else:
-            raise e
+        warn(
+            f"Array is unsupported by ZarrsCodecPipeline: {e}",
+            category=UserWarning,
+        )
+        return None
 
 
 def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, None]:
@@ -89,37 +96,47 @@ class ZarrsCodecPipelineState(TypedDict):
     codecs: tuple[Codec, ...]
 
 
+def array_metadata_to_codecs(metadata: ArrayMetadata) -> list[Codec]:
+    if isinstance(metadata, ArrayV3Metadata):
+        return metadata.codecs
+    elif isinstance(metadata, ArrayV2Metadata):
+        v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
+        return [v2_codec]
+
+
 @dataclass
 class ZarrsCodecPipeline(CodecPipeline):
-    codecs: tuple[Codec, ...]
+    metadata: ArrayMetadata
+    store: Store
     impl: CodecPipelineImpl | None
-    codec_metadata_json: str
     python_impl: BatchedCodecPipeline
 
     def __getstate__(self) -> ZarrsCodecPipelineState:
-        return {"codec_metadata_json": self.codec_metadata_json, "codecs": self.codecs}
+        return {"metadata": self.metadata, "store": self.store}
 
     def __setstate__(self, state: ZarrsCodecPipelineState):
-        self.codecs = state["codecs"]
-        self.codec_metadata_json = state["codec_metadata_json"]
-        self.impl = get_codec_pipeline_impl(self.codec_metadata_json)
-        self.python_impl = BatchedCodecPipeline.from_codecs(self.codecs)
+        self.metadata = state["metadata"]
+        self.store = state["store"]
+        self.impl = get_codec_pipeline_impl(self.metadata, self.store)
+        codecs = array_metadata_to_codecs(self.metadata)
+        self.python_impl = BatchedCodecPipeline.from_codecs(codecs)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        raise NotImplementedError("evolve_from_array_spec")
+        return self
 
     @classmethod
     def from_codecs(cls, codecs: Iterable[Codec]) -> Self:
-        codec_metadata = list(codecs_to_dict(codecs))
-        codec_metadata_json = json.dumps(codec_metadata)
-        # TODO: upstream zarr-python has not settled on how to deal with configs yet
-        # Should they be checked when an array is created, or when an operation is performed?
-        # https://github.com/zarr-developers/zarr-python/issues/2409
-        # https://github.com/zarr-developers/zarr-python/pull/2429#issuecomment-2566976567
+        return BatchedCodecPipeline.from_codecs(codecs)
+
+    @classmethod
+    def from_array_metadata_and_store(
+        cls, array_metadata: ArrayMetadata, store: Store
+    ) -> Self:
+        codecs = array_metadata_to_codecs(array_metadata)
         return cls(
-            codec_metadata_json=codec_metadata_json,
-            codecs=tuple(codecs),
-            impl=get_codec_pipeline_impl(codec_metadata_json),
+            metadata=array_metadata,
+            store=store,
+            impl=get_codec_pipeline_impl(array_metadata, store),
             python_impl=BatchedCodecPipeline.from_codecs(codecs),
         )
 

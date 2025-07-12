@@ -29,6 +29,15 @@ else:
 
 
 @pytest.mark.filterwarnings(
+    "ignore:Array is unsupported by ZarrsCodecPipeline. data type fixed_length_utf32 is not supported:UserWarning"
+)
+@pytest.mark.filterwarnings(
+    "ignore:Array is unsupported by ZarrsCodecPipeline. data type null_terminated_bytes is not supported:UserWarning"
+)
+@pytest.mark.filterwarnings(
+    "ignore:Array is unsupported by ZarrsCodecPipeline. data type fixed_length_utf32 is not supported:UserWarning"
+)
+@pytest.mark.filterwarnings(
     "ignore::zarr.core.dtype.common.UnstableSpecificationWarning"
 )
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])

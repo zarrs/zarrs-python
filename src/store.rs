@@ -15,13 +15,11 @@ use crate::{runtime::tokio_block_on, utils::PyErrExt};
 
 mod filesystem;
 mod http;
-mod manager;
 
 pub use self::filesystem::FilesystemStoreConfig;
 pub use self::http::HttpStoreConfig;
-pub(crate) use self::manager::StoreManager;
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone)]
 #[gen_stub_pyclass_enum]
 pub enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
