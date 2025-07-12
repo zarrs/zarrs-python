@@ -19,39 +19,27 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    'asciitree',
-    'numpy>=1.24',
-    'fasteners',
-    'numcodecs[msgpack]>=0.10.0',
-    'fsspec>2024',
-    'crc32c',
-    'zstandard',
-    'typing_extensions',
-    'donfig',
-    'pytest',
-    'universal_pathlib>=0.2.0',
+    "numpy>=1.24",
     "zarr @ git+https://github.com/zarr-developers/zarr-python",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 test = [
-    "coverage",
+    "aiohttp",
+    "fsspec>2024",
+    "numcodecs>=0.16.1",
     "pytest",
-    "pytest-cov",
-    "msgpack",
-    "lmdb",
-    "s3fs",
     "pytest-asyncio",
-    "moto[s3]",
-    "flask-cors",
-    "flask",
-    "requests",
-    "mypy",
-    "hypothesis",
     "pytest-xdist",
 ]
-dev = ["maturin", "pip", "pre-commit"]
 doc = ["sphinx>=7.4.6", "myst-parser"]
+dev = [
+    "maturin",
+    "pip",
+    "pre-commit",
+    {include-group = "test"},
+    {include-group = "doc"},
+]
 
 [tool.maturin]
 python-source = "python"
