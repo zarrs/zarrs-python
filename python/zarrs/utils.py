@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import operator
 import os
+from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any
 
@@ -145,6 +146,12 @@ def get_implicit_fill_value(dtype: ZDType, fill_value: Any) -> Any:
     return fill_value
 
 
+@dataclass(frozen=True)
+class RustChunkInfo:
+    chunk_info_with_indices: list[WithSubset]
+    write_empty_chunks: bool
+
+
 def make_chunk_info_for_rust_with_indices(
     batch_info: Iterable[
         tuple[ByteGetter | ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]
@@ -154,6 +161,7 @@ def make_chunk_info_for_rust_with_indices(
 ) -> list[WithSubset]:
     shape = shape if shape else (1,)  # constant array
     chunk_info_with_indices: list[WithSubset] = []
+    write_empty_chunks: bool = True
     for (
         byte_getter,
         chunk_spec,
@@ -161,6 +169,7 @@ def make_chunk_info_for_rust_with_indices(
         out_selection,
         _,
     ) in batch_info:
+        write_empty_chunks = chunk_spec.config.write_empty_chunks
         if chunk_spec.fill_value is None:
             chunk_spec = ArraySpec(
                 chunk_spec.shape,
@@ -193,4 +202,4 @@ def make_chunk_info_for_rust_with_indices(
                 shape=shape,
             )
         )
-    return chunk_info_with_indices
+    return RustChunkInfo(chunk_info_with_indices, write_empty_chunks)

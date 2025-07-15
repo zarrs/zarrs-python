@@ -51,7 +51,6 @@ def get_codec_pipeline_impl(
             array_metadata_json,
             store_config=store,
             validate_checksums=config.get("codec_pipeline.validate_checksums", None),
-            store_empty_chunks=config.get("array.write_empty_chunks", None),
             chunk_concurrent_minimum=config.get(
                 "codec_pipeline.chunk_concurrent_minimum", None
             ),
@@ -202,7 +201,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             out: NDArrayLike = out.as_ndarray_like()
             await asyncio.to_thread(
                 self.impl.retrieve_chunks_and_apply_index,
-                chunks_desc,
+                chunks_desc.chunk_info_with_indices,
                 out,
             )
             return None
@@ -241,7 +240,10 @@ class ZarrsCodecPipeline(CodecPipeline):
             elif not value_np.flags.c_contiguous:
                 value_np = np.ascontiguousarray(value_np)
             await asyncio.to_thread(
-                self.impl.store_chunks_with_indices, chunks_desc, value_np
+                self.impl.store_chunks_with_indices,
+                chunks_desc.chunk_info_with_indices,
+                value_np,
+                chunks_desc.write_empty_chunks,
             )
             return None
 
