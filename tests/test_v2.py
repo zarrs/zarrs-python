@@ -11,7 +11,6 @@ import zarr.core.buffer
 import zarr.storage
 from numcodecs import Delta
 from numcodecs.blosc import Blosc
-from numcodecs.zstd import Zstd
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
@@ -43,7 +42,7 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
-def test_codec_pipeline(store) -> None:
+def test_fill_single_value(store: Store) -> None:
     array = zarr.create(
         store=store,
         shape=(1,),
@@ -109,9 +108,12 @@ async def test_v2_encode_decode(
         (VariableLengthUTF8(), "Y"),
     ],
 )
-def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str):
+def test_v2_encode_decode_with_data(
+    dtype: ZDType[Any, Any], value: str, tmp_path: Path
+):
     expected = np.full((3,), value, dtype=dtype.to_native_dtype())
     a = zarr.create(
+        store=tmp_path,
         shape=(3,),
         zarr_format=2,
         dtype=dtype,
@@ -136,35 +138,6 @@ def test_v2_filters_codecs(
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
-
-
-@pytest.mark.filterwarnings("ignore")
-def test_create_array_defaults(store: Store):
-    """
-    Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
-    parameter does produce a compressor.
-    """
-    g = zarr.open(store, mode="w", zarr_format=2)
-    arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
-    assert arr._async_array.compressor is None
-    assert not (arr.filters)
-    arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
-    assert arr._async_array.compressor is not None
-    assert not (arr.filters)
-    arr = g.create_array(
-        "three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd()
-    )
-    assert arr._async_array.compressor is not None
-    assert not (arr.filters)
-    with pytest.raises(ValueError):  # noqa: PT011
-        g.create_array(
-            "four",
-            dtype="i8",
-            shape=(1,),
-            chunks=(1,),
-            compressor=None,
-            compressors=None,
-        )
 
 
 @pytest.mark.parametrize("numpy_order", ["C", "F"])

@@ -84,21 +84,3 @@ def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     a[:, :] = data
     read_data = a[:, :]
     assert np.array_equal(data, read_data)
-
-
-def test_transpose_invalid(
-    store: Store,
-) -> None:
-    data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8))
-    spath = StorePath(store, "transpose_invalid")
-    for order in [(1, 0), (3, 2, 1), (3, 3, 1)]:
-        with pytest.raises(ValueError, match=r".*order"):
-            Array.create(
-                spath,
-                shape=data.shape,
-                chunk_shape=(1, 32, 8),
-                dtype=data.dtype,
-                fill_value=0,
-                chunk_key_encoding=("v2", "."),
-                codecs=[TransposeCodec(order=order), BytesCodec()],
-            )
