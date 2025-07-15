@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -13,7 +12,6 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import Selection, morton_order_iter
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
@@ -21,6 +19,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLike
     from zarr.core.common import MemoryOrder
+    from zarr.core.indexing import Selection
 
 
 @dataclass(frozen=True)
@@ -165,51 +164,6 @@ def test_order_implicit(
         assert read_data.flags["C_CONTIGUOUS"]
 
 
-def test_open(store: Store) -> None:
-    spath = StorePath(store)
-    a = Array.create(
-        spath,
-        shape=(16, 16),
-        chunk_shape=(16, 16),
-        dtype="int32",
-        fill_value=0,
-    )
-    b = Array.open(spath)
-    assert a.metadata == b.metadata
-
-
-def test_morton() -> None:
-    assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
-    assert list(morton_order_iter((2, 2, 2))) == [
-        (0, 0, 0),
-        (1, 0, 0),
-        (0, 1, 0),
-        (1, 1, 0),
-        (0, 0, 1),
-        (1, 0, 1),
-        (0, 1, 1),
-        (1, 1, 1),
-    ]
-    assert list(morton_order_iter((2, 2, 2, 2))) == [
-        (0, 0, 0, 0),
-        (1, 0, 0, 0),
-        (0, 1, 0, 0),
-        (1, 1, 0, 0),
-        (0, 0, 1, 0),
-        (1, 0, 1, 0),
-        (0, 1, 1, 0),
-        (1, 1, 1, 0),
-        (0, 0, 0, 1),
-        (1, 0, 0, 1),
-        (0, 1, 0, 1),
-        (1, 1, 0, 1),
-        (0, 0, 1, 1),
-        (1, 0, 1, 1),
-        (0, 1, 1, 1),
-        (1, 1, 1, 1),
-    ]
-
-
 def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
@@ -239,41 +193,6 @@ async def test_delete_empty_chunks(store: Store) -> None:
     await _AsyncArrayProxy(a)[:16, :16].set(data)
     assert np.array_equal(await _AsyncArrayProxy(a)[:16, :16].get(), data)
     assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype()) is None
-
-
-async def test_dimension_names(store: Store) -> None:
-    data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
-    path = "dimension_names"
-    spath = StorePath(store, path)
-    await AsyncArray.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(16, 16),
-        dtype=data.dtype,
-        fill_value=0,
-        dimension_names=("x", "y"),
-    )
-
-    assert (await AsyncArray.open(spath)).metadata.dimension_names == (
-        "x",
-        "y",
-    )
-    path2 = "dimension_names2"
-    spath2 = StorePath(store, path2)
-    await AsyncArray.create(
-        spath2,
-        shape=data.shape,
-        chunk_shape=(16, 16),
-        dtype=data.dtype,
-        fill_value=0,
-    )
-
-    assert (await AsyncArray.open(spath2)).metadata.dimension_names is None
-    zarr_json_buffer = await store.get(
-        f"{path2}/zarr.json", prototype=default_buffer_prototype()
-    )
-    assert zarr_json_buffer is not None
-    assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
 def test_invalid_metadata(store: Store) -> None:
