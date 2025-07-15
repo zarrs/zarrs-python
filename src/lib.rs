@@ -207,7 +207,6 @@ impl CodecPipelineImpl {
         metadata,
         *,
         validate_checksums=None,
-        store_empty_chunks=None,
         chunk_concurrent_minimum=None,
         chunk_concurrent_maximum=None,
         num_threads=None,
@@ -216,7 +215,6 @@ impl CodecPipelineImpl {
     fn new(
         metadata: &str,
         validate_checksums: Option<bool>,
-        store_empty_chunks: Option<bool>,
         chunk_concurrent_minimum: Option<usize>,
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
@@ -228,9 +226,6 @@ impl CodecPipelineImpl {
         let mut codec_options = CodecOptionsBuilder::new();
         if let Some(validate_checksums) = validate_checksums {
             codec_options = codec_options.validate_checksums(validate_checksums);
-        }
-        if let Some(store_empty_chunks) = store_empty_chunks {
-            codec_options = codec_options.store_empty_chunks(store_empty_chunks);
         }
         let codec_options = codec_options.build();
 
@@ -378,6 +373,7 @@ impl CodecPipelineImpl {
         py: Python,
         chunk_descriptions: Vec<chunk_item::WithSubset>,
         value: &Bound<'_, PyUntypedArray>,
+        write_empty_chunks: bool,
     ) -> PyResult<()> {
         enum InputValue<'a> {
             Array(ArrayBytes<'a>),
@@ -395,11 +391,12 @@ impl CodecPipelineImpl {
         let input_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
-        let Some((chunk_concurrent_limit, codec_options)) =
+        let Some((chunk_concurrent_limit, mut codec_options)) =
             chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
         else {
             return Ok(());
         };
+        codec_options.set_store_empty_chunks(write_empty_chunks);
 
         py.allow_threads(move || {
             let store_chunk = |item: chunk_item::WithSubset| match &input {
