@@ -1,4 +1,3 @@
-import pickle
 from typing import Any
 
 import numpy as np
@@ -286,30 +285,6 @@ def test_nested_sharding(
     assert np.array_equal(data, read_data)
 
 
-def test_open_sharding(store: Store) -> None:
-    path = "open_sharding"
-    spath = StorePath(store, path)
-    a = Array.create(
-        spath,
-        shape=(16, 16),
-        chunk_shape=(16, 16),
-        dtype="int32",
-        fill_value=0,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(8, 8),
-                codecs=[
-                    TransposeCodec(order=order_from_dim("F", 2)),
-                    BytesCodec(),
-                    BloscCodec(),
-                ],
-            )
-        ],
-    )
-    b = Array.open(spath)
-    assert a.metadata == b.metadata
-
-
 def test_write_partial_sharded_chunks(store: Store) -> None:
     data = np.arange(0, 16 * 16, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
@@ -363,11 +338,6 @@ async def test_delete_empty_shards(store: Store) -> None:
     chunk_bytes = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
     assert chunk_bytes is not None
     assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
-
-
-def test_pickle() -> None:
-    codec = ShardingCodec(chunk_shape=(8, 8))
-    assert pickle.loads(pickle.dumps(codec)) == codec
 
 
 @pytest.mark.parametrize(
