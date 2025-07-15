@@ -60,7 +60,6 @@ fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<V
 impl Basic {
     #[new]
     fn new(byte_interface: &Bound<'_, PyAny>, chunk_spec: &Bound<'_, PyAny>) -> PyResult<Self> {
-        // let store: StoreConfig = byte_interface.getattr("store")?.extract()?;
         let path: String = byte_interface.getattr("path")?.extract()?;
 
         let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
