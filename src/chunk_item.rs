@@ -14,10 +14,9 @@ use zarrs::{
     storage::StoreKey,
 };
 
-use crate::{store::StoreConfig, utils::PyErrExt};
+use crate::utils::PyErrExt;
 
 pub(crate) trait ChunksItem {
-    fn store_config(&self) -> StoreConfig;
     fn key(&self) -> &StoreKey;
     fn representation(&self) -> &ChunkRepresentation;
 }
@@ -26,7 +25,6 @@ pub(crate) trait ChunksItem {
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct Basic {
-    store: StoreConfig,
     key: StoreKey,
     representation: ChunkRepresentation,
 }
@@ -62,7 +60,6 @@ fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<V
 impl Basic {
     #[new]
     fn new(byte_interface: &Bound<'_, PyAny>, chunk_spec: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let store: StoreConfig = byte_interface.getattr("store")?.extract()?;
         let path: String = byte_interface.getattr("path")?.extract()?;
 
         let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
@@ -79,7 +76,6 @@ impl Basic {
         let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
         let fill_value_bytes = fill_value_to_bytes(&dtype, &fill_value)?;
         Ok(Self {
-            store,
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
             representation: get_chunk_representation(chunk_shape, &dtype, fill_value_bytes)?,
         })
@@ -118,9 +114,6 @@ impl WithSubset {
 }
 
 impl ChunksItem for Basic {
-    fn store_config(&self) -> StoreConfig {
-        self.store.clone()
-    }
     fn key(&self) -> &StoreKey {
         &self.key
     }
@@ -130,9 +123,6 @@ impl ChunksItem for Basic {
 }
 
 impl ChunksItem for WithSubset {
-    fn store_config(&self) -> StoreConfig {
-        self.item.store.clone()
-    }
     fn key(&self) -> &StoreKey {
         &self.item.key
     }

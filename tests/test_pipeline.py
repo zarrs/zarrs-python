@@ -256,3 +256,28 @@ def test_roundtrip_read_only_zarrs(
     assert np.all(
         res == store_values,
     ), res
+
+
+@pytest.mark.parametrize(
+    "codec",
+    [zarr.codecs.BloscCodec(), zarr.codecs.GzipCodec(), zarr.codecs.ZstdCodec()],
+)
+@pytest.mark.parametrize("should_shard", [True, False])
+def test_pipeline_used(
+    mocker, codec: zarr.abc.codec.BaseCodec, tmp_path: Path, *, should_shard: bool
+):
+    z = zarr.create_array(
+        tmp_path / "foo.zarr",
+        dtype=np.uint16,
+        shape=(80, 100),
+        chunks=(10, 10),
+        shards=(20, 20) if should_shard else None,
+        compressors=[codec],
+    )
+    spy_read = mocker.spy(z._async_array.codec_pipeline, "read")
+    spy_write = mocker.spy(z._async_array.codec_pipeline, "write")
+    assert isinstance(z._async_array.codec_pipeline, zarrs.ZarrsCodecPipeline)
+    z[...] = np.random.random(z.shape)
+    z[...]
+    assert spy_read.call_count == 1
+    assert spy_write.call_count == 1

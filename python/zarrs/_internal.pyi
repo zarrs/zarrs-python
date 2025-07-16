@@ -13,7 +13,8 @@ class Basic:
 class CodecPipelineImpl:
     def __new__(
         cls,
-        metadata: builtins.str,
+        array_metadata: builtins.str,
+        store_config: StoreConfig,
         *,
         validate_checksums: builtins.bool | None = None,
         chunk_concurrent_minimum: builtins.int | None = None,
