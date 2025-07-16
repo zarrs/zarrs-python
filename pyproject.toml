@@ -31,6 +31,7 @@ test = [
     "pytest",
     "pytest-asyncio",
     "pytest-xdist",
+    "pytest-mock",
 ]
 doc = ["sphinx>=7.4.6", "myst-parser"]
 dev = [
