@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use pyo3::{exceptions::PyRuntimeError, pyclass, PyErr};
+use pyo3::{exceptions::PyRuntimeError, PyErr};
 use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorage};
 
 use crate::utils::PyErrExt;
 
 #[derive(Debug, Clone)]
-#[pyclass]
 pub struct FilesystemStoreConfig {
-    #[pyo3(get, set)]
     pub root: String,
 }
 
