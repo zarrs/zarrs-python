@@ -6,7 +6,6 @@ use pyo3::{
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
     Bound, FromPyObject, PyAny, PyErr, PyResult,
 };
-use pyo3_stub_gen::derive::gen_stub_pyclass_enum;
 use zarrs::storage::{
     storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
 };
@@ -20,7 +19,6 @@ pub use self::filesystem::FilesystemStoreConfig;
 pub use self::http::HttpStoreConfig;
 
 #[derive(Debug, Clone)]
-#[gen_stub_pyclass_enum]
 pub enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
     Http(HttpStoreConfig),
@@ -57,6 +55,12 @@ impl<'py> FromPyObject<'py> for StoreConfig {
                 "zarrs-python does not support {name} stores"
             ))),
         }
+    }
+}
+
+impl pyo3_stub_gen::PyStubType for StoreConfig {
+    fn type_output() -> pyo3_stub_gen::TypeInfo {
+        pyo3_stub_gen::TypeInfo::with_module("zarr.abc.store.Store", "zarr.abc.store".into())
     }
 }
 
