@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
 use pyo3::{exceptions::PyValueError, pyclass, Bound, PyAny, PyErr, PyResult};
-use pyo3_stub_gen::derive::gen_stub_pyclass;
 use zarrs::storage::ReadableWritableListableStorage;
 
 use super::opendal_builder_to_sync_store;
 
 #[derive(Debug, Clone)]
-#[gen_stub_pyclass]
 #[pyclass]
 pub struct HttpStoreConfig {
     #[pyo3(get, set)]

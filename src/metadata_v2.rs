@@ -5,6 +5,7 @@ use zarrs::metadata::{
 };
 
 #[pyfunction]
+#[pyo3_stub_gen::derive::gen_stub_pyfunction]
 #[pyo3(signature = (filters=None, compressor=None))]
 pub fn codec_metadata_v2_to_v3(
     filters: Option<Vec<String>>,

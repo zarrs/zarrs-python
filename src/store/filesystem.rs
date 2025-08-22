@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
 use pyo3::{exceptions::PyRuntimeError, pyclass, PyErr};
-use pyo3_stub_gen::derive::gen_stub_pyclass;
 use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorage};
 
 use crate::utils::PyErrExt;
 
 #[derive(Debug, Clone)]
-#[gen_stub_pyclass]
 #[pyclass]
 pub struct FilesystemStoreConfig {
     #[pyo3(get, set)]

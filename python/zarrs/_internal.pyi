@@ -3,9 +3,9 @@
 
 import builtins
 import typing
-from enum import Enum
 
 import numpy.typing
+import zarr.abc.store
 
 class Basic:
     def __new__(cls, byte_interface: typing.Any, chunk_spec: typing.Any) -> Basic: ...
@@ -14,7 +14,7 @@ class CodecPipelineImpl:
     def __new__(
         cls,
         array_metadata: builtins.str,
-        store_config: StoreConfig,
+        store_config: zarr.abc.store.Store,
         *,
         validate_checksums: builtins.bool | None = None,
         chunk_concurrent_minimum: builtins.int | None = None,
@@ -33,12 +33,6 @@ class CodecPipelineImpl:
         write_empty_chunks: builtins.bool,
     ) -> None: ...
 
-class FilesystemStoreConfig:
-    root: builtins.str
-
-class HttpStoreConfig:
-    endpoint: builtins.str
-
 class WithSubset:
     def __new__(
         cls,
@@ -48,6 +42,6 @@ class WithSubset:
         shape: typing.Sequence[builtins.int],
     ) -> WithSubset: ...
 
-class StoreConfig(Enum):
-    Filesystem = ...
-    Http = ...
+def codec_metadata_v2_to_v3(
+    filters: typing.Sequence[builtins.str] | None, compressor: builtins.str | None
+) -> builtins.list[builtins.str]: ...
