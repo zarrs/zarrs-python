@@ -41,7 +41,3 @@ class WithSubset:
         subset: typing.Sequence[slice],
         shape: typing.Sequence[builtins.int],
     ) -> WithSubset: ...
-
-def codec_metadata_v2_to_v3(
-    filters: typing.Sequence[builtins.str] | None, compressor: builtins.str | None
-) -> builtins.list[builtins.str]: ...

@@ -14,8 +14,8 @@ from zarr.core.config import config
 from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable, Iterator
-    from typing import Any, Self
+    from collections.abc import Iterable, Iterator
+    from typing import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from zarr.core.indexing import SelectorTuple
     from zarr.dtype import ZDType
 
-from ._internal import CodecPipelineImpl, codec_metadata_v2_to_v3
+from ._internal import CodecPipelineImpl
 from .utils import (
     CollapsedDimensionError,
     DiscontiguousArrayError,
@@ -65,29 +65,6 @@ def get_codec_pipeline_impl(
             category=UserWarning,
         )
         return None
-
-
-def codecs_to_dict(codecs: Iterable[Codec]) -> Generator[dict[str, Any], None, None]:
-    for codec in codecs:
-        if codec.__class__.__name__ == "V2Codec":
-            codec_dict = codec.to_dict()
-            if codec_dict.get("filters", None) is not None:
-                filters = [
-                    json.dumps(filter.get_config())
-                    for filter in codec_dict.get("filters")
-                ]
-            else:
-                filters = None
-            if codec_dict.get("compressor", None) is not None:
-                compressor_json = codec_dict.get("compressor").get_config()
-                compressor = json.dumps(compressor_json)
-            else:
-                compressor = None
-            codecs_v3 = codec_metadata_v2_to_v3(filters, compressor)
-            for codec in codecs_v3:
-                yield json.loads(codec)
-        else:
-            yield codec.to_dict()
 
 
 class ZarrsCodecPipelineState(TypedDict):
