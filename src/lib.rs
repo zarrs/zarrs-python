@@ -23,16 +23,20 @@ use zarrs::array::codec::{
     StoragePartialDecoder,
 };
 use zarrs::array::{
-    copy_fill_value_into, update_array_bytes, Array, ArrayBytes, ArrayBytesFixedDisjointView,
+    copy_fill_value_into, update_array_bytes, ArrayBytes, ArrayBytesFixedDisjointView,
     ArrayMetadata, ArraySize, CodecChain, FillValue,
 };
 use zarrs::array_subset::ArraySubset;
-use zarrs::storage::store::MemoryStore;
+use zarrs::config::global_config;
+use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
+use zarrs::metadata::v3::MetadataV3;
+use zarrs::metadata_ext::v2_to_v3::{
+    codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3, ArrayMetadataV2ToV3Error,
+};
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
 mod concurrency;
-mod metadata_v2;
 mod runtime;
 mod store;
 #[cfg(test)]
@@ -41,7 +45,6 @@ mod utils;
 
 use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
-use crate::metadata_v2::codec_metadata_v2_to_v3;
 use crate::store::StoreConfig;
 use crate::utils::{PyErrExt as _, PyUntypedArrayExt as _};
 
@@ -203,6 +206,35 @@ impl CodecPipelineImpl {
     }
 }
 
+fn array_metadata_to_codec_metadata_v3(
+    metadata: ArrayMetadata,
+) -> Result<Vec<MetadataV3>, ArrayMetadataV2ToV3Error> {
+    match metadata {
+        ArrayMetadata::V3(metadata) => Ok(metadata.codecs),
+        ArrayMetadata::V2(metadata) => {
+            let config = global_config();
+            let endianness = data_type_metadata_v2_to_endianness(&metadata.dtype)
+                .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?;
+            let data_type = data_type_metadata_v2_to_v3(
+                &metadata.dtype,
+                config.data_type_aliases_v2(),
+                config.data_type_aliases_v3(),
+            )?;
+
+            codec_metadata_v2_to_v3(
+                metadata.order,
+                metadata.shape.len(),
+                &data_type,
+                endianness,
+                &metadata.filters,
+                &metadata.compressor,
+                config.codec_aliases_v2(),
+                config.codec_aliases_v3(),
+            )
+        }
+    }
+}
+
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
@@ -226,11 +258,10 @@ impl CodecPipelineImpl {
     ) -> PyResult<Self> {
         let metadata: ArrayMetadata =
             serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
-
-        // TODO: Add a direct metadata -> codec chain method to zarrs
-        let store = Arc::new(MemoryStore::new());
-        let array = Array::new_with_metadata(store, "/", metadata).map_py_err::<PyTypeError>()?;
-        let codec_chain = Arc::new(array.codecs().clone());
+        let codec_metadata =
+            array_metadata_to_codec_metadata_v3(metadata).map_py_err::<PyTypeError>()?;
+        let codec_chain =
+            Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
 
         let mut codec_options = CodecOptionsBuilder::new();
         if let Some(validate_checksums) = validate_checksums {
@@ -470,7 +501,6 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CodecPipelineImpl>()?;
     m.add_class::<chunk_item::Basic>()?;
     m.add_class::<chunk_item::WithSubset>()?;
-    m.add_function(wrap_pyfunction!(codec_metadata_v2_to_v3, m)?)?;
     Ok(())
 }
 
