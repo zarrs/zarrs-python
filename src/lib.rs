@@ -213,19 +213,13 @@ fn array_metadata_to_codec_metadata_v3(
         ArrayMetadata::V3(metadata) => Ok(metadata.codecs),
         ArrayMetadata::V2(metadata) => {
             let config = global_config();
-            let (Ok(data_type), endianness) = (
-                data_type_metadata_v2_to_v3(
-                    &metadata.dtype,
-                    config.data_type_aliases_v2(),
-                    config.data_type_aliases_v3(),
-                ),
-                data_type_metadata_v2_to_endianness(&metadata.dtype)
-                    .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?,
-            ) else {
-                return Err(ArrayMetadataV2ToV3Error::UnsupportedDataType(
-                    metadata.dtype.clone(),
-                ));
-            };
+            let endianness = data_type_metadata_v2_to_endianness(&metadata.dtype)
+                .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?;
+            let data_type = data_type_metadata_v2_to_v3(
+                &metadata.dtype,
+                config.data_type_aliases_v2(),
+                config.data_type_aliases_v3(),
+            )?;
 
             codec_metadata_v2_to_v3(
                 metadata.order,
