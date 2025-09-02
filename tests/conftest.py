@@ -7,7 +7,6 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 from zarr import config
-from zarr.core.common import ChunkCoords
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, ZipStore
 
 from zarrs.utils import (  # noqa: F401
@@ -20,12 +19,12 @@ if TYPE_CHECKING:
     from typing import Any, Literal
 
     from zarr.abc.store import Store
-    from zarr.core.common import ChunkCoords, MemoryOrder
+    from zarr.core.common import MemoryOrder
 
 
 @dataclass
 class ArrayRequest:
-    shape: ChunkCoords
+    shape: tuple[int, ...]
     dtype: str
     order: MemoryOrder
 
