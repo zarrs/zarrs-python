@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import ChunkCoords
     from zarr.core.indexing import SelectorTuple
     from zarr.dtype import ZDType
 
@@ -128,7 +127,7 @@ class ZarrsCodecPipeline(CodecPipeline):
         yield from self.codecs
 
     def validate(
-        self, *, shape: ChunkCoords, dtype: ZDType, chunk_grid: ChunkGrid
+        self, *, shape: tuple[int, ...], dtype: ZDType, chunk_grid: ChunkGrid
     ) -> None:
         raise NotImplementedError("validate")
 
