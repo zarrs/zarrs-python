@@ -218,8 +218,9 @@ def test_ellipsis_indexing_invalid(arr: zarr.Array):
             "Ellipsis indexing works for 1D and 2D arrays in zarr-python despite a shape mismatch"
         )
     stored_value = np.array([1, 2, 3])
-    with pytest.raises(ValueError):  # noqa: PT011
+    with pytest.raises((ValueError, RuntimeError)):  # noqa: PT011
         # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
+        # zarrs error: indexer references array indices [3] which are out-of-bounds of array shape [3]
         # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
         arr[2, ...] = stored_value
 
