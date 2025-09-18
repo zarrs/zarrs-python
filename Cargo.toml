@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.25.1", features = ["abi3-py311"] }
-zarrs = { version = "0.22.0-beta.2", features = ["async", "zlib", "pcodec", "bz2"] }
+zarrs = { version = "0.22.0", features = ["async", "zlib", "pcodec", "bz2"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
@@ -26,8 +26,3 @@ itertools = "0.14.0"
 
 [profile.release]
 lto = true
-
-[patch.crates-io]
-zarrs = { git = "https://github.com/zarrs/zarrs.git", tag = "zarrs-v0.22.0-beta.2" }
-zarrs_storage = { git = "https://github.com/zarrs/zarrs.git", tag = "zarrs-v0.22.0-beta.2" }
-zarrs_opendal = { git = "https://github.com/zarrs/zarrs_opendal.git", branch = "zarrs_storage_0.4.0" }
