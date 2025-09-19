@@ -24,7 +24,6 @@ jobs:
         manylinux: ['2_28']
         include:
           # manylinux for various platforms
-          #- { os: linux, manylinux: '2_28', target: i686 }
           - { os: linux, manylinux: '2_28', target: armv7 }
           - { os: linux, manylinux: '2_28', target: ppc64le }
           #- { os: linux, manylinux: '2_28', target: s390x }
@@ -32,20 +31,18 @@ jobs:
           - { os: linux, manylinux: musllinux_1_2, target: x86_64 }
           - { os: linux, manylinux: musllinux_1_2, target: aarch64 }
           - { os: linux, manylinux: musllinux_1_2, target: armv7 }
-          # windows
-          - { os: windows, target: i686, python-architecture: x86 }
         exclude:
-          # https://github.com/rust-cross/cargo-xwin/issues/76
+          # Fails with “LINK : fatal error LNK1181: cannot open input file 'python3.lib'”
           - os: windows
             target: aarch64
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           architecture: ${{ matrix.python-architecture || 'x64' }}
-      - run: pip install twine
+      - run: pipx install twine abi3audit
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
@@ -53,8 +50,7 @@ jobs:
           args: --release --out dist --interpreter '3.11 3.12 3.13'
           rust-toolchain: stable
           docker-options: -e CI
-          # https://github.com/PyO3/maturin/issues/2336#issuecomment-2507418846
-          maturin-version: 1.7.4
+          maturin-version: 1.9.4
           before-script-linux: |
             # If we're running on rhel centos, install needed packages.
             if command -v yum &> /dev/null; then
@@ -66,6 +62,7 @@ jobs:
             fi
       - run: ${{ (matrix.os == 'windows' && 'dir') || 'ls -lh' }} dist/
       - run: twine check --strict dist/*
+      - run: abi3audit dist/*.whl
       - uses: actions/upload-artifact@v4
         with:
           name: pypi-files-${{ matrix.os }}-${{ matrix.target }}-${{ matrix.manylinux }}
@@ -76,8 +73,8 @@ jobs:
     # keep condition in sync with `build` job
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
       - uses: PyO3/maturin-action@v1
@@ -93,16 +90,20 @@ jobs:
           path: dist
 
   inspect:
+    if: always()
     needs: [build, build-sdist]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      # https://github.com/re-actors/alls-green#why
+      - uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}
+      - uses: actions/download-artifact@v5
         with:
           pattern: pypi-files-*
           merge-multiple: true
           path: dist/
       - run: ls -lh dist/
-      # TODO: some more checks? `twine` is already run above
 
   # If git tag is a version, verify that it matches the package metadata version (or fail job and skip `publish`)
   # If git tag is not a version, set output `version` to "" (also skipping `publish`)
@@ -114,8 +115,8 @@ jobs:
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
       - uses: actions/download-artifact@v4

@@ -23,7 +23,7 @@ jobs:
         rust_toolchain: ["stable"]  # "nightly"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Rust in GH runner images can lag behind stable releases + act does not include Rust
       - name: Install Rust
@@ -36,7 +36,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
