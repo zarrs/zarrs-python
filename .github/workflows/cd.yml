@@ -31,8 +31,6 @@ jobs:
           - { os: linux, manylinux: musllinux_1_2, target: x86_64 }
           - { os: linux, manylinux: musllinux_1_2, target: aarch64 }
           - { os: linux, manylinux: musllinux_1_2, target: armv7 }
-          # windows
-          - { os: windows, target: i686, python-architecture: x86 }
     runs-on: ${{ (matrix.os == 'linux' && 'ubuntu') || matrix.os }}-latest
     steps:
       - uses: actions/checkout@v5
