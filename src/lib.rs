@@ -46,7 +46,7 @@ mod utils;
 use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
-use crate::utils::{PyErrExt as _, PyUntypedArrayExt as _};
+use crate::utils::{PyCodecErrExt, PyErrExt as _, PyUntypedArrayExt as _};
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -72,7 +72,7 @@ impl CodecPipelineImpl {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
                 .decode(value_encoded.into(), item.representation(), codec_options)
-                .map_py_err::<PyRuntimeError>()?
+                .map_codec_err()?
         } else {
             let array_size = ArraySize::new(
                 item.representation().data_type().size(),
@@ -95,7 +95,7 @@ impl CodecPipelineImpl {
                 item.representation().num_elements(),
                 item.representation().data_type().size(),
             )
-            .map_py_err::<PyValueError>()?;
+            .map_codec_err()?;
 
         if value_decoded.is_fill_value(item.representation().fill_value()) {
             self.store.erase(item.key()).map_py_err::<PyRuntimeError>()
@@ -103,7 +103,7 @@ impl CodecPipelineImpl {
             let value_encoded = codec_chain
                 .encode(value_decoded, item.representation(), codec_options)
                 .map(Cow::into_owned)
-                .map_py_err::<PyRuntimeError>()?;
+                .map_codec_err()?;
 
             // Store the encoded chunk
             self.store
@@ -135,7 +135,7 @@ impl CodecPipelineImpl {
             // Validate the chunk subset bytes
             chunk_subset_bytes
                 .validate(chunk_subset.num_elements(), data_type_size)
-                .map_py_err::<PyValueError>()?;
+                .map_codec_err()?;
 
             // Retrieve the chunk
             let chunk_bytes_old = self.retrieve_chunk_bytes(item, codec_chain, codec_options)?;
@@ -148,7 +148,7 @@ impl CodecPipelineImpl {
                 &chunk_subset_bytes,
                 data_type_size,
             )
-            .map_py_err::<PyRuntimeError>()?;
+            .map_codec_err()?;
 
             // Store the updated chunk
             self.store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
@@ -330,7 +330,7 @@ impl CodecPipelineImpl {
                             item.representation(),
                             &codec_options,
                         )
-                        .map_py_err::<PyValueError>()?;
+                        .map_codec_err()?;
                     Ok((item.key().clone(), partial_decoder))
                 }
             )
@@ -401,7 +401,7 @@ impl CodecPipelineImpl {
                         &codec_options,
                     )
                 }
-                .map_py_err::<PyValueError>()
+                .map_codec_err()
             };
 
             iter_concurrent_limit!(
@@ -454,7 +454,7 @@ impl CodecPipelineImpl {
                             &input_shape,
                             item.item.representation().data_type(),
                         )
-                        .map_py_err::<PyRuntimeError>()?;
+                        .map_codec_err()?;
                     self.store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,

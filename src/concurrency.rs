@@ -1,10 +1,10 @@
-use pyo3::{exceptions::PyRuntimeError, PyResult};
+use pyo3::PyResult;
 use zarrs::array::{
     codec::CodecOptions, concurrency::calc_concurrency_outer_inner, ArrayCodecTraits,
     RecommendedConcurrency,
 };
 
-use crate::{chunk_item::ChunksItem, utils::PyErrExt as _, CodecPipelineImpl};
+use crate::{chunk_item::ChunksItem, utils::PyCodecErrExt as _, CodecPipelineImpl};
 
 pub trait ChunkConcurrentLimitAndCodecOptions {
     fn get_chunk_concurrent_limit_and_codec_options(
@@ -30,7 +30,7 @@ where
         let codec_concurrency = codec_pipeline_impl
             .codec_chain
             .recommended_concurrency(chunk_representation)
-            .map_py_err::<PyRuntimeError>()?;
+            .map_codec_err()?;
 
         let min_concurrent_chunks =
             std::cmp::min(codec_pipeline_impl.chunk_concurrent_minimum, num_chunks);
