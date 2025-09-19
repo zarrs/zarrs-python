@@ -5,6 +5,7 @@ build-backend = "maturin"
 [project]
 name = "zarrs"
 description = "A CodecPipeline for zarr-python backed by the zarrs Rust crate"
+readme = "README.md"
 requires-python = ">=3.11"
 authors = [
     { name = "Ilan Gold" },
