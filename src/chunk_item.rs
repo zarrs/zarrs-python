@@ -109,7 +109,7 @@ impl WithSubset {
         // This permits broadcasting of a constant input.
         if subset.num_elements() != chunk_subset.num_elements() && subset.num_elements() > 1 {
             return Err(PyErr::new::<PyIndexError, _>(format!(
-                "subset {subset} and chunk subset {chunk_subset} differ in size",
+                "the size of the chunk subset {chunk_subset} and input/output subset {subset} are incompatible",
             )));
         }
         Ok(Self {

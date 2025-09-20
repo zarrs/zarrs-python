@@ -218,7 +218,7 @@ def test_ellipsis_indexing_invalid(arr: zarr.Array):
     stored_value = np.array([1, 2, 3])
     expected_errors = (
         "references array indices.*out-of-bounds of array shape",
-        "subset.*and chunk subset.*differ in size",
+        "the size of the chunk subset.*and input/output subset.* are incompatible",
     )
     with pytest.raises(IndexError, match="|".join(expected_errors)):
         arr[2, ...] = stored_value
