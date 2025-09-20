@@ -216,13 +216,11 @@ def test_ellipsis_indexing_invalid(arr: zarr.Array):
             "Ellipsis indexing works for 1D and 2D arrays in zarr-python despite a shape mismatch"
         )
     stored_value = np.array([1, 2, 3])
-    expected_errors = {
-        RuntimeError: r"the size of a decoded chunk",
-        IndexError: r"references array indices.*out-of-bounds of array shape",
-    }
-    with pytest.raises(
-        tuple(expected_errors.keys()), match="|".join(expected_errors.values())
-    ):
+    expected_errors = (
+        "references array indices.*out-of-bounds of array shape",
+        "subset.*and chunk subset.*differ in size",
+    )
+    with pytest.raises(IndexError, match="|".join(expected_errors)):
         arr[2, ...] = stored_value
 
 
