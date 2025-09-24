@@ -207,9 +207,7 @@ def test_roundtrip(
 ):
     indexing_method(array)[index] = store_values
     res = indexing_method(array)[index]
-    assert np.all(
-        res == store_values,
-    ), res
+    assert np.all(res == store_values), res
 
 
 def test_ellipsis_indexing_invalid(arr: zarr.Array):
@@ -218,9 +216,11 @@ def test_ellipsis_indexing_invalid(arr: zarr.Array):
             "Ellipsis indexing works for 1D and 2D arrays in zarr-python despite a shape mismatch"
         )
     stored_value = np.array([1, 2, 3])
-    with pytest.raises(ValueError):  # noqa: PT011
-        # zarrs-python error: ValueError: operands could not be broadcast together with shapes (4,) (3,)
-        # numpy error: ValueError: could not broadcast input array from shape (3,) into shape (4,)
+    expected_errors = (
+        "references array indices.*out-of-bounds of array shape",
+        "the size of the chunk subset.*and input/output subset.* are incompatible",
+    )
+    with pytest.raises(IndexError, match="|".join(expected_errors)):
         arr[2, ...] = stored_value
 
 

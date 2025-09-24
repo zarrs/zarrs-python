@@ -1,7 +1,7 @@
 use std::num::NonZeroU64;
 
 use pyo3::{
-    exceptions::{PyRuntimeError, PyValueError},
+    exceptions::{PyIndexError, PyRuntimeError, PyValueError},
     pyclass, pymethods,
     types::{PyAnyMethods, PyBytes, PyBytesMethods, PyInt, PySlice, PySliceMethods as _},
     Bound, PyAny, PyErr, PyResult,
@@ -105,6 +105,13 @@ impl WithSubset {
         let chunk_subset =
             selection_to_array_subset(&chunk_subset, &item.representation.shape_u64())?;
         let subset = selection_to_array_subset(&subset, &shape)?;
+        // Check that subset and chunk_subset have the same number of elements.
+        // This permits broadcasting of a constant input.
+        if subset.num_elements() != chunk_subset.num_elements() && subset.num_elements() > 1 {
+            return Err(PyErr::new::<PyIndexError, _>(format!(
+                "the size of the chunk subset {chunk_subset} and input/output subset {subset} are incompatible",
+            )));
+        }
         Ok(Self {
             item,
             chunk_subset,
