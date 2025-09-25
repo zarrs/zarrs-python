@@ -176,7 +176,7 @@ impl CodecPipelineImpl {
         array_object
     }
 
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
+    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> PyResult<&'a [u8]> {
         if !value.is_c_contiguous() {
             return Err(PyErr::new::<PyValueError, _>(
                 "input array must be a C contiguous array".to_string(),
@@ -195,7 +195,7 @@ impl CodecPipelineImpl {
 
     fn nparray_to_unsafe_cell_slice<'a>(
         value: &'a Bound<'_, PyUntypedArray>,
-    ) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
+    ) -> PyResult<UnsafeCellSlice<'a, u8>> {
         if !value.is_c_contiguous() {
             return Err(PyErr::new::<PyValueError, _>(
                 "input array must be a C contiguous array".to_string(),
@@ -210,6 +210,48 @@ impl CodecPipelineImpl {
             std::slice::from_raw_parts_mut(array_data, array_len)
         };
         Ok(UnsafeCellSlice::new(output))
+    }
+
+    /// Assemble partial decoders in parallel
+    fn assemble_partial_decoders(
+        &self,
+        chunk_descriptions: &[chunk_item::WithSubset],
+        chunk_concurrent_limit: usize,
+        codec_options: &CodecOptions,
+    ) -> PyResult<HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>>> {
+        let partial_chunk_descriptions = chunk_descriptions
+            .iter()
+            .filter(|item| !(is_whole_chunk(item)))
+            .unique_by(|item| item.key())
+            .collect::<Vec<_>>();
+        let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
+            HashMap::new();
+        if !partial_chunk_descriptions.is_empty() {
+            let key_decoder_pairs = iter_concurrent_limit!(
+                chunk_concurrent_limit,
+                partial_chunk_descriptions,
+                map,
+                |item| {
+                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
+                    let input_handle =
+                        StoragePartialDecoder::new(storage_handle, item.key().clone());
+                    let partial_decoder = self
+                        .codec_chain
+                        .clone()
+                        .partial_decoder(
+                            Arc::new(input_handle),
+                            item.representation(),
+                            codec_options,
+                        )
+                        .map_py_err()?;
+                    Ok((item.key().clone(), partial_decoder))
+                }
+            )
+            .collect::<PyResult<Vec<_>>>()?;
+            partial_decoder_cache.extend(key_decoder_pairs);
+        }
+
+        Ok(partial_decoder_cache)
     }
 }
 
@@ -477,50 +519,6 @@ impl CodecPipelineImpl {
 
             Ok(())
         })
-    }
-}
-
-impl CodecPipelineImpl {
-    /// Assemble partial decoders in parallel
-    fn assemble_partial_decoders(
-        &self,
-        chunk_descriptions: &[chunk_item::WithSubset],
-        chunk_concurrent_limit: usize,
-        codec_options: &CodecOptions,
-    ) -> PyResult<HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>>> {
-        let partial_chunk_descriptions = chunk_descriptions
-            .iter()
-            .filter(|item| !(is_whole_chunk(item)))
-            .unique_by(|item| item.key())
-            .collect::<Vec<_>>();
-        let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
-            HashMap::new();
-        if !partial_chunk_descriptions.is_empty() {
-            let key_decoder_pairs = iter_concurrent_limit!(
-                chunk_concurrent_limit,
-                partial_chunk_descriptions,
-                map,
-                |item| {
-                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
-                    let input_handle =
-                        StoragePartialDecoder::new(storage_handle, item.key().clone());
-                    let partial_decoder = self
-                        .codec_chain
-                        .clone()
-                        .partial_decoder(
-                            Arc::new(input_handle),
-                            item.representation(),
-                            codec_options,
-                        )
-                        .map_py_err()?;
-                    Ok((item.key().clone(), partial_decoder))
-                }
-            )
-            .collect::<PyResult<Vec<_>>>()?;
-            partial_decoder_cache.extend(key_decoder_pairs);
-        }
-
-        Ok(partial_decoder_cache)
     }
 }
 
