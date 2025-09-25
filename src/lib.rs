@@ -41,12 +41,13 @@ mod runtime;
 mod store;
 #[cfg(test)]
 mod tests;
+mod map_py_err;
 mod utils;
 
 use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
-use crate::utils::{PyCodecErrExt, PyErrExt as _, PyUntypedArrayExt as _};
+use crate::utils::{PyErrExt, PyErrStrExt as _, PyUntypedArrayExt as _};
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -67,12 +68,12 @@ impl CodecPipelineImpl {
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = self.store.get(item.key()).map_py_err::<PyRuntimeError>()?;
+        let value_encoded = self.store.get(item.key()).map_py_err_from_str::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
                 .decode(value_encoded.into(), item.representation(), codec_options)
-                .map_codec_err()?
+                .map_py_err()?
         } else {
             let array_size = ArraySize::new(
                 item.representation().data_type().size(),
@@ -95,20 +96,20 @@ impl CodecPipelineImpl {
                 item.representation().num_elements(),
                 item.representation().data_type().size(),
             )
-            .map_codec_err()?;
+            .map_py_err()?;
 
         if value_decoded.is_fill_value(item.representation().fill_value()) {
-            self.store.erase(item.key()).map_py_err::<PyRuntimeError>()
+            self.store.erase(item.key()).map_py_err_from_str::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
                 .encode(value_decoded, item.representation(), codec_options)
                 .map(Cow::into_owned)
-                .map_codec_err()?;
+                .map_py_err()?;
 
             // Store the encoded chunk
             self.store
                 .set(item.key(), value_encoded.into())
-                .map_py_err::<PyRuntimeError>()
+                .map_py_err_from_str::<PyRuntimeError>()
         }
     }
 
@@ -135,7 +136,7 @@ impl CodecPipelineImpl {
             // Validate the chunk subset bytes
             chunk_subset_bytes
                 .validate(chunk_subset.num_elements(), data_type_size)
-                .map_codec_err()?;
+                .map_py_err()?;
 
             // Retrieve the chunk
             let chunk_bytes_old = self.retrieve_chunk_bytes(item, codec_chain, codec_options)?;
@@ -148,7 +149,7 @@ impl CodecPipelineImpl {
                 &chunk_subset_bytes,
                 data_type_size,
             )
-            .map_codec_err()?;
+            .map_py_err()?;
 
             // Store the updated chunk
             self.store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
@@ -257,11 +258,11 @@ impl CodecPipelineImpl {
         num_threads: Option<usize>,
     ) -> PyResult<Self> {
         let metadata: ArrayMetadata =
-            serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
+            serde_json::from_str(array_metadata).map_py_err_from_str::<PyTypeError>()?;
         let codec_metadata =
-            array_metadata_to_codec_metadata_v3(metadata).map_py_err::<PyTypeError>()?;
+            array_metadata_to_codec_metadata_v3(metadata).map_py_err_from_str::<PyTypeError>()?;
         let codec_chain =
-            Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
+            Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err_from_str::<PyTypeError>()?);
 
         let mut codec_options = CodecOptionsBuilder::new();
         if let Some(validate_checksums) = validate_checksums {
@@ -276,7 +277,7 @@ impl CodecPipelineImpl {
         let num_threads = num_threads.unwrap_or(rayon::current_num_threads());
 
         let store: ReadableWritableListableStorage =
-            (&store_config).try_into().map_py_err::<PyTypeError>()?;
+            (&store_config).try_into().map_py_err_from_str::<PyTypeError>()?;
 
         Ok(Self {
             store,
@@ -330,7 +331,7 @@ impl CodecPipelineImpl {
                             item.representation(),
                             &codec_options,
                         )
-                        .map_codec_err()?;
+                        .map_py_err()?;
                     Ok((item.key().clone(), partial_decoder))
                 }
             )
@@ -359,11 +360,11 @@ impl CodecPipelineImpl {
                             .data_type()
                             .fixed_size()
                             .ok_or("variable length data type not supported")
-                            .map_py_err::<PyTypeError>()?,
+                            .map_py_err_from_str::<PyTypeError>()?,
                         &output_shape,
                         subset,
                     )
-                    .map_py_err::<PyRuntimeError>()?
+                    .map_py_err_from_str::<PyRuntimeError>()?
                 };
 
                 // See zarrs::array::Array::retrieve_chunk_subset_into
@@ -372,7 +373,7 @@ impl CodecPipelineImpl {
                 {
                     // See zarrs::array::Array::retrieve_chunk_into
                     if let Some(chunk_encoded) =
-                        self.store.get(item.key()).map_py_err::<PyRuntimeError>()?
+                        self.store.get(item.key()).map_py_err_from_str::<PyRuntimeError>()?
                     {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -401,7 +402,7 @@ impl CodecPipelineImpl {
                         &codec_options,
                     )
                 }
-                .map_codec_err()
+                .map_py_err()
             };
 
             iter_concurrent_limit!(
@@ -454,7 +455,7 @@ impl CodecPipelineImpl {
                             &input_shape,
                             item.item.representation().data_type(),
                         )
-                        .map_codec_err()?;
+                        .map_py_err()?;
                     self.store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,

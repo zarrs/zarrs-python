@@ -6,22 +6,22 @@ use zarrs::array::codec::CodecError;
 
 use crate::{ChunksItem, WithSubset};
 
-pub(crate) trait PyErrExt<T> {
-    fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T>;
+pub(crate) trait PyErrStrExt<T> {
+    fn map_py_err_from_str<PE: PyTypeInfo>(self) -> PyResult<T>;
 }
 
-impl<T, E: Display> PyErrExt<T> for Result<T, E> {
-    fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T> {
+impl<T, E: Display> PyErrStrExt<T> for Result<T, E> {
+    fn map_py_err_from_str<PE: PyTypeInfo>(self) -> PyResult<T> {
         self.map_err(|e| PyErr::new::<PE, _>(format!("{e}")))
     }
 }
 
-pub(crate) trait PyCodecErrExt<T> {
-    fn map_codec_err(self) -> PyResult<T>;
+pub(crate) trait PyErrExt<T> {
+    fn map_py_err(self) -> PyResult<T>;
 }
 
-impl<T> PyCodecErrExt<T> for Result<T, CodecError> {
-    fn map_codec_err(self) -> PyResult<T> {
+impl<T> PyErrExt<T> for Result<T, CodecError> {
+    fn map_py_err(self) -> PyResult<T> {
         // see https://docs.python.org/3/library/exceptions.html#exception-hierarchy
         self.map_err(|e| match e {
             // requested indexing operation doesn’t match shape

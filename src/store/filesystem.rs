@@ -3,7 +3,7 @@ use std::sync::Arc;
 use pyo3::{exceptions::PyRuntimeError, PyErr};
 use zarrs::{filesystem::FilesystemStore, storage::ReadableWritableListableStorage};
 
-use crate::utils::PyErrExt;
+use crate::utils::PyErrStrExt;
 
 #[derive(Debug, Clone)]
 pub struct FilesystemStoreConfig {
@@ -21,7 +21,7 @@ impl TryInto<ReadableWritableListableStorage> for &FilesystemStoreConfig {
 
     fn try_into(self) -> Result<ReadableWritableListableStorage, Self::Error> {
         let store =
-            Arc::new(FilesystemStore::new(self.root.clone()).map_py_err::<PyRuntimeError>()?);
+            Arc::new(FilesystemStore::new(self.root.clone()).map_py_err_from_str::<PyRuntimeError>()?);
         Ok(store)
     }
 }
