@@ -37,17 +37,18 @@ use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
 mod concurrency;
+mod map_py_err;
 mod runtime;
 mod store;
 #[cfg(test)]
 mod tests;
-mod map_py_err;
 mod utils;
 
 use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
+use crate::map_py_err::{PyErrExt as _, PyErrStrExt as _};
 use crate::store::StoreConfig;
-use crate::utils::{PyErrExt, PyErrStrExt as _, PyUntypedArrayExt as _};
+use crate::utils::PyUntypedArrayExt as _;
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -68,7 +69,10 @@ impl CodecPipelineImpl {
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = self.store.get(item.key()).map_py_err_from_str::<PyRuntimeError>()?;
+        let value_encoded = self
+            .store
+            .get(item.key())
+            .map_py_err_from_str::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
@@ -99,7 +103,9 @@ impl CodecPipelineImpl {
             .map_py_err()?;
 
         if value_decoded.is_fill_value(item.representation().fill_value()) {
-            self.store.erase(item.key()).map_py_err_from_str::<PyRuntimeError>()
+            self.store
+                .erase(item.key())
+                .map_py_err_from_str::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
                 .encode(value_decoded, item.representation(), codec_options)
@@ -239,6 +245,7 @@ fn array_metadata_to_codec_metadata_v3(
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
+    #[allow(clippy::needless_pass_by_value)]
     #[pyo3(signature = (
         array_metadata,
         store_config,
@@ -261,8 +268,9 @@ impl CodecPipelineImpl {
             serde_json::from_str(array_metadata).map_py_err_from_str::<PyTypeError>()?;
         let codec_metadata =
             array_metadata_to_codec_metadata_v3(metadata).map_py_err_from_str::<PyTypeError>()?;
-        let codec_chain =
-            Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err_from_str::<PyTypeError>()?);
+        let codec_chain = Arc::new(
+            CodecChain::from_metadata(&codec_metadata).map_py_err_from_str::<PyTypeError>()?,
+        );
 
         let mut codec_options = CodecOptionsBuilder::new();
         if let Some(validate_checksums) = validate_checksums {
@@ -276,8 +284,9 @@ impl CodecPipelineImpl {
             chunk_concurrent_maximum.unwrap_or(rayon::current_num_threads());
         let num_threads = num_threads.unwrap_or(rayon::current_num_threads());
 
-        let store: ReadableWritableListableStorage =
-            (&store_config).try_into().map_py_err_from_str::<PyTypeError>()?;
+        let store: ReadableWritableListableStorage = (&store_config)
+            .try_into()
+            .map_py_err_from_str::<PyTypeError>()?;
 
         Ok(Self {
             store,
@@ -306,38 +315,12 @@ impl CodecPipelineImpl {
             return Ok(());
         };
 
-        // Assemble partial decoders ahead of time and in parallel
-        let partial_chunk_descriptions = chunk_descriptions
-            .iter()
-            .filter(|item| !(is_whole_chunk(item)))
-            .unique_by(|item| item.key())
-            .collect::<Vec<_>>();
-        let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
-            HashMap::new();
-        if !partial_chunk_descriptions.is_empty() {
-            let key_decoder_pairs = iter_concurrent_limit!(
-                chunk_concurrent_limit,
-                partial_chunk_descriptions,
-                map,
-                |item| {
-                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
-                    let input_handle =
-                        StoragePartialDecoder::new(storage_handle, item.key().clone());
-                    let partial_decoder = self
-                        .codec_chain
-                        .clone()
-                        .partial_decoder(
-                            Arc::new(input_handle),
-                            item.representation(),
-                            &codec_options,
-                        )
-                        .map_py_err()?;
-                    Ok((item.key().clone(), partial_decoder))
-                }
-            )
-            .collect::<PyResult<Vec<_>>>()?;
-            partial_decoder_cache.extend(key_decoder_pairs);
-        }
+        // Assemble partial decoders ahead of time
+        let partial_decoder_cache = self.assemble_partial_decoders(
+            chunk_descriptions.as_ref(),
+            chunk_concurrent_limit,
+            &codec_options,
+        )?;
 
         py.allow_threads(move || {
             // FIXME: the `decode_into` methods only support fixed length data types.
@@ -372,8 +355,10 @@ impl CodecPipelineImpl {
                     && chunk_subset.shape() == item.representation().shape_u64()
                 {
                     // See zarrs::array::Array::retrieve_chunk_into
-                    if let Some(chunk_encoded) =
-                        self.store.get(item.key()).map_py_err_from_str::<PyRuntimeError>()?
+                    if let Some(chunk_encoded) = self
+                        .store
+                        .get(item.key())
+                        .map_py_err_from_str::<PyRuntimeError>()?
                     {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -492,6 +477,50 @@ impl CodecPipelineImpl {
 
             Ok(())
         })
+    }
+}
+
+impl CodecPipelineImpl {
+    /// Assemble partial decoders in parallel
+    fn assemble_partial_decoders(
+        &self,
+        chunk_descriptions: &[chunk_item::WithSubset],
+        chunk_concurrent_limit: usize,
+        codec_options: &CodecOptions,
+    ) -> PyResult<HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>>> {
+        let partial_chunk_descriptions = chunk_descriptions
+            .iter()
+            .filter(|item| !(is_whole_chunk(item)))
+            .unique_by(|item| item.key())
+            .collect::<Vec<_>>();
+        let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
+            HashMap::new();
+        if !partial_chunk_descriptions.is_empty() {
+            let key_decoder_pairs = iter_concurrent_limit!(
+                chunk_concurrent_limit,
+                partial_chunk_descriptions,
+                map,
+                |item| {
+                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
+                    let input_handle =
+                        StoragePartialDecoder::new(storage_handle, item.key().clone());
+                    let partial_decoder = self
+                        .codec_chain
+                        .clone()
+                        .partial_decoder(
+                            Arc::new(input_handle),
+                            item.representation(),
+                            codec_options,
+                        )
+                        .map_py_err()?;
+                    Ok((item.key().clone(), partial_decoder))
+                }
+            )
+            .collect::<PyResult<Vec<_>>>()?;
+            partial_decoder_cache.extend(key_decoder_pairs);
+        }
+
+        Ok(partial_decoder_cache)
     }
 }
 

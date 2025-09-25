@@ -14,7 +14,7 @@ use zarrs::{
     storage::StoreKey,
 };
 
-use crate::utils::PyErrStrExt;
+use crate::map_py_err::PyErrStrExt as _;
 
 pub(crate) trait ChunksItem {
     fn key(&self) -> &StoreKey;

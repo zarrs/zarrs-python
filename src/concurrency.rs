@@ -4,7 +4,8 @@ use zarrs::array::{
     RecommendedConcurrency,
 };
 
-use crate::{chunk_item::ChunksItem, utils::PyErrExt as _, CodecPipelineImpl};
+use crate::map_py_err::PyErrExt as _;
+use crate::{chunk_item::ChunksItem, CodecPipelineImpl};
 
 pub trait ChunkConcurrentLimitAndCodecOptions {
     fn get_chunk_concurrent_limit_and_codec_options(

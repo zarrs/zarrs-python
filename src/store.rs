@@ -10,7 +10,8 @@ use zarrs::storage::{
     storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
 };
 
-use crate::{runtime::tokio_block_on, utils::PyErrStrExt};
+use crate::map_py_err::PyErrStrExt as _;
+use crate::runtime::tokio_block_on;
 
 mod filesystem;
 mod http;
