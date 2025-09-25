@@ -10,7 +10,8 @@ use zarrs::storage::{
     storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
 };
 
-use crate::{runtime::tokio_block_on, utils::PyErrExt};
+use crate::map_py_err::PyErrStrExt as _;
+use crate::runtime::tokio_block_on;
 
 mod filesystem;
 mod http;
@@ -79,7 +80,7 @@ fn opendal_builder_to_sync_store<B: Builder>(
     builder: B,
 ) -> PyResult<ReadableWritableListableStorage> {
     let operator = opendal::Operator::new(builder)
-        .map_py_err::<PyValueError>()?
+        .map_py_err_from_str::<PyValueError>()?
         .finish();
     let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
     let store = Arc::new(AsyncToSyncStorageAdapter::new(store, tokio_block_on()));
