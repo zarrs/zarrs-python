@@ -15,7 +15,7 @@ import pytest
 import zarr
 from zarr.storage import LocalStore
 
-import zarrs  # noqa: F401
+import zarrs
 
 axis_size_ = 10
 chunk_size_ = axis_size_ // 2
