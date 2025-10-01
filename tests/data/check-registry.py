@@ -13,7 +13,11 @@ with zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"}):
     else:
         is_registered = True
 
-print(json.dumps(dict(
-    imported_modules=imported_modules,
-    is_registered=is_registered,
-)))
+print(
+    json.dumps(
+        dict(
+            imported_modules=imported_modules,
+            is_registered=is_registered,
+        )
+    )
+)
