@@ -12,21 +12,18 @@ repos:
       - id: detect-private-key
       - id: no-commit-to-branch
         args: ["--branch=main"]
-  - repo: local
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
     hooks:
-      - id: rustfmt
-        name: rustfmt
-        description: Check if all files follow the rustfmt style
-        entry: cargo fmt --all -- --color always
-        language: system
-        pass_filenames: false
+      - id: fmt
+      - id: cargo-check
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.9
     hooks:
-    -   id: ruff
+      - id: ruff
         args: ["--fix"]
-    -   id: ruff-format
-    # The following can be removed once PLR0917 is out of preview
-    -   name: ruff preview rules
+      - id: ruff-format
+      # The following can be removed once PLR0917 is out of preview
+      - name: ruff preview rules
         id: ruff
         args: ["--preview", "--select=PLR0917"]
