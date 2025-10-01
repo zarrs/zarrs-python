@@ -9,11 +9,6 @@ import pytest
 from zarr import config
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, ZipStore
 
-from zarrs.utils import (  # noqa: F401
-    CollapsedDimensionError,
-    DiscontiguousArrayError,
-)
-
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Any, Literal

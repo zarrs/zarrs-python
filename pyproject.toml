@@ -44,6 +44,9 @@ dev = [
     {include-group = "doc"},
 ]
 
+[project.entry-points."zarr.codec_pipeline"]
+"zarrs.codec_pipeline" = "zarrs:ZarrsCodecPipeline"
+
 [tool.maturin]
 python-source = "python"
 module-name = "zarrs._internal"
