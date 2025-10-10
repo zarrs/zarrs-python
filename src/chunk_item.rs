@@ -14,7 +14,7 @@ use zarrs::{
     storage::StoreKey,
 };
 
-use crate::utils::PyErrExt;
+use crate::map_py_err::PyErrStrExt as _;
 
 pub(crate) trait ChunksItem {
     fn key(&self) -> &StoreKey;
@@ -76,7 +76,7 @@ impl Basic {
         let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
         let fill_value_bytes = fill_value_to_bytes(&dtype, &fill_value)?;
         Ok(Self {
-            key: StoreKey::new(path).map_py_err::<PyValueError>()?,
+            key: StoreKey::new(path).map_py_err_from_str::<PyValueError>()?,
             representation: get_chunk_representation(chunk_shape, &dtype, fill_value_bytes)?,
         })
     }
@@ -148,14 +148,14 @@ fn get_chunk_representation(
         &MetadataV3::new(dtype),
         zarrs::config::global_config().data_type_aliases_v3(),
     )
-    .map_py_err::<PyRuntimeError>()?;
+    .map_py_err_from_str::<PyRuntimeError>()?;
     let chunk_shape = chunk_shape
         .into_iter()
         .map(|x| NonZeroU64::new(x).expect("chunk shapes should always be non-zero"))
         .collect();
     let chunk_representation =
         ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value))
-            .map_py_err::<PyValueError>()?;
+            .map_py_err_from_str::<PyValueError>()?;
     Ok(chunk_representation)
 }
 
