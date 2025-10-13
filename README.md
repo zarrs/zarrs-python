@@ -47,7 +47,9 @@ The `ZarrsCodecPipeline` specific options are:
 - `codec_pipeline.chunk_concurrent_minimum`: the minimum number of chunks retrieved/stored concurrently when balancing chunk/codec concurrency.
   - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info.
 - `codec_pipeline.validate_checksums`: enable checksum validation (e.g. with the CRC32C codec).
-  - Defaults to true if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
+  - Defaults to `True`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
+- `codec_pipeline.direct_io`: enable `O_DIRECT` read/write, needs support from the operating system (currently only Linux) and file system.
+  - Defaults to `False`.
 
 For example:
 ```python
@@ -59,6 +61,7 @@ zarr.config.set({
         "validate_checksums": True,
         "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
+        "direct_io": False
     }
 })
 ```

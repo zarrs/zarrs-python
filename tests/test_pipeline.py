@@ -2,6 +2,7 @@
 
 import operator
 import pickle
+import platform
 import tempfile
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -268,7 +269,7 @@ def test_pipeline_used(
 ):
     z = zarr.create_array(
         tmp_path / "foo.zarr",
-        dtype=np.uint16,
+        dtype=np.float64,
         shape=(80, 100),
         chunks=(10, 10),
         shards=(20, 20) if should_shard else None,
@@ -281,3 +282,46 @@ def test_pipeline_used(
     z[...]
     assert spy_read.call_count == 1
     assert spy_write.call_count == 1
+
+
+@contextmanager
+def use_zarrs_direct_io(direct_io):
+    zarr.config.set(
+        {
+            "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
+            "codec_pipeline.direct_io": direct_io,
+        }
+    )
+    yield
+    zarr.config.set(
+        {
+            "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
+            "codec_pipeline.direct_io": False,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "use_direct_io",
+    [
+        pytest.param(
+            True,
+            marks=pytest.mark.skipif(
+                platform.system() != "Linux", reason="Can only run O_DIRECT on linux"
+            ),
+        ),
+        False,
+    ],
+)
+def test_direct_io(tmp_path: Path, *, use_direct_io: bool):
+    with use_zarrs_direct_io(use_direct_io):
+        z = zarr.create_array(
+            tmp_path / "foo.zarr",
+            dtype=np.float64,
+            shape=(80, 100),
+            chunks=(10, 10),
+            shards=(20, 20),
+        )
+        ground_truth_arr = np.random.random(z.shape)
+        z[...] = ground_truth_arr
+        np.testing.assert_array_equal(z[...], ground_truth_arr)
