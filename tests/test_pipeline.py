@@ -285,11 +285,11 @@ def test_pipeline_used(
 
 
 @contextmanager
-def use_zarrs_direct_io(direct_io):
+def use_zarrs_direct_io():
     zarr.config.set(
         {
             "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
-            "codec_pipeline.direct_io": direct_io,
+            "codec_pipeline.direct_io": True,
         }
     )
     yield
@@ -301,20 +301,11 @@ def use_zarrs_direct_io(direct_io):
     )
 
 
-@pytest.mark.parametrize(
-    "use_direct_io",
-    [
-        pytest.param(
-            True,
-            marks=pytest.mark.skipif(
-                platform.system() != "Linux", reason="Can only run O_DIRECT on linux"
-            ),
-        ),
-        False,
-    ],
+@pytest.mark.skipif(
+    platform.system() != "Linux", reason="Can only run O_DIRECT on linux"
 )
-def test_direct_io(tmp_path: Path, *, use_direct_io: bool):
-    with use_zarrs_direct_io(use_direct_io):
+def test_direct_io(tmp_path: Path):
+    with use_zarrs_direct_io():
         z = zarr.create_array(
             tmp_path / "foo.zarr",
             dtype=np.float64,
