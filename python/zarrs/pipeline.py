@@ -46,10 +46,14 @@ def get_codec_pipeline_impl(
 ) -> CodecPipelineImpl | None:
     try:
         array_metadata_json = json.dumps(metadata.to_dict())
+        # Maintain old behavior: https://github.com/zarrs/zarrs-python/tree/b36ba797cafec77f5f41a25316be02c718a2b4f8?tab=readme-ov-file#configuration
+        validate_checksums = config.get("codec_pipeline.validate_checksums", True)
+        if validate_checksums is None:
+            validate_checksums = True
         return CodecPipelineImpl(
             array_metadata_json,
             store_config=store,
-            validate_checksums=config.get("codec_pipeline.validate_checksums", None),
+            validate_checksums=validate_checksums,
             chunk_concurrent_minimum=config.get(
                 "codec_pipeline.chunk_concurrent_minimum", None
             ),
@@ -57,6 +61,7 @@ def get_codec_pipeline_impl(
                 "codec_pipeline.chunk_concurrent_maximum", None
             ),
             num_threads=config.get("threading.max_workers", None),
+            direct_io=config.get("codec_pipeline.direct_io", False),
         )
     except TypeError as e:
         warn(

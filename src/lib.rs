@@ -242,20 +242,23 @@ impl CodecPipelineImpl {
         array_metadata,
         store_config,
         *,
-        validate_checksums=None,
+        validate_checksums=false,
         chunk_concurrent_minimum=None,
         chunk_concurrent_maximum=None,
         num_threads=None,
+        direct_io=false
     ))]
     #[new]
     fn new(
         array_metadata: &str,
-        store_config: StoreConfig,
-        validate_checksums: Option<bool>,
+        mut store_config: StoreConfig,
+        validate_checksums: bool,
         chunk_concurrent_minimum: Option<usize>,
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
+        direct_io: bool,
     ) -> PyResult<Self> {
+        store_config.direct_io(direct_io);
         let metadata: ArrayMetadata =
             serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
         let codec_metadata =
@@ -264,9 +267,9 @@ impl CodecPipelineImpl {
             Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
 
         let mut codec_options = CodecOptionsBuilder::new();
-        if let Some(validate_checksums) = validate_checksums {
-            codec_options = codec_options.validate_checksums(validate_checksums);
-        }
+
+        codec_options = codec_options.validate_checksums(validate_checksums);
+
         let codec_options = codec_options.build();
 
         let chunk_concurrent_minimum = chunk_concurrent_minimum

@@ -58,6 +58,15 @@ impl<'py> FromPyObject<'py> for StoreConfig {
     }
 }
 
+impl StoreConfig {
+    pub fn direct_io(&mut self, flag: bool) -> () {
+        match self {
+            StoreConfig::Filesystem(config) => config.direct_io(flag),
+            StoreConfig::Http(_config) => (),
+        }
+    }
+}
+
 impl pyo3_stub_gen::PyStubType for StoreConfig {
     fn type_output() -> pyo3_stub_gen::TypeInfo {
         pyo3_stub_gen::TypeInfo::with_module("zarr.abc.store.Store", "zarr.abc.store".into())
