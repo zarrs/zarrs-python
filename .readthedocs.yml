@@ -15,4 +15,4 @@ sphinx:
   fail_on_warning: true
 python:
   install:
-    - pip install . --group docs
+    - pip install . --group doc
