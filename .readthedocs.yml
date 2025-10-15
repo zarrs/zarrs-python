@@ -7,15 +7,18 @@ build:
     python: "3.12"
     rust: "latest"
   jobs:
+    pre_create_environment:
+      - asdf plugin add uv
+      - asdf install uv latest
+      - asdf global uv latest
     post_checkout:
       # unshallow so version can be derived from tag
       - git fetch --unshallow || true
+    create_environment:
+      - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
+    install:
+      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --group doc
+
 sphinx:
   configuration: docs/conf.py
   fail_on_warning: true
-python:
-  install:
-    - method: pip
-      path: .
-      extra_requirements:
-        - doc
