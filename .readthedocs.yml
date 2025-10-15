@@ -10,9 +10,8 @@ build:
     post_checkout:
       # unshallow so version can be derived from tag
       - git fetch --unshallow || true
+    install:
+      - pip install . --group doc
 sphinx:
   configuration: docs/conf.py
   fail_on_warning: true
-python:
-  install:
-    - pip install . --group doc
