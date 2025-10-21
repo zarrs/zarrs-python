@@ -8,7 +8,7 @@ build:
     # rust: "latest"
   jobs:
     pre_create_environment:
-      - asdf global rust latest
+      - asdf global rust 1.87.0
       - asdf plugin add uv
       - asdf install uv latest
       - asdf global uv latest
