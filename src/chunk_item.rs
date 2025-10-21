@@ -1,10 +1,10 @@
 use std::num::NonZeroU64;
 
 use pyo3::{
+    Bound, PyAny, PyErr, PyResult,
     exceptions::{PyIndexError, PyRuntimeError, PyValueError},
     pyclass, pymethods,
     types::{PyAnyMethods, PyBytes, PyBytesMethods, PyInt, PySlice, PySliceMethods as _},
-    Bound, PyAny, PyErr, PyResult,
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
@@ -39,8 +39,8 @@ fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<V
                 return Ok(vec![]);
             }
             Err(PyErr::new::<PyValueError, _>(format!(
-                    "Cannot understand non-zero integer {fill_value_usize} fill value for dtype {dtype}"
-                )))?;
+                "Cannot understand non-zero integer {fill_value_usize} fill value for dtype {dtype}"
+            )))?;
         }
     }
 
