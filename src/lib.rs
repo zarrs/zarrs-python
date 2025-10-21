@@ -23,15 +23,15 @@ use zarrs::array::codec::{
     StoragePartialDecoder,
 };
 use zarrs::array::{
-    copy_fill_value_into, update_array_bytes, ArrayBytes, ArrayBytesFixedDisjointView,
-    ArrayMetadata, ArraySize, CodecChain, FillValue,
+    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ArraySize, CodecChain, FillValue,
+    copy_fill_value_into, update_array_bytes,
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
 use zarrs::metadata::v3::MetadataV3;
 use zarrs::metadata_ext::v2_to_v3::{
-    codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3, ArrayMetadataV2ToV3Error,
+    ArrayMetadataV2ToV3Error, codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3,
 };
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 

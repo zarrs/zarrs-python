@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pyo3::{exceptions::PyValueError, Bound, PyAny, PyErr, PyResult};
+use pyo3::{Bound, PyAny, PyErr, PyResult, exceptions::PyValueError};
 use zarrs::storage::ReadableWritableListableStorage;
 
 use super::opendal_builder_to_sync_store;

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use pyo3::{exceptions::PyRuntimeError, PyErr};
+use pyo3::{PyErr, exceptions::PyRuntimeError};
 use zarrs::{
     filesystem::{FilesystemStore, FilesystemStoreOptions},
     storage::ReadableWritableListableStorage,

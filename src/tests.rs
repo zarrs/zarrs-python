@@ -2,8 +2,8 @@ use pyo3::ffi::c_str;
 
 use numpy::PyUntypedArray;
 use pyo3::{
-    types::{PyAnyMethods, PyModule},
     Bound, PyResult, Python,
+    types::{PyAnyMethods, PyModule},
 };
 
 use crate::CodecPipelineImpl;

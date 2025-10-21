@@ -2,12 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use opendal::Builder;
 use pyo3::{
+    Bound, FromPyObject, PyAny, PyErr, PyResult,
     exceptions::{PyNotImplementedError, PyValueError},
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
-    Bound, FromPyObject, PyAny, PyErr, PyResult,
 };
 use zarrs::storage::{
-    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter, ReadableWritableListableStorage,
+    ReadableWritableListableStorage, storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
 };
 
 use crate::{runtime::tokio_block_on, utils::PyErrExt};
