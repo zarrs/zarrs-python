@@ -4,9 +4,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ptr::NonNull;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use chunk_item::WithSubset;
+use futures::{StreamExt, TryStreamExt};
 use itertools::Itertools;
 use numpy::npyffi::PyArrayObject;
 use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
@@ -20,7 +21,8 @@ use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
 use zarrs::array::codec::{
     ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, AsyncArrayPartialDecoderTraits,
-    AsyncBytesPartialDecoderTraits, CodecOptions, CodecOptionsBuilder,
+    AsyncBytesPartialDecoderTraits, Codec, CodecOptions, CodecOptionsBuilder,
+    FixedScaleOffsetCodecConfigurationNumcodecs,
 };
 use zarrs::array::{
     copy_fill_value_into, update_array_bytes, ArrayBytes, ArrayBytesFixedDisjointView, ArraySize,
@@ -44,6 +46,54 @@ use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::metadata_v2::codec_metadata_v2_to_v3;
 use crate::store::{AsyncStoreManager, StoreManager};
 use crate::utils::{PyErrExt as _, PyUntypedArrayExt as _};
+
+fn py_untyped_array_to_array_object<'a>(value: &'a Bound<'_, PyUntypedArray>) -> &'a PyArrayObject {
+    // TODO: Upstream a PyUntypedArray.as_array_ref()?
+    //       https://github.com/ilan-gold/zarrs-python/pull/80/files/75be39184905d688ac04a5f8bca08c5241c458cd#r1918365296
+    let array_object_ptr: NonNull<PyArrayObject> = NonNull::new(value.as_array_ptr())
+        .expect("bug in numpy crate: Bound<'_, PyUntypedArray>::as_array_ptr unexpectedly returned a null pointer");
+    let array_object: &'a PyArrayObject = unsafe {
+        // SAFETY: the array object pointed to by array_object_ptr is valid for 'a
+        array_object_ptr.as_ref()
+    };
+    array_object
+}
+
+fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
+    if !value.is_c_contiguous() {
+        return Err(PyErr::new::<PyValueError, _>(
+            "input array must be a C contiguous array".to_string(),
+        ));
+    }
+    let array_object: &PyArrayObject = py_untyped_array_to_array_object(value);
+    let array_data = array_object.data.cast::<u8>();
+    let array_len = value.len() * value.dtype().itemsize();
+    let slice = unsafe {
+        // SAFETY: array_data is a valid pointer to a u8 array of length array_len
+        debug_assert!(!array_data.is_null());
+        std::slice::from_raw_parts(array_data, array_len)
+    };
+    Ok(slice)
+}
+
+fn nparray_to_unsafe_cell_slice<'a>(
+    value: &'a Bound<'_, PyUntypedArray>,
+) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
+    if !value.is_c_contiguous() {
+        return Err(PyErr::new::<PyValueError, _>(
+            "input array must be a C contiguous array".to_string(),
+        ));
+    }
+    let array_object: &PyArrayObject = py_untyped_array_to_array_object(value);
+    let array_data = array_object.data.cast::<u8>();
+    let array_len = value.len() * value.dtype().itemsize();
+    let output = unsafe {
+        // SAFETY: array_data is a valid pointer to a u8 array of length array_len
+        debug_assert!(!array_data.is_null());
+        std::slice::from_raw_parts_mut(array_data, array_len)
+    };
+    Ok(UnsafeCellSlice::new(output))
+}
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -160,56 +210,6 @@ impl CodecPipelineImpl {
             self.store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
         }
     }
-
-    fn py_untyped_array_to_array_object<'a>(
-        value: &'a Bound<'_, PyUntypedArray>,
-    ) -> &'a PyArrayObject {
-        // TODO: Upstream a PyUntypedArray.as_array_ref()?
-        //       https://github.com/zarrs/zarrs-python/pull/80/files/75be39184905d688ac04a5f8bca08c5241c458cd#r1918365296
-        let array_object_ptr: NonNull<PyArrayObject> = NonNull::new(value.as_array_ptr())
-            .expect("bug in numpy crate: Bound<'_, PyUntypedArray>::as_array_ptr unexpectedly returned a null pointer");
-        let array_object: &'a PyArrayObject = unsafe {
-            // SAFETY: the array object pointed to by array_object_ptr is valid for 'a
-            array_object_ptr.as_ref()
-        };
-        array_object
-    }
-
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
-        let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
-        let slice = unsafe {
-            // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            debug_assert!(!array_data.is_null());
-            std::slice::from_raw_parts(array_data, array_len)
-        };
-        Ok(slice)
-    }
-
-    fn nparray_to_unsafe_cell_slice<'a>(
-        value: &'a Bound<'_, PyUntypedArray>,
-    ) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
-        let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
-        let output = unsafe {
-            // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            debug_assert!(!array_data.is_null());
-            std::slice::from_raw_parts_mut(array_data, array_len)
-        };
-        Ok(UnsafeCellSlice::new(output))
-    }
 }
 
 #[gen_stub_pymethods]
@@ -269,12 +269,18 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
-        let output = Self::nparray_to_unsafe_cell_slice(value)?;
+        let output = nparray_to_unsafe_cell_slice(value)?;
         let output_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
-        let Some((chunk_concurrent_limit, codec_options)) =
-            chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
+        let Some((chunk_concurrent_limit, codec_options)) = chunk_descriptions
+            .get_chunk_concurrent_limit_and_codec_options(
+                &self.codec_options,
+                &self.codec_chain,
+                self.chunk_concurrent_minimum,
+                self.chunk_concurrent_maximum,
+                self.num_threads,
+            )?
         else {
             return Ok(());
         };
@@ -397,7 +403,7 @@ impl CodecPipelineImpl {
         }
 
         // Get input array
-        let input_slice = Self::nparray_to_slice(value)?;
+        let input_slice = nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
             // FIXME: Handle variable length data types, convert value to bytes and offsets
             InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
@@ -407,8 +413,14 @@ impl CodecPipelineImpl {
         let input_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
-        let Some((chunk_concurrent_limit, codec_options)) =
-            chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
+        let Some((chunk_concurrent_limit, codec_options)) = chunk_descriptions
+            .get_chunk_concurrent_limit_and_codec_options(
+                &self.codec_options,
+                &self.codec_chain,
+                self.chunk_concurrent_minimum,
+                self.chunk_concurrent_maximum,
+                self.num_threads,
+            )?
         else {
             return Ok(());
         };
@@ -459,6 +471,122 @@ impl CodecPipelineImpl {
 
             Ok(())
         })
+    }
+}
+
+async fn retrieve_chunk_and_apply_index(
+    item: WithSubset,
+    stores: &'static AsyncStoreManager,
+    codec_chain: Arc<CodecChain>,
+    codec_options: CodecOptions,
+    output_shape: Vec<u64>,
+    output: UnsafeCellSlice<'static, u8>,
+) -> PyResult<()> {
+    let chunk_item::WithSubset {
+        item,
+        subset,
+        chunk_subset,
+    } = item;
+    let _ = tokio::spawn(async move {
+        let mut output_view = unsafe {
+            // TODO: Is the following correct?
+            //       can we guarantee that when this function is called from Python with arbitrary arguments?
+            // SAFETY: chunks represent disjoint array subsets
+            ArrayBytesFixedDisjointView::new(
+                output,
+                // TODO: why is data_type in `item`, it should be derived from `output`, no?
+                item.representation()
+                    .data_type()
+                    .fixed_size()
+                    .ok_or("variable length data type not supported")
+                    .map_py_err::<PyTypeError>()?,
+                &output_shape,
+                subset.clone(),
+            )
+            .map_py_err::<PyRuntimeError>()?
+        };
+        // See zarrs::array::Array::retrieve_chunk_subset_into
+        if chunk_subset.start().iter().all(|&o| o == 0)
+            && chunk_subset.shape() == item.representation().shape_u64()
+        {
+            // See zarrs::array::Array::retrieve_chunk_into
+            if let Some(chunk_encoded) = stores.get(&item).await? {
+                // Decode the encoded data into the output buffer
+                let chunk_encoded: Vec<u8> = chunk_encoded.into();
+                codec_chain.decode_into(
+                    Cow::Owned(chunk_encoded),
+                    item.representation(),
+                    &mut output_view,
+                    &codec_options,
+                )
+            } else {
+                // The chunk is missing, write the fill value
+                copy_fill_value_into(
+                    item.representation().data_type(),
+                    item.representation().fill_value(),
+                    &mut output_view,
+                )
+            }
+        } else {
+            let input_handle = stores.decoder(&item)?;
+            let partial_decoder = codec_chain
+                .clone()
+                .async_partial_decoder(
+                    Arc::new(input_handle),
+                    item.representation(),
+                    &codec_options,
+                )
+                .await
+                .map_py_err::<PyValueError>()?;
+            partial_decoder
+                .partial_decode_into(&chunk_subset, &mut output_view, &codec_options)
+                .await
+        }
+        .map_py_err::<PyValueError>()
+    })
+    .await
+    .map_py_err::<PyValueError>()?;
+    Ok(())
+}
+
+impl AsyncCodecPipelineImpl {
+    async fn retrieve_chunks_and_apply_index(
+        &'static self,
+        chunk_descriptions: Vec<chunk_item::WithSubset>, // FIXME: Ref / iterable?
+        value: &'static Bound<'_, PyUntypedArray>,
+    ) -> PyResult<()> {
+        // Get input array
+        let output_shape = value.shape_zarr()?;
+        let output = nparray_to_unsafe_cell_slice(value)?;
+        let stores = &self.stores;
+        let codec_chain = self.codec_chain.clone();
+
+        // Adjust the concurrency based on the codec chain and the first chunk description
+        let Some((chunk_concurrent_limit, codec_options)) = chunk_descriptions
+            .get_chunk_concurrent_limit_and_codec_options(
+                &self.codec_options,
+                &self.codec_chain,
+                self.chunk_concurrent_minimum,
+                self.chunk_concurrent_maximum,
+                self.num_threads,
+            )?
+        else {
+            return Ok(());
+        };
+
+        futures::stream::iter(chunk_descriptions.into_iter().map(|item| {
+            retrieve_chunk_and_apply_index(
+                item,
+                stores,
+                codec_chain.clone(),
+                codec_options.clone(),
+                output_shape.clone(),
+                output,
+            )
+        }))
+        .collect::<Vec<_>>()
+        .await;
+        Ok(())
     }
 }
 

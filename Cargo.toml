@@ -23,6 +23,7 @@ opendal = { version = "0.53.0", features = ["services-http"] }
 tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
 zarrs_opendal = "0.7.2"
 itertools = "0.14.0"
+futures = "0.3.31"
 
 [profile.release]
 lto = true
