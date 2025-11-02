@@ -2,9 +2,9 @@ use std::fmt::Display;
 
 use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
-use zarrs::array::codec::CodecError;
+use zarrs::array::{ChunkRepresentation, codec::CodecError};
 
-use crate::{ChunksItem, WithSubset};
+use crate::WithSubset;
 
 pub(crate) trait PyErrExt<T> {
     fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T>;
@@ -55,7 +55,7 @@ impl PyUntypedArrayExt for Bound<'_, PyUntypedArray> {
     }
 }
 
-pub fn is_whole_chunk(item: &WithSubset) -> bool {
+pub fn is_whole_chunk(item: &WithSubset, representation: &ChunkRepresentation) -> bool {
     item.chunk_subset.start().iter().all(|&o| o == 0)
-        && item.chunk_subset.shape() == item.representation().shape_u64()
+        && item.chunk_subset.shape() == representation.shape_u64()
 }

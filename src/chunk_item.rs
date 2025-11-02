@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use pyo3::{
     Bound, PyAny, PyErr, PyResult,
-    exceptions::{PyIndexError, PyRuntimeError, PyValueError},
+    exceptions::{PyIndexError, PyValueError},
     pyclass, pymethods,
     types::{PyAnyMethods, PyBytes, PyBytesMethods, PyInt, PySlice, PySliceMethods as _},
 };
@@ -10,26 +10,12 @@ use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
     array::{ChunkRepresentation, DataType, FillValue},
     array_subset::ArraySubset,
-    metadata::v3::MetadataV3,
     storage::StoreKey,
 };
 
 use crate::utils::PyErrExt;
 
-pub(crate) trait ChunksItem {
-    fn key(&self) -> &StoreKey;
-    fn representation(&self) -> &ChunkRepresentation;
-}
-
-#[derive(Clone)]
-#[gen_stub_pyclass]
-#[pyclass]
-pub(crate) struct Basic {
-    key: StoreKey,
-    representation: ChunkRepresentation,
-}
-
-fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+pub fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     if dtype == "string" {
         // Match zarr-python 2.x.x string fill value behaviour with a 0 fill value
         // See https://github.com/zarr-developers/zarr-python/issues/2792#issuecomment-2644362122
@@ -55,40 +41,34 @@ fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<V
     }
 }
 
-#[gen_stub_pymethods]
-#[pymethods]
-impl Basic {
-    #[new]
-    fn new(byte_interface: &Bound<'_, PyAny>, chunk_spec: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let path: String = byte_interface.getattr("path")?.extract()?;
-
-        let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
-        let mut dtype: String = chunk_spec
-            .getattr("dtype")?
-            .call_method0("to_native_dtype")?
-            .call_method0("__str__")?
-            .extract()?;
-        if dtype == "object" {
-            // zarrs doesn't understand `object` which is the output of `np.dtype("|O").__str__()`
-            // but maps it to "string" internally https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L288
-            dtype = String::from("string");
-        }
-        let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
-        let fill_value_bytes = fill_value_to_bytes(&dtype, &fill_value)?;
-        Ok(Self {
-            key: StoreKey::new(path).map_py_err::<PyValueError>()?,
-            representation: get_chunk_representation(chunk_shape, &dtype, fill_value_bytes)?,
-        })
-    }
-}
-
 #[derive(Clone)]
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct WithSubset {
-    pub item: Basic,
+    pub key: StoreKey,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
+    chunk_shape: Vec<u64>,
+}
+
+pub trait WithRepresentations {
+    fn with_representations(
+        self,
+        data_type: DataType,
+        fill_value: FillValue,
+    ) -> PyResult<Vec<(ChunkRepresentation, WithSubset)>>;
+}
+
+impl WithRepresentations for Vec<WithSubset> {
+    fn with_representations(
+        self,
+        data_type: DataType,
+        fill_value: FillValue,
+    ) -> PyResult<Vec<(ChunkRepresentation, WithSubset)>> {
+        self.into_iter()
+            .map(|f| Ok((f.representation(data_type.clone(), fill_value.clone())?, f)))
+            .collect::<PyResult<Vec<(ChunkRepresentation, WithSubset)>>>()
+    }
 }
 
 #[gen_stub_pymethods]
@@ -97,13 +77,13 @@ impl WithSubset {
     #[new]
     #[allow(clippy::needless_pass_by_value)]
     fn new(
-        item: Basic,
+        key: String,
         chunk_subset: Vec<Bound<'_, PySlice>>,
+        chunk_shape: Vec<u64>,
         subset: Vec<Bound<'_, PySlice>>,
         shape: Vec<u64>,
     ) -> PyResult<Self> {
-        let chunk_subset =
-            selection_to_array_subset(&chunk_subset, &item.representation.shape_u64())?;
+        let chunk_subset = selection_to_array_subset(&chunk_subset, &chunk_shape)?;
         let subset = selection_to_array_subset(&subset, &shape)?;
         // Check that subset and chunk_subset have the same number of elements.
         // This permits broadcasting of a constant input.
@@ -112,50 +92,37 @@ impl WithSubset {
                 "the size of the chunk subset {chunk_subset} and input/output subset {subset} are incompatible",
             )));
         }
+
         Ok(Self {
-            item,
+            key: StoreKey::new(key).map_py_err::<PyValueError>()?,
             chunk_subset,
             subset,
+            chunk_shape,
         })
     }
 }
 
-impl ChunksItem for Basic {
-    fn key(&self) -> &StoreKey {
-        &self.key
-    }
-    fn representation(&self) -> &ChunkRepresentation {
-        &self.representation
-    }
-}
-
-impl ChunksItem for WithSubset {
-    fn key(&self) -> &StoreKey {
-        &self.item.key
-    }
-    fn representation(&self) -> &ChunkRepresentation {
-        &self.item.representation
+impl WithSubset {
+    fn representation(
+        &self,
+        dtype: DataType,
+        fill_value: FillValue,
+    ) -> PyResult<ChunkRepresentation> {
+        get_chunk_representation(self.chunk_shape.clone(), dtype, fill_value)
     }
 }
 
 fn get_chunk_representation(
     chunk_shape: Vec<u64>,
-    dtype: &str,
-    fill_value: Vec<u8>,
+    dtype: DataType,
+    fill_value: FillValue,
 ) -> PyResult<ChunkRepresentation> {
-    // Get the chunk representation
-    let data_type = DataType::from_metadata(
-        &MetadataV3::new(dtype),
-        zarrs::config::global_config().data_type_aliases_v3(),
-    )
-    .map_py_err::<PyRuntimeError>()?;
     let chunk_shape = chunk_shape
         .into_iter()
         .map(|x| NonZeroU64::new(x).expect("chunk shapes should always be non-zero"))
         .collect();
     let chunk_representation =
-        ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value))
-            .map_py_err::<PyValueError>()?;
+        ChunkRepresentation::new(chunk_shape, dtype, fill_value).map_py_err::<PyValueError>()?;
     Ok(chunk_representation)
 }
 

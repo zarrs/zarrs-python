@@ -29,6 +29,7 @@ from .utils import (
     CollapsedDimensionError,
     DiscontiguousArrayError,
     FillValueNoneError,
+    get_implicit_fill_value,
     make_chunk_info_for_rust_with_indices,
 )
 
@@ -62,8 +63,10 @@ def get_codec_pipeline_impl(
             ),
             num_threads=config.get("threading.max_workers", None),
             direct_io=config.get("codec_pipeline.direct_io", False),
+            fill_value=get_implicit_fill_value(metadata.dtype, metadata.fill_value),
+            dtype_str=str(metadata.dtype.to_native_dtype()),
         )
-    except TypeError as e:
+    except (TypeError, ValueError) as e:
         warn(
             f"Array is unsupported by ZarrsCodecPipeline: {e}",
             category=UserWarning,
