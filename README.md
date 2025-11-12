@@ -50,6 +50,8 @@ The `ZarrsCodecPipeline` specific options are:
   - Defaults to `True`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
 - `codec_pipeline.direct_io`: enable `O_DIRECT` read/write, needs support from the operating system (currently only Linux) and file system.
   - Defaults to `False`.
+- `codec_pipeline.strict`: raise exceptions for unsupported operations instead of falling back to the default codec pipeline of `zarr-python`.
+  - Defaults to `False`.
 
 For example:
 ```python
@@ -61,7 +63,8 @@ zarr.config.set({
         "validate_checksums": True,
         "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
-        "direct_io": False
+        "direct_io": False,
+        "strict": False
     }
 })
 ```
