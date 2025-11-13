@@ -10,7 +10,7 @@ import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.indexing import SelectorTuple, is_integer
 
-from zarrs._internal import Basic, WithSubset
+from zarrs._internal import WithSubset
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -178,7 +178,6 @@ def make_chunk_info_for_rust_with_indices(
                 chunk_spec.config,
                 chunk_spec.prototype,
             )
-        chunk_info = Basic(byte_getter, chunk_spec)
         out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
         shape_chunk_selection_slices = get_shape_for_selector(
@@ -196,8 +195,9 @@ def make_chunk_info_for_rust_with_indices(
             )
         chunk_info_with_indices.append(
             WithSubset(
-                chunk_info,
+                key=byte_getter.path,
                 chunk_subset=chunk_selection_as_slices,
+                chunk_shape=chunk_spec.shape,
                 subset=out_selection_as_slices,
                 shape=shape,
             )
