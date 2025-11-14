@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use opendal::Builder;
 use pyo3::{
-    Bound, FromPyObject, PyAny, PyErr, PyResult,
+    Borrowed, Bound, FromPyObject, PyAny, PyErr, PyResult,
     exceptions::{PyNotImplementedError, PyValueError},
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
 };
@@ -25,8 +25,10 @@ pub enum StoreConfig {
     // TODO: Add support for more stores
 }
 
-impl<'py> FromPyObject<'py> for StoreConfig {
-    fn extract_bound(store: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'py> FromPyObject<'_, 'py> for StoreConfig {
+    type Error = PyErr;
+
+    fn extract(store: Borrowed<'_, 'py, PyAny>) -> PyResult<Self> {
         let name = store.get_type().name()?;
         let name = name.to_str()?;
         match name {
