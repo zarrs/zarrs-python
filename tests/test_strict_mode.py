@@ -15,10 +15,8 @@ import zarr
 from zarr.storage import StorePath
 
 from zarrs.pipeline import (
-    # CollapsedDimensionError,
     DiscontiguousArrayError,
     UnsupportedDataTypeError,
-    # UnsupportedMetadataError,
 )
 
 if TYPE_CHECKING:
