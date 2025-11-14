@@ -7,9 +7,11 @@ import typing
 import numpy.typing
 import zarr.abc.store
 
+@typing.final
 class Basic:
     def __new__(cls, byte_interface: typing.Any, chunk_spec: typing.Any) -> Basic: ...
 
+@typing.final
 class CodecPipelineImpl:
     def __new__(
         cls,
@@ -34,6 +36,7 @@ class CodecPipelineImpl:
         write_empty_chunks: builtins.bool,
     ) -> None: ...
 
+@typing.final
 class WithSubset:
     def __new__(
         cls,
