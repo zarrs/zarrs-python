@@ -64,12 +64,13 @@ def get_codec_pipeline_impl(
             direct_io=config.get("codec_pipeline.direct_io", False),
         )
     except TypeError as e:
+        if strict:
+            raise UnsupportedMetadataError() from e
+
         warn(
             f"Array is unsupported by ZarrsCodecPipeline: {e}",
             category=UserWarning,
         )
-        if strict:
-            raise UnsupportedMetadataError() from e
         return None
 
 
