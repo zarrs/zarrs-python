@@ -33,7 +33,7 @@ fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<V
     if dtype == "string" {
         // Match zarr-python 2.x.x string fill value behaviour with a 0 fill value
         // See https://github.com/zarr-developers/zarr-python/issues/2792#issuecomment-2644362122
-        if let Ok(fill_value_downcast) = fill_value.downcast::<PyInt>() {
+        if let Ok(fill_value_downcast) = fill_value.cast::<PyInt>() {
             let fill_value_usize: usize = fill_value_downcast.extract()?;
             if fill_value_usize == 0 {
                 return Ok(vec![]);
@@ -44,7 +44,7 @@ fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<V
         }
     }
 
-    if let Ok(fill_value_downcast) = fill_value.downcast::<PyBytes>() {
+    if let Ok(fill_value_downcast) = fill_value.cast::<PyBytes>() {
         Ok(fill_value_downcast.as_bytes().to_vec())
     } else if fill_value.hasattr("tobytes")? {
         Ok(fill_value.call_method0("tobytes")?.extract()?)
