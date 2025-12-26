@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.27.1", features = ["abi3-py311"] }
-zarrs = { version = "0.22.4", features = ["async", "zlib", "pcodec", "bz2"] }
+zarrs = { version = "0.23.0-beta.1", features = ["async", "zlib", "pcodec", "bz2"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
@@ -19,10 +19,19 @@ numpy = "0.27.0"
 unsafe_cell_slice = "0.2.0"
 serde_json = "1.0.128"
 pyo3-stub-gen = "0.17.1"
-opendal = { version = "0.54.0", features = ["services-http"] }
+opendal = { version = "0.55.0", features = ["services-http"] }
 tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
-zarrs_opendal = "0.9.0"
+zarrs_opendal = "0.10.0"
 itertools = "0.14.0"
+bytemuck = { version = "1.24.0", features = ["must_cast"] }
 
 [profile.release]
 lto = true
+
+[patch.crates-io]
+# zarrs = { path = "../zarrs/zarrs" }
+# zarrs_storage = { path = "../zarrs/zarrs_storage" }
+# zarrs_filesystem = { path = "../zarrs/zarrs_filesystem" }
+# zarrs = { git = "https://github.com/zarrs/zarrs.git", rev = "4a49c12a" }
+# zarrs_storage = { git = "https://github.com/zarrs/zarrs.git", rev = "4a49c12a" }
+# zarrs_filesystem = { git = "https://github.com/zarrs/zarrs.git", rev = "4a49c12a" }
