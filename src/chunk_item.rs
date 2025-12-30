@@ -168,11 +168,8 @@ impl ChunksItem for WithSubset {
 }
 
 fn get_data_type_from_dtype(dtype: &str) -> PyResult<DataType> {
-    let data_type = NamedDataType::from_metadata(
-        &MetadataV3::new(dtype),
-        zarrs::config::global_config().data_type_aliases_v3(),
-    )
-    .map_py_err::<PyRuntimeError>()?;
+    let data_type =
+        NamedDataType::try_from(&MetadataV3::new(dtype)).map_py_err::<PyRuntimeError>()?;
     Ok(data_type.into())
 }
 

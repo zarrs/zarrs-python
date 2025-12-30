@@ -1,6 +1,6 @@
 use pyo3::PyResult;
 use zarrs::array::{
-    ArrayCodecTraits, RecommendedConcurrency, codec::CodecOptions,
+    RecommendedConcurrency, codec::ArrayCodecTraits, codec::CodecOptions,
     concurrency::calc_concurrency_outer_inner,
 };
 

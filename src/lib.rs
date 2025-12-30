@@ -24,15 +24,15 @@ use zarrs::array::codec::{
 };
 use zarrs::array::{
     ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ChunkShapeTraits, CodecChain,
-    FillValue, copy_fill_value_into, update_array_bytes,
+    DataTypeExt, FillValue, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
-use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
-use zarrs::metadata::v3::MetadataV3;
-use zarrs::metadata_ext::v2_to_v3::{
+use zarrs::convert::{
     ArrayMetadataV2ToV3Error, codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3,
 };
+use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
+use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
@@ -224,14 +224,9 @@ fn array_metadata_to_codec_metadata_v3(
     match metadata {
         ArrayMetadata::V3(metadata) => Ok(metadata.codecs),
         ArrayMetadata::V2(metadata) => {
-            let config = global_config();
             let endianness = data_type_metadata_v2_to_endianness(&metadata.dtype)
                 .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?;
-            let data_type = data_type_metadata_v2_to_v3(
-                &metadata.dtype,
-                config.data_type_aliases_v2(),
-                config.data_type_aliases_v3(),
-            )?;
+            let data_type = data_type_metadata_v2_to_v3(&metadata.dtype)?;
 
             codec_metadata_v2_to_v3(
                 metadata.order,
@@ -240,8 +235,6 @@ fn array_metadata_to_codec_metadata_v3(
                 endianness,
                 &metadata.filters,
                 &metadata.compressor,
-                config.codec_aliases_v2(),
-                config.codec_aliases_v3(),
             )
         }
     }
@@ -275,10 +268,8 @@ impl CodecPipelineImpl {
             serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
         let codec_metadata =
             array_metadata_to_codec_metadata_v3(metadata).map_py_err::<PyTypeError>()?;
-        let codec_chain = Arc::new(
-            CodecChain::from_metadata(&codec_metadata, global_config().codec_aliases_v3())
-                .map_py_err::<PyTypeError>()?,
-        );
+        let codec_chain =
+            Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
 
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
