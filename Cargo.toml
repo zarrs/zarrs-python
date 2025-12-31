@@ -27,11 +27,3 @@ bytemuck = { version = "1.24.0", features = ["must_cast"] }
 
 [profile.release]
 lto = true
-
-[patch.crates-io]
-# zarrs = { path = "../zarrs/zarrs" }
-# zarrs_storage = { path = "../zarrs/zarrs_storage" }
-# zarrs_filesystem = { path = "../zarrs/zarrs_filesystem" }
-# zarrs = { git = "https://github.com/zarrs/zarrs.git", rev = "4a49c12a" }
-# zarrs_storage = { git = "https://github.com/zarrs/zarrs.git", rev = "4a49c12a" }
-# zarrs_filesystem = { git = "https://github.com/zarrs/zarrs.git", rev = "4a49c12a" }
