@@ -371,7 +371,7 @@ impl CodecPipelineImpl {
             partial_decoder_cache.extend(key_decoder_pairs);
         }
 
-        py.allow_threads(move || {
+        py.detach(move || {
             // FIXME: the `decode_into` methods only support fixed length data types.
             // For variable length data types, need a codepath with non `_into` methods.
             // Collect all the subsets and copy into value on the Python side?
@@ -484,7 +484,7 @@ impl CodecPipelineImpl {
         };
         codec_options.set_store_empty_chunks(write_empty_chunks);
 
-        py.allow_threads(move || {
+        py.detach(move || {
             let store_chunk = |(representation, item): (
                 ChunkRepresentation,
                 chunk_item::WithSubset,

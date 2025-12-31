@@ -43,7 +43,7 @@ class UnsupportedMetadataError(Exception):
 
 
 def get_codec_pipeline_impl(
-    metadata: ArrayMetadata, store: Store
+    metadata: ArrayMetadata, store: Store, *, strict: bool
 ) -> CodecPipelineImpl | None:
     try:
         array_metadata_json = json.dumps(metadata.to_dict())
@@ -67,11 +67,24 @@ def get_codec_pipeline_impl(
             dtype_str=str(metadata.dtype.to_native_dtype()),
         )
     except (TypeError, ValueError) as e:
+        if strict:
+            raise UnsupportedMetadataError() from e
+
         warn(
             f"Array is unsupported by ZarrsCodecPipeline: {e}",
             category=UserWarning,
         )
         return None
+
+
+def get_codec_pipeline_fallback(
+    metadata: ArrayMetadata, *, strict: bool
+) -> BatchedCodecPipeline | None:
+    if strict:
+        return None
+    else:
+        codecs = array_metadata_to_codecs(metadata)
+        return BatchedCodecPipeline.from_codecs(codecs)
 
 
 class ZarrsCodecPipelineState(TypedDict):
@@ -92,7 +105,7 @@ class ZarrsCodecPipeline(CodecPipeline):
     metadata: ArrayMetadata
     store: Store
     impl: CodecPipelineImpl | None
-    python_impl: BatchedCodecPipeline
+    python_impl: BatchedCodecPipeline | None
 
     def __getstate__(self) -> ZarrsCodecPipelineState:
         return {"metadata": self.metadata, "store": self.store}
@@ -100,9 +113,9 @@ class ZarrsCodecPipeline(CodecPipeline):
     def __setstate__(self, state: ZarrsCodecPipelineState):
         self.metadata = state["metadata"]
         self.store = state["store"]
-        self.impl = get_codec_pipeline_impl(self.metadata, self.store)
-        codecs = array_metadata_to_codecs(self.metadata)
-        self.python_impl = BatchedCodecPipeline.from_codecs(codecs)
+        strict = config.get("codec_pipeline.strict", False)
+        self.impl = get_codec_pipeline_impl(self.metadata, self.store, strict=strict)
+        self.python_impl = get_codec_pipeline_fallback(self.metadata, strict=strict)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
@@ -115,12 +128,12 @@ class ZarrsCodecPipeline(CodecPipeline):
     def from_array_metadata_and_store(
         cls, array_metadata: ArrayMetadata, store: Store
     ) -> Self:
-        codecs = array_metadata_to_codecs(array_metadata)
+        strict = config.get("codec_pipeline.strict", False)
         return cls(
             metadata=array_metadata,
             store=store,
-            impl=get_codec_pipeline_impl(array_metadata, store),
-            python_impl=BatchedCodecPipeline.from_codecs(codecs),
+            impl=get_codec_pipeline_impl(array_metadata, store, strict=strict),
+            python_impl=get_codec_pipeline_fallback(array_metadata, strict=strict),
         )
 
     @property
@@ -179,6 +192,8 @@ class ZarrsCodecPipeline(CodecPipeline):
             UnsupportedDataTypeError,
             FillValueNoneError,
         ):
+            if self.python_impl is None:
+                raise
             await self.python_impl.read(batch_info, out, drop_axes)
             return None
         else:
@@ -212,6 +227,8 @@ class ZarrsCodecPipeline(CodecPipeline):
             UnsupportedDataTypeError,
             FillValueNoneError,
         ):
+            if self.python_impl is None:
+                raise
             await self.python_impl.write(batch_info, value, drop_axes)
             return None
         else:
