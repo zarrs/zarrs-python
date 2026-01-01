@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
-use zarrs::array::{ChunkRepresentation, codec::CodecError};
+use zarrs::array::codec::CodecError;
 
 use crate::WithSubset;
 
@@ -55,7 +55,13 @@ impl PyUntypedArrayExt for Bound<'_, PyUntypedArray> {
     }
 }
 
-pub fn is_whole_chunk(item: &WithSubset, representation: &ChunkRepresentation) -> bool {
+pub fn is_whole_chunk(item: &WithSubset) -> bool {
     item.chunk_subset.start().iter().all(|&o| o == 0)
-        && item.chunk_subset.shape() == representation.shape_u64()
+        && item.chunk_subset.shape()
+            == item
+                .chunk_shape
+                .clone()
+                .into_iter()
+                .map(|v| u64::from(v))
+                .collect::<Vec<u64>>() // TODO: Remove copy
 }

@@ -7,11 +7,7 @@ use pyo3::{
     types::{PyAnyMethods, PyBytes, PyBytesMethods, PyInt, PySlice, PySliceMethods as _},
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
-use zarrs::{
-    array::{ChunkRepresentation, DataType, FillValue},
-    array_subset::ArraySubset,
-    storage::StoreKey,
-};
+use zarrs::{array_subset::ArraySubset, storage::StoreKey};
 
 use crate::utils::PyErrExt;
 
@@ -48,27 +44,9 @@ pub(crate) struct WithSubset {
     pub key: StoreKey,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
-    chunk_shape: Vec<u64>,
-}
-
-pub trait WithRepresentations {
-    fn with_representations(
-        self,
-        data_type: DataType,
-        fill_value: FillValue,
-    ) -> PyResult<Vec<(ChunkRepresentation, WithSubset)>>;
-}
-
-impl WithRepresentations for Vec<WithSubset> {
-    fn with_representations(
-        self,
-        data_type: DataType,
-        fill_value: FillValue,
-    ) -> PyResult<Vec<(ChunkRepresentation, WithSubset)>> {
-        self.into_iter()
-            .map(|f| Ok((f.representation(data_type.clone(), fill_value.clone())?, f)))
-            .collect::<PyResult<Vec<(ChunkRepresentation, WithSubset)>>>()
-    }
+    pub chunk_shape_u64: Vec<u64>,
+    pub chunk_shape: Vec<NonZeroU64>,
+    pub num_elements: u64,
 }
 
 #[gen_stub_pymethods]
@@ -97,33 +75,14 @@ impl WithSubset {
             key: StoreKey::new(key).map_py_err::<PyValueError>()?,
             chunk_subset,
             subset,
-            chunk_shape,
+            chunk_shape: chunk_shape
+                .iter()
+                .map(|v| NonZeroU64::new(*v).unwrap())
+                .collect(), // TODO: Unwrap
+            num_elements: chunk_shape.iter().product(),
+            chunk_shape_u64: chunk_shape,
         })
     }
-}
-
-impl WithSubset {
-    fn representation(
-        &self,
-        dtype: DataType,
-        fill_value: FillValue,
-    ) -> PyResult<ChunkRepresentation> {
-        get_chunk_representation(self.chunk_shape.clone(), dtype, fill_value)
-    }
-}
-
-fn get_chunk_representation(
-    chunk_shape: Vec<u64>,
-    dtype: DataType,
-    fill_value: FillValue,
-) -> PyResult<ChunkRepresentation> {
-    let chunk_shape = chunk_shape
-        .into_iter()
-        .map(|x| NonZeroU64::new(x).expect("chunk shapes should always be non-zero"))
-        .collect();
-    let chunk_representation =
-        ChunkRepresentation::new(chunk_shape, dtype, fill_value).map_py_err::<PyValueError>()?;
-    Ok(chunk_representation)
 }
 
 fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::ops::Range<u64>> {
