@@ -57,5 +57,5 @@ impl PyUntypedArrayExt for Bound<'_, PyUntypedArray> {
 
 pub fn is_whole_chunk(item: &WithSubset) -> bool {
     item.chunk_subset.start().iter().all(|&o| o == 0)
-        && item.chunk_subset.shape() == item.representation().shape_u64()
+        && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(item.shape())
 }
