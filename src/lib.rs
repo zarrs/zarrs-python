@@ -29,7 +29,8 @@ use zarrs::array::{
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::convert::{
-    ArrayMetadataV2ToV3Error, codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3,
+    ArrayMetadataV2ToV3Error, array_metadata_v2_to_v3, codec_metadata_v2_to_v3,
+    data_type_metadata_v2_to_v3, fill_value_metadata_v2_to_v3,
 };
 use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
 use zarrs::metadata::v3::MetadataV3;
@@ -219,28 +220,6 @@ impl CodecPipelineImpl {
     }
 }
 
-fn array_metadata_to_codec_metadata_v3(
-    metadata: ArrayMetadata,
-) -> Result<Vec<MetadataV3>, ArrayMetadataV2ToV3Error> {
-    match metadata {
-        ArrayMetadata::V3(metadata) => Ok(metadata.codecs),
-        ArrayMetadata::V2(metadata) => {
-            let endianness = data_type_metadata_v2_to_endianness(&metadata.dtype)
-                .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?;
-            let data_type: MetadataV3 = data_type_metadata_v2_to_v3(&metadata.dtype)?;
-
-            codec_metadata_v2_to_v3(
-                metadata.order,
-                metadata.shape.len(),
-                &data_type,
-                endianness,
-                &metadata.filters,
-                &metadata.compressor,
-            )
-        }
-    }
-}
-
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
@@ -253,8 +232,6 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
-        fill_value,
-        dtype_str,
     ))]
     #[new]
     fn new(
@@ -265,14 +242,13 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
-        fill_value: Bound<'_, PyAny>,
-        dtype_str: String,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
-        let metadata: ArrayMetadata =
-            serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
-        let codec_metadata =
-            array_metadata_to_codec_metadata_v3(metadata.clone()).map_py_err::<PyTypeError>()?;
+        let metadata = match serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()? {
+            ArrayMetadata::V2(v2) => array_metadata_v2_to_v3(&v2).map_py_err::<PyTypeError>()?,
+            ArrayMetadata::V3(v3) => v3,
+        };
+        let codec_metadata = metadata.codecs;
         let codec_chain =
             Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
         let mut codec_options = CodecOptions::default();
@@ -288,13 +264,10 @@ impl CodecPipelineImpl {
         let store: ReadableWritableListableStorage =
             (&store_config).try_into().map_py_err::<PyTypeError>()?;
 
-        let fill_value = FillValue::new(fill_value_to_bytes(&dtype_str, &fill_value)?);
-
-        let metadata_dtype = match metadata {
-            ArrayMetadata::V2(_) => todo!("figure this one out"),
-            ArrayMetadata::V3(v3) => v3.data_type.clone(),
-        };
-        let data_type = DataType::from_metadata(&metadata_dtype).map_py_err::<PyTypeError>()?;
+        let data_type = DataType::from_metadata(&metadata.data_type).map_py_err::<PyTypeError>()?;
+        let fill_value = data_type
+            .fill_value(&metadata.fill_value)
+            .map_py_err::<PyTypeError>()?;
 
         Ok(Self {
             store,
