@@ -41,11 +41,10 @@ pub fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResu
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct WithSubset {
-    pub key: StoreKey,
+    key: StoreKey,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
-    pub chunk_shape_u64: Vec<u64>,
-    pub chunk_shape: Vec<NonZeroU64>,
+    shape: Vec<NonZeroU64>,
     pub num_elements: u64,
 }
 
@@ -61,8 +60,29 @@ impl WithSubset {
         subset: Vec<Bound<'_, PySlice>>,
         shape: Vec<u64>,
     ) -> PyResult<Self> {
-        let chunk_subset = selection_to_array_subset(&chunk_subset, &chunk_shape)?;
-        let subset = selection_to_array_subset(&subset, &shape)?;
+        let num_elements = chunk_shape.iter().product();
+        let shape_nonzero_u64: Vec<NonZeroU64> = shape
+            .into_iter()
+            .map(|dim| {
+                NonZeroU64::new(dim).ok_or_else(|| {
+                    PyErr::new::<PyValueError, _>(
+                        "subset dimensions must be greater than zero".to_string(),
+                    )
+                })
+            })
+            .collect::<PyResult<Vec<NonZeroU64>>>()?;
+        let chunk_shape_nonzero_u64: Vec<NonZeroU64> = chunk_shape
+            .into_iter()
+            .map(|dim| {
+                NonZeroU64::new(dim).ok_or_else(|| {
+                    PyErr::new::<PyValueError, _>(
+                        "subset dimensions must be greater than zero".to_string(),
+                    )
+                })
+            })
+            .collect::<PyResult<Vec<NonZeroU64>>>()?;
+        let chunk_subset = selection_to_array_subset(&chunk_subset, &chunk_shape_nonzero_u64)?;
+        let subset = selection_to_array_subset(&subset, &shape_nonzero_u64)?;
         // Check that subset and chunk_subset have the same number of elements.
         // This permits broadcasting of a constant input.
         if subset.num_elements() != chunk_subset.num_elements() && subset.num_elements() > 1 {
@@ -75,13 +95,17 @@ impl WithSubset {
             key: StoreKey::new(key).map_py_err::<PyValueError>()?,
             chunk_subset,
             subset,
-            chunk_shape: chunk_shape
-                .iter()
-                .map(|v| NonZeroU64::new(*v).unwrap())
-                .collect(), // TODO: Unwrap
-            num_elements: chunk_shape.iter().product(),
-            chunk_shape_u64: chunk_shape,
+            shape: chunk_shape_nonzero_u64,
+            num_elements,
         })
+    }
+}
+impl WithSubset {
+    pub fn key(&self) -> &StoreKey {
+        &self.key
+    }
+    pub fn shape(&self) -> &[NonZeroU64] {
+        &self.shape
     }
 }
 
@@ -106,7 +130,7 @@ fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::op
 
 fn selection_to_array_subset(
     selection: &[Bound<'_, PySlice>],
-    shape: &[u64],
+    shape: &[NonZeroU64],
 ) -> PyResult<ArraySubset> {
     if selection.is_empty() {
         Ok(ArraySubset::new_with_shape(vec![1; shape.len()]))
@@ -114,7 +138,7 @@ fn selection_to_array_subset(
         let chunk_ranges = selection
             .iter()
             .zip(shape)
-            .map(|(selection, &shape)| slice_to_range(selection, isize::try_from(shape)?))
+            .map(|(selection, &shape)| slice_to_range(selection, isize::try_from(shape.get())?))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(ArraySubset::new_with_ranges(&chunk_ranges))
     }

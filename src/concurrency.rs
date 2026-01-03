@@ -1,6 +1,6 @@
 use pyo3::PyResult;
 use zarrs::array::{
-    ArrayCodecTraits, RecommendedConcurrency, codec::CodecOptions,
+    RecommendedConcurrency, codec::ArrayCodecTraits, codec::CodecOptions,
     concurrency::calc_concurrency_outer_inner,
 };
 
@@ -25,7 +25,7 @@ impl ChunkConcurrentLimitAndCodecOptions for Vec<WithSubset> {
 
         let codec_concurrency = codec_pipeline_impl
             .codec_chain
-            .recommended_concurrency(&item.chunk_shape, &codec_pipeline_impl.data_type)
+            .recommended_concurrency(item.shape(), &codec_pipeline_impl.data_type)
             .map_codec_err()?;
 
         let min_concurrent_chunks =
@@ -37,8 +37,9 @@ impl ChunkConcurrentLimitAndCodecOptions for Vec<WithSubset> {
             &RecommendedConcurrency::new(min_concurrent_chunks..max_concurrent_chunks),
             &codec_concurrency,
         );
-        let mut codec_options = codec_pipeline_impl.codec_options.clone();
-        codec_options.set_concurrent_target(codec_concurrent_limit);
+        let codec_options = codec_pipeline_impl
+            .codec_options
+            .with_concurrent_target(codec_concurrent_limit);
         Ok(Some((chunk_concurrent_limit, codec_options)))
     }
 }

@@ -19,10 +19,11 @@ numpy = "0.27.0"
 unsafe_cell_slice = "0.2.0"
 serde_json = "1.0.128"
 pyo3-stub-gen = "0.17.1"
-opendal = { version = "0.54.0", features = ["services-http"] }
+opendal = { version = "0.55.0", features = ["services-http"] }
 tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
-zarrs_opendal = "0.9.0"
+zarrs_opendal = "0.10.0"
 itertools = "0.14.0"
+bytemuck = { version = "1.24.0", features = ["must_cast"] }
 
 [profile.release]
 lto = true
