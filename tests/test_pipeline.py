@@ -151,7 +151,7 @@ def gen_store_values(
 def gen_arr(fill_value, tmp_path, dimensionality, format) -> zarr.Array:
     return zarr.create(
         (axis_size_,) * dimensionality,
-        store=LocalStore(root=tmp_path / ".zarr"),
+        store=LocalStore(root=tmp_path / "store.zarr"),
         chunks=(chunk_size_,) * dimensionality,
         dtype=np.int16,
         fill_value=fill_value,
