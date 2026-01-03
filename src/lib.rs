@@ -28,12 +28,7 @@ use zarrs::array::{
 };
 use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
-use zarrs::convert::{
-    ArrayMetadataV2ToV3Error, array_metadata_v2_to_v3, codec_metadata_v2_to_v3,
-    data_type_metadata_v2_to_v3, fill_value_metadata_v2_to_v3,
-};
-use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
-use zarrs::metadata::v3::MetadataV3;
+use zarrs::convert::array_metadata_v2_to_v3;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
@@ -44,7 +39,6 @@ mod store;
 mod tests;
 mod utils;
 
-use crate::chunk_item::fill_value_to_bytes;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
 use crate::utils::{PyCodecErrExt, PyErrExt as _, PyUntypedArrayExt as _};

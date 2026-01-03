@@ -8,10 +8,6 @@ import numpy.typing
 import zarr.abc.store
 
 @typing.final
-class Basic:
-    def __new__(cls, byte_interface: typing.Any, chunk_spec: typing.Any) -> Basic: ...
-
-@typing.final
 class CodecPipelineImpl:
     def __new__(
         cls,
@@ -40,8 +36,9 @@ class CodecPipelineImpl:
 class WithSubset:
     def __new__(
         cls,
-        item: Basic,
+        key: builtins.str,
         chunk_subset: typing.Sequence[slice],
+        chunk_shape: typing.Sequence[builtins.int],
         subset: typing.Sequence[slice],
         shape: typing.Sequence[builtins.int],
     ) -> WithSubset: ...
