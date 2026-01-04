@@ -1,15 +1,27 @@
 use std::num::NonZeroU64;
 
 use pyo3::{
-    Bound, PyAny, PyErr, PyResult,
+    Bound, PyErr, PyResult,
     exceptions::{PyIndexError, PyValueError},
     pyclass, pymethods,
-    types::{PyAnyMethods, PyBytes, PyBytesMethods, PyInt, PySlice, PySliceMethods as _},
+    types::{PySlice, PySliceMethods as _},
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{array_subset::ArraySubset, storage::StoreKey};
 
 use crate::utils::PyErrExt;
+
+fn to_nonzero_u64_vec(v: Vec<u64>) -> PyResult<Vec<NonZeroU64>> {
+    v.into_iter()
+        .map(|dim| {
+            NonZeroU64::new(dim).ok_or_else(|| {
+                PyErr::new::<PyValueError, _>(
+                    "subset dimensions must be greater than zero".to_string(),
+                )
+            })
+        })
+        .collect::<PyResult<Vec<NonZeroU64>>>()
+}
 
 #[derive(Clone)]
 #[gen_stub_pyclass]
@@ -35,26 +47,8 @@ impl WithSubset {
         shape: Vec<u64>,
     ) -> PyResult<Self> {
         let num_elements = chunk_shape.iter().product();
-        let shape_nonzero_u64: Vec<NonZeroU64> = shape
-            .into_iter()
-            .map(|dim| {
-                NonZeroU64::new(dim).ok_or_else(|| {
-                    PyErr::new::<PyValueError, _>(
-                        "subset dimensions must be greater than zero".to_string(),
-                    )
-                })
-            })
-            .collect::<PyResult<Vec<NonZeroU64>>>()?;
-        let chunk_shape_nonzero_u64: Vec<NonZeroU64> = chunk_shape
-            .into_iter()
-            .map(|dim| {
-                NonZeroU64::new(dim).ok_or_else(|| {
-                    PyErr::new::<PyValueError, _>(
-                        "subset dimensions must be greater than zero".to_string(),
-                    )
-                })
-            })
-            .collect::<PyResult<Vec<NonZeroU64>>>()?;
+        let shape_nonzero_u64 = to_nonzero_u64_vec(shape)?;
+        let chunk_shape_nonzero_u64 = to_nonzero_u64_vec(chunk_shape)?;
         let chunk_subset = selection_to_array_subset(&chunk_subset, &chunk_shape_nonzero_u64)?;
         let subset = selection_to_array_subset(&subset, &shape_nonzero_u64)?;
         // Check that subset and chunk_subset have the same number of elements.

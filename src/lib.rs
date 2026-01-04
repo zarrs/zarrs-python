@@ -288,19 +288,16 @@ impl CodecPipelineImpl {
         };
 
         // Assemble partial decoders ahead of time and in parallel
-        let partial_chunk_descriptions_with_representations = chunk_descriptions
+        let partial_chunk_items = chunk_descriptions
             .iter()
             .filter(|item| !(is_whole_chunk(item)))
             .unique_by(|item| item.key().clone())
             .collect::<Vec<_>>();
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
             HashMap::new();
-        if !partial_chunk_descriptions_with_representations.is_empty() {
-            let key_decoder_pairs = iter_concurrent_limit!(
-                chunk_concurrent_limit,
-                partial_chunk_descriptions_with_representations,
-                map,
-                |item| {
+        if !partial_chunk_items.is_empty() {
+            let key_decoder_pairs =
+                iter_concurrent_limit!(chunk_concurrent_limit, partial_chunk_items, map, |item| {
                     let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
                     let input_handle =
                         StoragePartialDecoder::new(storage_handle, item.key().clone());
@@ -316,9 +313,8 @@ impl CodecPipelineImpl {
                         )
                         .map_codec_err()?;
                     Ok((item.key().clone(), partial_decoder))
-                }
-            )
-            .collect::<PyResult<Vec<_>>>()?;
+                })
+                .collect::<PyResult<Vec<_>>>()?;
             partial_decoder_cache.extend(key_decoder_pairs);
         }
 
