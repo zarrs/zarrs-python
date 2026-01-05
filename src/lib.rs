@@ -120,10 +120,10 @@ impl CodecPipelineImpl {
         item: &WithSubset,
         codec_chain: &CodecChain,
         chunk_subset_bytes: ArrayBytes,
-        chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
         let array_shape = item.shape();
+        let chunk_subset = &item.chunk_subset;
         if !chunk_subset.inbounds_shape(bytemuck::must_cast_slice(array_shape)) {
             return Err(PyErr::new::<PyValueError, _>(format!(
                 "chunk subset ({chunk_subset}) is out of bounds for array shape ({array_shape:?})"
@@ -131,9 +131,7 @@ impl CodecPipelineImpl {
         }
         let data_type_size = self.data_type.size();
 
-        if chunk_subset.start().iter().all(|&o| o == 0)
-            && chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(array_shape)
-        {
+        if is_whole_chunk(item) {
             // Fast path if the chunk subset spans the entire chunk, no read required
             self.store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
         } else {
@@ -342,9 +340,7 @@ impl CodecPipelineImpl {
                 };
                 let target = ArrayBytesDecodeIntoTarget::Fixed(&mut output_view);
                 // See zarrs::array::Array::retrieve_chunk_subset_into
-                if item.chunk_subset.start().iter().all(|&o| o == 0)
-                    && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(shape)
-                {
+                if is_whole_chunk(&item) {
                     // See zarrs::array::Array::retrieve_chunk_into
                     if let Some(chunk_encoded) =
                         self.store.get(item.key()).map_py_err::<PyRuntimeError>()?
@@ -424,7 +420,6 @@ impl CodecPipelineImpl {
                         &item,
                         &self.codec_chain,
                         chunk_subset_bytes,
-                        &item.chunk_subset,
                         &codec_options,
                     )
                 }
@@ -440,7 +435,6 @@ impl CodecPipelineImpl {
                         &item,
                         &self.codec_chain,
                         chunk_subset_bytes,
-                        &item.chunk_subset,
                         &codec_options,
                     )
                 }
