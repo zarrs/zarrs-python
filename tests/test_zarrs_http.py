@@ -19,7 +19,7 @@ ARR_REF = np.array(
     ]
 )
 
-URL = "https://raw.githubusercontent.com/LDeakin/zarrs/main/zarrs/tests/data/array_write_read.zarr/group/array"
+URL = "https://raw.githubusercontent.com/zarrs/zarrs/main/zarrs/tests/data/array_write_read.zarr/group/array"
 
 
 def test_zarrs_http():
