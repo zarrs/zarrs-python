@@ -4,7 +4,7 @@ use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
 use zarrs::array::codec::CodecError;
 
-use crate::{ChunksItem, WithSubset};
+use crate::WithSubset;
 
 pub(crate) trait PyErrExt<T> {
     fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T>;

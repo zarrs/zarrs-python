@@ -23,15 +23,11 @@ use zarrs::array::codec::{
     ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecOptions, StoragePartialDecoder,
 };
 use zarrs::array::{
-    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ArraySubset, ChunkShapeTraits,
-    CodecChain, DataTypeExt, FillValue, copy_fill_value_into, update_array_bytes,
+    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, CodecChain, DataType, DataTypeExt,
+    FillValue, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::config::global_config;
-use zarrs::convert::{
-    ArrayMetadataV2ToV3Error, codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3,
-};
-use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
-use zarrs::metadata::v3::MetadataV3;
+use zarrs::convert::array_metadata_v2_to_v3;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
@@ -42,7 +38,6 @@ mod store;
 mod tests;
 mod utils;
 
-use crate::chunk_item::ChunksItem;
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
 use crate::utils::{PyCodecErrExt, PyErrExt as _, PyUntypedArrayExt as _};
@@ -57,12 +52,14 @@ pub struct CodecPipelineImpl {
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
     pub(crate) num_threads: usize,
+    pub(crate) fill_value: FillValue,
+    pub(crate) data_type: DataType,
 }
 
 impl CodecPipelineImpl {
-    fn retrieve_chunk_bytes<'a, I: ChunksItem>(
+    fn retrieve_chunk_bytes<'a>(
         &self,
-        item: &I,
+        item: &WithSubset,
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
@@ -73,42 +70,38 @@ impl CodecPipelineImpl {
                 .decode(
                     value_encoded.into(),
                     item.shape(),
-                    item.data_type(),
-                    item.fill_value(),
+                    &self.data_type,
+                    &self.fill_value,
                     codec_options,
                 )
                 .map_codec_err()?
         } else {
-            ArrayBytes::new_fill_value(
-                item.data_type(),
-                item.shape().num_elements_u64(),
-                item.fill_value(),
-            )
-            .map_py_err::<PyRuntimeError>()?
+            ArrayBytes::new_fill_value(&self.data_type, item.num_elements, &self.fill_value)
+                .map_py_err::<PyRuntimeError>()?
         };
         Ok(value_decoded)
     }
 
-    fn store_chunk_bytes<I: ChunksItem>(
+    fn store_chunk_bytes(
         &self,
-        item: &I,
+        item: &WithSubset,
         codec_chain: &CodecChain,
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
         value_decoded
-            .validate(item.shape().num_elements_u64(), item.data_type())
+            .validate(item.num_elements, &self.data_type)
             .map_codec_err()?;
 
-        if value_decoded.is_fill_value(item.fill_value()) {
+        if value_decoded.is_fill_value(&self.fill_value) {
             self.store.erase(item.key()).map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
                 .encode(
                     value_decoded,
                     item.shape(),
-                    item.data_type(),
-                    item.fill_value(),
+                    &self.data_type,
+                    &self.fill_value,
                     codec_options,
                 )
                 .map(Cow::into_owned)
@@ -121,31 +114,29 @@ impl CodecPipelineImpl {
         }
     }
 
-    fn store_chunk_subset_bytes<I: ChunksItem>(
+    fn store_chunk_subset_bytes(
         &self,
-        item: &I,
+        item: &WithSubset,
         codec_chain: &CodecChain,
         chunk_subset_bytes: ArrayBytes,
-        chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
         let array_shape = item.shape();
+        let chunk_subset = &item.chunk_subset;
         if !chunk_subset.inbounds_shape(bytemuck::must_cast_slice(array_shape)) {
             return Err(PyErr::new::<PyValueError, _>(format!(
                 "chunk subset ({chunk_subset}) is out of bounds for array shape ({array_shape:?})"
             )));
         }
-        let data_type_size = item.data_type().size();
+        let data_type_size = self.data_type.size();
 
-        if chunk_subset.start().iter().all(|&o| o == 0)
-            && chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(array_shape)
-        {
+        if is_whole_chunk(item) {
             // Fast path if the chunk subset spans the entire chunk, no read required
             self.store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
         } else {
             // Validate the chunk subset bytes
             chunk_subset_bytes
-                .validate(chunk_subset.num_elements(), item.data_type())
+                .validate(chunk_subset.num_elements(), &self.data_type)
                 .map_codec_err()?;
 
             // Retrieve the chunk
@@ -217,28 +208,6 @@ impl CodecPipelineImpl {
     }
 }
 
-fn array_metadata_to_codec_metadata_v3(
-    metadata: ArrayMetadata,
-) -> Result<Vec<MetadataV3>, ArrayMetadataV2ToV3Error> {
-    match metadata {
-        ArrayMetadata::V3(metadata) => Ok(metadata.codecs),
-        ArrayMetadata::V2(metadata) => {
-            let endianness = data_type_metadata_v2_to_endianness(&metadata.dtype)
-                .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?;
-            let data_type = data_type_metadata_v2_to_v3(&metadata.dtype)?;
-
-            codec_metadata_v2_to_v3(
-                metadata.order,
-                metadata.shape.len(),
-                &data_type,
-                endianness,
-                &metadata.filters,
-                &metadata.compressor,
-            )
-        }
-    }
-}
-
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
@@ -250,7 +219,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_minimum=None,
         chunk_concurrent_maximum=None,
         num_threads=None,
-        direct_io=false
+        direct_io=false,
     ))]
     #[new]
     fn new(
@@ -263,13 +232,13 @@ impl CodecPipelineImpl {
         direct_io: bool,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
-        let metadata: ArrayMetadata =
-            serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
-        let codec_metadata =
-            array_metadata_to_codec_metadata_v3(metadata).map_py_err::<PyTypeError>()?;
+        let metadata = match serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()? {
+            ArrayMetadata::V2(v2) => array_metadata_v2_to_v3(&v2).map_py_err::<PyTypeError>()?,
+            ArrayMetadata::V3(v3) => v3,
+        };
+        let codec_metadata = metadata.codecs;
         let codec_chain =
             Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
-
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
         let chunk_concurrent_minimum =
@@ -281,6 +250,11 @@ impl CodecPipelineImpl {
         let store: ReadableWritableListableStorage =
             (&store_config).try_into().map_py_err::<PyTypeError>()?;
 
+        let data_type = DataType::from_metadata(&metadata.data_type).map_py_err::<PyTypeError>()?;
+        let fill_value = data_type
+            .fill_value(&metadata.fill_value)
+            .map_py_err::<PyTypeError>()?;
+
         Ok(Self {
             store,
             codec_chain,
@@ -288,6 +262,8 @@ impl CodecPipelineImpl {
             chunk_concurrent_minimum,
             chunk_concurrent_maximum,
             num_threads,
+            fill_value,
+            data_type,
         })
     }
 
@@ -309,19 +285,16 @@ impl CodecPipelineImpl {
         };
 
         // Assemble partial decoders ahead of time and in parallel
-        let partial_chunk_descriptions = chunk_descriptions
+        let partial_chunk_items = chunk_descriptions
             .iter()
             .filter(|item| !(is_whole_chunk(item)))
-            .unique_by(|item| item.key())
+            .unique_by(|item| item.key().clone())
             .collect::<Vec<_>>();
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
             HashMap::new();
-        if !partial_chunk_descriptions.is_empty() {
-            let key_decoder_pairs = iter_concurrent_limit!(
-                chunk_concurrent_limit,
-                partial_chunk_descriptions,
-                map,
-                |item| {
+        if !partial_chunk_items.is_empty() {
+            let key_decoder_pairs =
+                iter_concurrent_limit!(chunk_concurrent_limit, partial_chunk_items, map, |item| {
                     let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
                     let input_handle =
                         StoragePartialDecoder::new(storage_handle, item.key().clone());
@@ -331,15 +304,14 @@ impl CodecPipelineImpl {
                         .partial_decoder(
                             Arc::new(input_handle),
                             item.shape(),
-                            item.data_type(),
-                            item.fill_value(),
+                            &self.data_type,
+                            &self.fill_value,
                             &codec_options,
                         )
                         .map_codec_err()?;
                     Ok((item.key().clone(), partial_decoder))
-                }
-            )
-            .collect::<PyResult<Vec<_>>>()?;
+                })
+                .collect::<PyResult<Vec<_>>>()?;
             partial_decoder_cache.extend(key_decoder_pairs);
         }
 
@@ -347,12 +319,8 @@ impl CodecPipelineImpl {
             // FIXME: the `decode_into` methods only support fixed length data types.
             // For variable length data types, need a codepath with non `_into` methods.
             // Collect all the subsets and copy into value on the Python side?
-            let update_chunk_subset = |item: chunk_item::WithSubset| {
-                let chunk_item::WithSubset {
-                    item,
-                    subset,
-                    chunk_subset,
-                } = item;
+            let update_chunk_subset = |item: WithSubset| {
+                let shape = item.shape();
                 let mut output_view = unsafe {
                     // TODO: Is the following correct?
                     //       can we guarantee that when this function is called from Python with arbitrary arguments?
@@ -360,20 +328,18 @@ impl CodecPipelineImpl {
                     ArrayBytesFixedDisjointView::new(
                         output,
                         // TODO: why is data_type in `item`, it should be derived from `output`, no?
-                        item.data_type()
+                        self.data_type
                             .fixed_size()
                             .ok_or("variable length data type not supported")
                             .map_py_err::<PyTypeError>()?,
                         &output_shape,
-                        subset,
+                        item.subset.clone(),
                     )
                     .map_py_err::<PyRuntimeError>()?
                 };
-
+                let target = ArrayBytesDecodeIntoTarget::Fixed(&mut output_view);
                 // See zarrs::array::Array::retrieve_chunk_subset_into
-                if chunk_subset.start().iter().all(|&o| o == 0)
-                    && chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(item.shape())
-                {
+                if is_whole_chunk(&item) {
                     // See zarrs::array::Array::retrieve_chunk_into
                     if let Some(chunk_encoded) =
                         self.store.get(item.key()).map_py_err::<PyRuntimeError>()?
@@ -383,29 +349,21 @@ impl CodecPipelineImpl {
                         self.codec_chain.decode_into(
                             Cow::Owned(chunk_encoded),
                             item.shape(),
-                            item.data_type(),
-                            item.fill_value(),
-                            ArrayBytesDecodeIntoTarget::Fixed(&mut output_view),
+                            &self.data_type,
+                            &self.fill_value,
+                            target,
                             &codec_options,
                         )
                     } else {
                         // The chunk is missing, write the fill value
-                        copy_fill_value_into(
-                            item.data_type(),
-                            item.fill_value(),
-                            ArrayBytesDecodeIntoTarget::Fixed(&mut output_view),
-                        )
+                        copy_fill_value_into(&self.data_type, &self.fill_value, target)
                     }
                 } else {
                     let key = item.key();
                     let partial_decoder = partial_decoder_cache.get(key).ok_or_else(|| {
                         PyRuntimeError::new_err(format!("Partial decoder not found for key: {key}"))
                     })?;
-                    partial_decoder.partial_decode_into(
-                        &chunk_subset,
-                        ArrayBytesDecodeIntoTarget::Fixed(&mut output_view),
-                        &codec_options,
-                    )
+                    partial_decoder.partial_decode_into(&item.chunk_subset, target, &codec_options)
                 }
                 .map_codec_err()
             };
@@ -452,22 +410,21 @@ impl CodecPipelineImpl {
         codec_options.set_store_empty_chunks(write_empty_chunks);
 
         py.detach(move || {
-            let store_chunk = |item: chunk_item::WithSubset| match &input {
+            let store_chunk = |item: WithSubset| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
-                        .extract_array_subset(&item.subset, &input_shape, item.item.data_type())
+                        .extract_array_subset(&item.subset, &input_shape, &self.data_type)
                         .map_codec_err()?;
                     self.store_chunk_subset_bytes(
                         &item,
                         &self.codec_chain,
                         chunk_subset_bytes,
-                        &item.chunk_subset,
                         &codec_options,
                     )
                 }
                 InputValue::Constant(constant_value) => {
                     let chunk_subset_bytes = ArrayBytes::new_fill_value(
-                        item.data_type(),
+                        &self.data_type,
                         item.chunk_subset.num_elements(),
                         constant_value,
                     )
@@ -477,7 +434,6 @@ impl CodecPipelineImpl {
                         &item,
                         &self.codec_chain,
                         chunk_subset_bytes,
-                        &item.chunk_subset,
                         &codec_options,
                     )
                 }
@@ -500,7 +456,6 @@ impl CodecPipelineImpl {
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<CodecPipelineImpl>()?;
-    m.add_class::<chunk_item::Basic>()?;
     m.add_class::<chunk_item::WithSubset>()?;
     Ok(())
 }
