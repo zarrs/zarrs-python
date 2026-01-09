@@ -26,7 +26,6 @@ use zarrs::array::{
     ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, CodecChain, DataType, DataTypeExt,
     FillValue, copy_fill_value_into, update_array_bytes,
 };
-use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};

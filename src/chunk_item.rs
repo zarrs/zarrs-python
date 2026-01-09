@@ -7,7 +7,11 @@ use pyo3::{
     types::{PySlice, PySliceMethods as _},
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
-use zarrs::{array_subset::ArraySubset, storage::StoreKey};
+use zarrs::{
+    array::{ArraySubset, ChunkShape, DataType, FillValue, NamedDataType},
+    metadata::v3::MetadataV3,
+    storage::StoreKey,
+};
 
 use crate::utils::PyErrExt;
 
