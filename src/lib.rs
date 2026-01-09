@@ -23,10 +23,9 @@ use zarrs::array::codec::{
     ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecOptions, StoragePartialDecoder,
 };
 use zarrs::array::{
-    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ChunkShapeTraits, CodecChain,
-    DataTypeExt, FillValue, copy_fill_value_into, update_array_bytes,
+    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ArraySubset, ChunkShapeTraits,
+    CodecChain, DataTypeExt, FillValue, copy_fill_value_into, update_array_bytes,
 };
-use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
 use zarrs::convert::{
     ArrayMetadataV2ToV3Error, codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3,
