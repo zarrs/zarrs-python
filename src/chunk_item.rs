@@ -8,7 +8,7 @@ use pyo3::{
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
-    array::{ArraySubset, ChunkShape, DataType, FillValue, NamedDataType},
+    array::{ArraySubset, ChunkShape, DataType, FillValue},
     metadata::v3::MetadataV3,
     storage::StoreKey,
 };
@@ -168,8 +168,8 @@ impl ChunksItem for WithSubset {
 
 fn get_data_type_from_dtype(dtype: &str) -> PyResult<DataType> {
     let data_type =
-        NamedDataType::try_from(&MetadataV3::new(dtype)).map_py_err::<PyRuntimeError>()?;
-    Ok(data_type.into())
+        DataType::from_metadata(&MetadataV3::new(dtype)).map_py_err::<PyRuntimeError>()?;
+    Ok(data_type)
 }
 
 fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::ops::Range<u64>> {
