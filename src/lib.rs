@@ -18,13 +18,10 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
-use zarrs::array::codec::ArrayBytesDecodeIntoTarget;
-use zarrs::array::codec::{
-    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecOptions, StoragePartialDecoder,
-};
 use zarrs::array::{
-    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ArraySubset, ChunkShapeTraits,
-    CodecChain, DataTypeExt, FillValue, copy_fill_value_into, update_array_bytes,
+    ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
+    ArrayPartialDecoderTraits, ArraySubset, ArrayToBytesCodecTraits, ChunkShapeTraits, CodecChain,
+    CodecOptions, FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::config::global_config;
 use zarrs::convert::{
