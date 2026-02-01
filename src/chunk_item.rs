@@ -8,7 +8,7 @@ use pyo3::{
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
-    array::{ArraySubset, ChunkShape, DataType, FillValue, NamedDataType},
+    array::{ArraySubset, ChunkShape, DataType, FillValue},
     metadata::v3::MetadataV3,
     storage::StoreKey,
 };

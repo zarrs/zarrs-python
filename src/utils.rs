@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
-use zarrs::array::codec::CodecError;
+use zarrs::array::CodecError;
 
 use crate::WithSubset;
 

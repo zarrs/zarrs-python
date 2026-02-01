@@ -43,7 +43,7 @@ def test_simple(store: StorePath) -> None:
 
 
 @pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. codec delta is not supported:UserWarning"
+    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported codec delta.*:UserWarning"
 )
 def test_fill_single_value(store: Store) -> None:
     array = zarr.create(
@@ -132,7 +132,7 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str, tmp_pat
 
 
 @pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. codec delta is not supported:UserWarning"
+    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported codec delta.*:UserWarning"
 )
 @pytest.mark.parametrize(
     "filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]]
