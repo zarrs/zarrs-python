@@ -61,13 +61,13 @@ impl CodecPipelineImpl {
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = self.store.get(item.key()).map_py_err::<PyRuntimeError>()?;
+        let value_encoded = self.store.get(&item.key).map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
                 .decode(
                     value_encoded.into(),
-                    item.shape(),
+                    &item.shape,
                     &self.data_type,
                     &self.fill_value,
                     codec_options,
@@ -92,12 +92,12 @@ impl CodecPipelineImpl {
             .map_codec_err()?;
 
         if value_decoded.is_fill_value(&self.fill_value) {
-            self.store.erase(item.key()).map_py_err::<PyRuntimeError>()
+            self.store.erase(&item.key).map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
                 .encode(
                     value_decoded,
-                    item.shape(),
+                    &item.shape,
                     &self.data_type,
                     &self.fill_value,
                     codec_options,
@@ -107,7 +107,7 @@ impl CodecPipelineImpl {
 
             // Store the encoded chunk
             self.store
-                .set(item.key(), value_encoded.into())
+                .set(&item.key, value_encoded.into())
                 .map_py_err::<PyRuntimeError>()
         }
     }
@@ -119,7 +119,7 @@ impl CodecPipelineImpl {
         chunk_subset_bytes: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        let array_shape = item.shape();
+        let array_shape = &item.shape;
         let chunk_subset = &item.chunk_subset;
         if !chunk_subset.inbounds_shape(bytemuck::must_cast_slice(array_shape)) {
             return Err(PyErr::new::<PyValueError, _>(format!(
@@ -290,7 +290,7 @@ impl CodecPipelineImpl {
         let partial_chunk_items = chunk_descriptions
             .iter()
             .filter(|item| !(is_whole_chunk(item)))
-            .unique_by(|item| item.key().clone())
+            .unique_by(|item| item.key.clone())
             .collect::<Vec<_>>();
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
             HashMap::new();
@@ -298,20 +298,19 @@ impl CodecPipelineImpl {
             let key_decoder_pairs =
                 iter_concurrent_limit!(chunk_concurrent_limit, partial_chunk_items, map, |item| {
                     let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
-                    let input_handle =
-                        StoragePartialDecoder::new(storage_handle, item.key().clone());
+                    let input_handle = StoragePartialDecoder::new(storage_handle, item.key.clone());
                     let partial_decoder = self
                         .codec_chain
                         .clone()
                         .partial_decoder(
                             Arc::new(input_handle),
-                            item.shape(),
+                            &item.shape,
                             &self.data_type,
                             &self.fill_value,
                             &codec_options,
                         )
                         .map_codec_err()?;
-                    Ok((item.key().clone(), partial_decoder))
+                    Ok((item.key.clone(), partial_decoder))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
             partial_decoder_cache.extend(key_decoder_pairs);
@@ -343,13 +342,13 @@ impl CodecPipelineImpl {
                 if is_whole_chunk(&item) {
                     // See zarrs::array::Array::retrieve_chunk_into
                     if let Some(chunk_encoded) =
-                        self.store.get(item.key()).map_py_err::<PyRuntimeError>()?
+                        self.store.get(&item.key).map_py_err::<PyRuntimeError>()?
                     {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
                         self.codec_chain.decode_into(
                             Cow::Owned(chunk_encoded),
-                            item.shape(),
+                            &item.shape,
                             &self.data_type,
                             &self.fill_value,
                             target,
@@ -360,7 +359,7 @@ impl CodecPipelineImpl {
                         copy_fill_value_into(&self.data_type, &self.fill_value, target)
                     }
                 } else {
-                    let key = item.key();
+                    let key = &item.key;
                     let partial_decoder = partial_decoder_cache.get(key).ok_or_else(|| {
                         PyRuntimeError::new_err(format!("Partial decoder not found for key: {key}"))
                     })?;

@@ -27,10 +27,10 @@ fn to_nonzero_u64_vec(v: Vec<u64>) -> PyResult<Vec<NonZeroU64>> {
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct ChunkItem {
-    key: StoreKey,
+    pub key: StoreKey,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
-    shape: Vec<NonZeroU64>,
+    pub shape: Vec<NonZeroU64>,
     pub num_elements: u64,
 }
 
@@ -66,14 +66,6 @@ impl ChunkItem {
             shape: chunk_shape_nonzero_u64,
             num_elements,
         })
-    }
-}
-impl ChunkItem {
-    pub fn key(&self) -> &StoreKey {
-        &self.key
-    }
-    pub fn shape(&self) -> &[NonZeroU64] {
-        &self.shape
     }
 }
 

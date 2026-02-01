@@ -25,7 +25,7 @@ impl ChunkConcurrentLimitAndCodecOptions for Vec<ChunkItem> {
 
         let codec_concurrency = codec_pipeline_impl
             .codec_chain
-            .recommended_concurrency(item.shape(), &codec_pipeline_impl.data_type)
+            .recommended_concurrency(&item.shape, &codec_pipeline_impl.data_type)
             .map_codec_err()?;
 
         let min_concurrent_chunks =
