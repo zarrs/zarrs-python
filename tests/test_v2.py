@@ -296,12 +296,8 @@ def test_parse_structured_fill_value_valid(
 
 
 @pytest.mark.filterwarnings(
-    # TODO: Permit this in zarrs?
-    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported Zarr V2 array. unsupported fill value Null for data type bytes:UserWarning"
-)
-@pytest.mark.filterwarnings(
-    # TODO: Fix handling of string fill values for Zarr v2 bytes data
-    "ignore:Array is unsupported by ZarrsCodecPipeline. incompatible fill value 0 for data type r56:UserWarning"
+    # TODO: Fix handling of Null fill values for Zarr v2 bytes data: this warning is raised by no_fill
+    "ignore:Array is unsupported by ZarrsCodecPipeline. incompatible fill value metadata:UserWarning"
 )
 @pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])
 def test_other_dtype_roundtrip(fill_value, tmp_path) -> None:
