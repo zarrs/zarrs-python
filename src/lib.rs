@@ -25,7 +25,7 @@ use zarrs::array::{
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
-use zarrs::plugin::ZarrVersion3;
+use zarrs::plugin::ZarrVersion;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
