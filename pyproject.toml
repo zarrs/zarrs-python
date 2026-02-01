@@ -30,6 +30,7 @@ test = [
     "aiohttp",
     "fsspec>2024",
     "numcodecs>=0.16.1",
+    "obstore>=0.8.2",
     "pytest",
     "pytest-asyncio",
     "pytest-xdist",

@@ -24,12 +24,11 @@ We export a `ZarrsCodecPipeline` class so that `zarr-python` can use the class b
 
 At the moment, we only support a subset of the `zarr-python` stores:
 
-- [x] [LocalStore](https://zarr.readthedocs.io/en/latest/_autoapi/zarr/storage/index.html#zarr.storage.LocalStore) (FileSystem)
-- [FsspecStore](https://zarr.readthedocs.io/en/latest/_autoapi/zarr/storage/index.html#zarr.storage.FsspecStore)
-  - [x] [HTTPFileSystem](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.implementations.http.HTTPFileSystem)
+- [`LocalStore`](https://zarr.readthedocs.io/en/latest/api/zarr/storage/#zarr.storage.LocalStore) (local filesystem)
+- [`ObjectStore`](https://zarr.readthedocs.io/en/latest/user-guide/storage/#object-store) (cloud storage)
+- [`HTTPFileSystem`](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.implementations.http.HTTPFileSystem) via [`FsspecStore`](https://zarr.readthedocs.io/en/latest/api/zarr/storage/#zarr.storage.FsspecStore)
 
 A `NotImplementedError` will be raised if a store is not supported.
-We intend to support more stores in the future: https://github.com/zarrs/zarrs-python/issues/44.
 
 ### Configuration
 

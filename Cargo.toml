@@ -24,6 +24,8 @@ tokio = { version = "1.41.1", features = ["rt-multi-thread"] }
 zarrs_opendal = "0.10.0"
 itertools = "0.14.0"
 bytemuck = { version = "1.24.0", features = ["must_cast"] }
+pyo3-object_store = "0.7.0" # object_store 0.12
+zarrs_object_store = "0.5.0" # object_store 0.12
 
 [profile.release]
 lto = true

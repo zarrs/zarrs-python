@@ -6,6 +6,7 @@ use pyo3::{
     exceptions::{PyNotImplementedError, PyValueError},
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
 };
+use pyo3_object_store::PyExternalObjectStore;
 use zarrs::storage::{
     ReadableWritableListableStorage, storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
 };
@@ -14,14 +15,17 @@ use crate::{runtime::tokio_block_on, utils::PyErrExt};
 
 mod filesystem;
 mod http;
+mod obstore;
 
 pub use self::filesystem::FilesystemStoreConfig;
 pub use self::http::HttpStoreConfig;
+pub use self::obstore::ObStoreConfig;
 
 #[derive(Debug, Clone)]
 pub enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
     Http(HttpStoreConfig),
+    ObStore(ObStoreConfig),
     // TODO: Add support for more stores
 }
 
@@ -53,6 +57,13 @@ impl<'py> FromPyObject<'_, 'py> for StoreConfig {
                     ))),
                 }
             }
+            "ObjectStore" => {
+                let underlying_store = store.getattr("store")?;
+                let external_object_store: PyExternalObjectStore = underlying_store.extract()?;
+                let object_store: Arc<dyn zarrs_object_store::object_store::ObjectStore> =
+                    external_object_store.into_dyn();
+                Ok(StoreConfig::ObStore(ObStoreConfig::new(object_store)))
+            }
             _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
                 "zarrs-python does not support {name} stores"
             ))),
@@ -65,6 +76,7 @@ impl StoreConfig {
         match self {
             StoreConfig::Filesystem(config) => config.direct_io(flag),
             StoreConfig::Http(_config) => (),
+            StoreConfig::ObStore(_config) => (),
         }
     }
 }
@@ -82,6 +94,7 @@ impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
         match value {
             StoreConfig::Filesystem(config) => config.try_into(),
             StoreConfig::Http(config) => config.try_into(),
+            StoreConfig::ObStore(config) => config.try_into(),
         }
     }
 }
