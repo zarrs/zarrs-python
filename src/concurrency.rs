@@ -1,6 +1,6 @@
 use pyo3::PyResult;
 use zarrs::array::{
-    ArrayCodecTraits, RecommendedConcurrency, codec::CodecOptions,
+    ArrayCodecTraits, CodecOptions, RecommendedConcurrency,
     concurrency::calc_concurrency_outer_inner,
 };
 
@@ -25,11 +25,10 @@ where
         let Some(chunk_descriptions0) = self.first() else {
             return Ok(None);
         };
-        let chunk_representation = chunk_descriptions0.representation();
 
         let codec_concurrency = codec_pipeline_impl
             .codec_chain
-            .recommended_concurrency(chunk_representation)
+            .recommended_concurrency(chunk_descriptions0.shape(), chunk_descriptions0.data_type())
             .map_codec_err()?;
 
         let min_concurrent_chunks =
@@ -43,9 +42,7 @@ where
         );
         let codec_options = codec_pipeline_impl
             .codec_options
-            .into_builder()
-            .concurrent_target(codec_concurrent_limit)
-            .build();
+            .with_concurrent_target(codec_concurrent_limit);
         Ok(Some((chunk_concurrent_limit, codec_options)))
     }
 }

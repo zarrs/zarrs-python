@@ -43,7 +43,7 @@ def test_simple(store: StorePath) -> None:
 
 
 @pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. codec delta is not supported:UserWarning"
+    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported codec delta.*:UserWarning"
 )
 def test_fill_single_value(store: Store) -> None:
     array = zarr.create(
@@ -61,11 +61,8 @@ def test_fill_single_value(store: Store) -> None:
 
 
 @pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. data type |S1 is not supported:UserWarning"
-)
-@pytest.mark.filterwarnings(
     # TODO: Fix handling of string fill values for Zarr v2 bytes data
-    "ignore:Array is unsupported by ZarrsCodecPipeline. incompatible fill value ..+. for data type bytes:UserWarning"
+    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported data type .+:UserWarning"
 )
 @pytest.mark.parametrize(
     ("dtype", "expected_dtype", "fill_value", "fill_value_json"),
@@ -111,10 +108,7 @@ async def test_v2_encode_decode(
 
 
 @pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. data type |U1 is not supported:UserWarning"
-)
-@pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. data type |S1 is not supported:UserWarning"
+    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported data type .+:UserWarning"
 )
 @pytest.mark.parametrize(
     ("dtype", "value"),
@@ -138,7 +132,7 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str, tmp_pat
 
 
 @pytest.mark.filterwarnings(
-    "ignore:Array is unsupported by ZarrsCodecPipeline. codec delta is not supported:UserWarning"
+    "ignore:Array is unsupported by ZarrsCodecPipeline. unsupported codec delta.*:UserWarning"
 )
 @pytest.mark.parametrize(
     "filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]]

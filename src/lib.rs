@@ -18,21 +18,17 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
-use zarrs::array::codec::{
-    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecOptions, CodecOptionsBuilder,
-    StoragePartialDecoder,
-};
 use zarrs::array::{
-    ArrayBytes, ArrayBytesFixedDisjointView, ArrayMetadata, ArraySize, CodecChain, FillValue,
-    copy_fill_value_into, update_array_bytes,
+    ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
+    ArrayPartialDecoderTraits, ArraySubset, ArrayToBytesCodecTraits, ChunkShapeTraits, CodecChain,
+    CodecOptions, FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
 };
-use zarrs::array_subset::ArraySubset;
 use zarrs::config::global_config;
-use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
-use zarrs::metadata::v3::MetadataV3;
-use zarrs::metadata_ext::v2_to_v3::{
+use zarrs::convert::{
     ArrayMetadataV2ToV3Error, codec_metadata_v2_to_v3, data_type_metadata_v2_to_v3,
 };
+use zarrs::metadata::v2::data_type_metadata_v2_to_endianness;
+use zarrs::metadata::v3::MetadataV3;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
@@ -71,14 +67,21 @@ impl CodecPipelineImpl {
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
-                .decode(value_encoded.into(), item.representation(), codec_options)
+                .decode(
+                    value_encoded.into(),
+                    item.shape(),
+                    item.data_type(),
+                    item.fill_value(),
+                    codec_options,
+                )
                 .map_codec_err()?
         } else {
-            let array_size = ArraySize::new(
-                item.representation().data_type().size(),
-                item.representation().num_elements(),
-            );
-            ArrayBytes::new_fill_value(array_size, item.representation().fill_value())
+            ArrayBytes::new_fill_value(
+                item.data_type(),
+                item.shape().num_elements_u64(),
+                item.fill_value(),
+            )
+            .map_py_err::<PyRuntimeError>()?
         };
         Ok(value_decoded)
     }
@@ -91,17 +94,20 @@ impl CodecPipelineImpl {
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
         value_decoded
-            .validate(
-                item.representation().num_elements(),
-                item.representation().data_type().size(),
-            )
+            .validate(item.shape().num_elements_u64(), item.data_type())
             .map_codec_err()?;
 
-        if value_decoded.is_fill_value(item.representation().fill_value()) {
+        if value_decoded.is_fill_value(item.fill_value()) {
             self.store.erase(item.key()).map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
-                .encode(value_decoded, item.representation(), codec_options)
+                .encode(
+                    value_decoded,
+                    item.shape(),
+                    item.data_type(),
+                    item.fill_value(),
+                    codec_options,
+                )
                 .map(Cow::into_owned)
                 .map_codec_err()?;
 
@@ -120,21 +126,23 @@ impl CodecPipelineImpl {
         chunk_subset: &ArraySubset,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
-        let array_shape = item.representation().shape_u64();
-        if !chunk_subset.inbounds_shape(&array_shape) {
+        let array_shape = item.shape();
+        if !chunk_subset.inbounds_shape(bytemuck::must_cast_slice(array_shape)) {
             return Err(PyErr::new::<PyValueError, _>(format!(
                 "chunk subset ({chunk_subset}) is out of bounds for array shape ({array_shape:?})"
             )));
         }
-        let data_type_size = item.representation().data_type().size();
+        let data_type_size = item.data_type().size();
 
-        if chunk_subset.start().iter().all(|&o| o == 0) && chunk_subset.shape() == array_shape {
+        if chunk_subset.start().iter().all(|&o| o == 0)
+            && chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(array_shape)
+        {
             // Fast path if the chunk subset spans the entire chunk, no read required
             self.store_chunk_bytes(item, codec_chain, chunk_subset_bytes, codec_options)
         } else {
             // Validate the chunk subset bytes
             chunk_subset_bytes
-                .validate(chunk_subset.num_elements(), data_type_size)
+                .validate(chunk_subset.num_elements(), item.data_type())
                 .map_codec_err()?;
 
             // Retrieve the chunk
@@ -143,7 +151,7 @@ impl CodecPipelineImpl {
             // Update the chunk
             let chunk_bytes_new = update_array_bytes(
                 chunk_bytes_old,
-                &array_shape,
+                bytemuck::must_cast_slice(array_shape),
                 chunk_subset,
                 &chunk_subset_bytes,
                 data_type_size,
@@ -212,14 +220,9 @@ fn array_metadata_to_codec_metadata_v3(
     match metadata {
         ArrayMetadata::V3(metadata) => Ok(metadata.codecs),
         ArrayMetadata::V2(metadata) => {
-            let config = global_config();
             let endianness = data_type_metadata_v2_to_endianness(&metadata.dtype)
                 .map_err(ArrayMetadataV2ToV3Error::InvalidEndianness)?;
-            let data_type = data_type_metadata_v2_to_v3(
-                &metadata.dtype,
-                config.data_type_aliases_v2(),
-                config.data_type_aliases_v3(),
-            )?;
+            let data_type = data_type_metadata_v2_to_v3(&metadata.dtype)?;
 
             codec_metadata_v2_to_v3(
                 metadata.order,
@@ -228,8 +231,6 @@ fn array_metadata_to_codec_metadata_v3(
                 endianness,
                 &metadata.filters,
                 &metadata.compressor,
-                config.codec_aliases_v2(),
-                config.codec_aliases_v3(),
             )
         }
     }
@@ -266,14 +267,10 @@ impl CodecPipelineImpl {
         let codec_chain =
             Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
 
-        let mut codec_options = CodecOptionsBuilder::new();
+        let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
-        codec_options = codec_options.validate_checksums(validate_checksums);
-
-        let codec_options = codec_options.build();
-
-        let chunk_concurrent_minimum = chunk_concurrent_minimum
-            .unwrap_or(zarrs::config::global_config().chunk_concurrent_minimum());
+        let chunk_concurrent_minimum =
+            chunk_concurrent_minimum.unwrap_or(global_config().chunk_concurrent_minimum());
         let chunk_concurrent_maximum =
             chunk_concurrent_maximum.unwrap_or(rayon::current_num_threads());
         let num_threads = num_threads.unwrap_or(rayon::current_num_threads());
@@ -330,7 +327,9 @@ impl CodecPipelineImpl {
                         .clone()
                         .partial_decoder(
                             Arc::new(input_handle),
-                            item.representation(),
+                            item.shape(),
+                            item.data_type(),
+                            item.fill_value(),
                             &codec_options,
                         )
                         .map_codec_err()?;
@@ -358,8 +357,7 @@ impl CodecPipelineImpl {
                     ArrayBytesFixedDisjointView::new(
                         output,
                         // TODO: why is data_type in `item`, it should be derived from `output`, no?
-                        item.representation()
-                            .data_type()
+                        item.data_type()
                             .fixed_size()
                             .ok_or("variable length data type not supported")
                             .map_py_err::<PyTypeError>()?,
@@ -371,7 +369,7 @@ impl CodecPipelineImpl {
 
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if chunk_subset.start().iter().all(|&o| o == 0)
-                    && chunk_subset.shape() == item.representation().shape_u64()
+                    && chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(item.shape())
                 {
                     // See zarrs::array::Array::retrieve_chunk_into
                     if let Some(chunk_encoded) =
@@ -381,16 +379,18 @@ impl CodecPipelineImpl {
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
                         self.codec_chain.decode_into(
                             Cow::Owned(chunk_encoded),
-                            item.representation(),
-                            &mut output_view,
+                            item.shape(),
+                            item.data_type(),
+                            item.fill_value(),
+                            ArrayBytesDecodeIntoTarget::Fixed(&mut output_view),
                             &codec_options,
                         )
                     } else {
                         // The chunk is missing, write the fill value
                         copy_fill_value_into(
-                            item.representation().data_type(),
-                            item.representation().fill_value(),
-                            &mut output_view,
+                            item.data_type(),
+                            item.fill_value(),
+                            ArrayBytesDecodeIntoTarget::Fixed(&mut output_view),
                         )
                     }
                 } else {
@@ -400,7 +400,7 @@ impl CodecPipelineImpl {
                     })?;
                     partial_decoder.partial_decode_into(
                         &chunk_subset,
-                        &mut output_view,
+                        ArrayBytesDecodeIntoTarget::Fixed(&mut output_view),
                         &codec_options,
                     )
                 }
@@ -452,11 +452,7 @@ impl CodecPipelineImpl {
             let store_chunk = |item: chunk_item::WithSubset| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
-                        .extract_array_subset(
-                            &item.subset,
-                            &input_shape,
-                            item.item.representation().data_type(),
-                        )
+                        .extract_array_subset(&item.subset, &input_shape, item.item.data_type())
                         .map_codec_err()?;
                     self.store_chunk_subset_bytes(
                         &item,
@@ -468,12 +464,11 @@ impl CodecPipelineImpl {
                 }
                 InputValue::Constant(constant_value) => {
                     let chunk_subset_bytes = ArrayBytes::new_fill_value(
-                        ArraySize::new(
-                            item.representation().data_type().size(),
-                            item.chunk_subset.num_elements(),
-                        ),
+                        item.data_type(),
+                        item.chunk_subset.num_elements(),
                         constant_value,
-                    );
+                    )
+                    .map_py_err::<PyRuntimeError>()?;
 
                     self.store_chunk_subset_bytes(
                         &item,

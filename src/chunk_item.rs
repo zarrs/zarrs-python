@@ -8,8 +8,7 @@ use pyo3::{
 };
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use zarrs::{
-    array::{ChunkRepresentation, DataType, FillValue},
-    array_subset::ArraySubset,
+    array::{ArraySubset, ChunkShape, DataType, FillValue},
     metadata::v3::MetadataV3,
     storage::StoreKey,
 };
@@ -18,7 +17,9 @@ use crate::utils::PyErrExt;
 
 pub(crate) trait ChunksItem {
     fn key(&self) -> &StoreKey;
-    fn representation(&self) -> &ChunkRepresentation;
+    fn shape(&self) -> &[NonZeroU64];
+    fn data_type(&self) -> &DataType;
+    fn fill_value(&self) -> &FillValue;
 }
 
 #[derive(Clone)]
@@ -26,7 +27,9 @@ pub(crate) trait ChunksItem {
 #[pyclass]
 pub(crate) struct Basic {
     key: StoreKey,
-    representation: ChunkRepresentation,
+    shape: ChunkShape,
+    data_type: DataType,
+    fill_value: FillValue,
 }
 
 fn fill_value_to_bytes(dtype: &str, fill_value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
@@ -62,7 +65,8 @@ impl Basic {
     fn new(byte_interface: &Bound<'_, PyAny>, chunk_spec: &Bound<'_, PyAny>) -> PyResult<Self> {
         let path: String = byte_interface.getattr("path")?.extract()?;
 
-        let chunk_shape = chunk_spec.getattr("shape")?.extract()?;
+        let shape: Vec<NonZeroU64> = chunk_spec.getattr("shape")?.extract()?;
+
         let mut dtype: String = chunk_spec
             .getattr("dtype")?
             .call_method0("to_native_dtype")?
@@ -73,11 +77,14 @@ impl Basic {
             // but maps it to "string" internally https://github.com/LDeakin/zarrs/blob/0532fe983b7b42b59dbf84e50a2fe5e6f7bad4ce/zarrs_metadata/src/v2_to_v3.rs#L288
             dtype = String::from("string");
         }
+        let data_type = get_data_type_from_dtype(&dtype)?;
         let fill_value: Bound<'_, PyAny> = chunk_spec.getattr("fill_value")?;
-        let fill_value_bytes = fill_value_to_bytes(&dtype, &fill_value)?;
+        let fill_value = FillValue::new(fill_value_to_bytes(&dtype, &fill_value)?);
         Ok(Self {
             key: StoreKey::new(path).map_py_err::<PyValueError>()?,
-            representation: get_chunk_representation(chunk_shape, &dtype, fill_value_bytes)?,
+            shape,
+            data_type,
+            fill_value,
         })
     }
 }
@@ -102,8 +109,15 @@ impl WithSubset {
         subset: Vec<Bound<'_, PySlice>>,
         shape: Vec<u64>,
     ) -> PyResult<Self> {
-        let chunk_subset =
-            selection_to_array_subset(&chunk_subset, &item.representation.shape_u64())?;
+        let chunk_subset = selection_to_array_subset(&chunk_subset, &item.shape)?;
+        let shape: Vec<NonZeroU64> = shape
+            .into_iter()
+            .map(|dim| {
+                NonZeroU64::new(dim)
+                    .ok_or("subset dimensions must be greater than zero")
+                    .map_py_err::<PyValueError>()
+            })
+            .collect::<PyResult<Vec<NonZeroU64>>>()?;
         let subset = selection_to_array_subset(&subset, &shape)?;
         // Check that subset and chunk_subset have the same number of elements.
         // This permits broadcasting of a constant input.
@@ -124,8 +138,14 @@ impl ChunksItem for Basic {
     fn key(&self) -> &StoreKey {
         &self.key
     }
-    fn representation(&self) -> &ChunkRepresentation {
-        &self.representation
+    fn shape(&self) -> &[NonZeroU64] {
+        &self.shape
+    }
+    fn data_type(&self) -> &DataType {
+        &self.data_type
+    }
+    fn fill_value(&self) -> &FillValue {
+        &self.fill_value
     }
 }
 
@@ -133,30 +153,21 @@ impl ChunksItem for WithSubset {
     fn key(&self) -> &StoreKey {
         &self.item.key
     }
-    fn representation(&self) -> &ChunkRepresentation {
-        &self.item.representation
+    fn shape(&self) -> &[NonZeroU64] {
+        &self.item.shape
+    }
+    fn data_type(&self) -> &DataType {
+        &self.item.data_type
+    }
+    fn fill_value(&self) -> &FillValue {
+        &self.item.fill_value
     }
 }
 
-fn get_chunk_representation(
-    chunk_shape: Vec<u64>,
-    dtype: &str,
-    fill_value: Vec<u8>,
-) -> PyResult<ChunkRepresentation> {
-    // Get the chunk representation
-    let data_type = DataType::from_metadata(
-        &MetadataV3::new(dtype),
-        zarrs::config::global_config().data_type_aliases_v3(),
-    )
-    .map_py_err::<PyRuntimeError>()?;
-    let chunk_shape = chunk_shape
-        .into_iter()
-        .map(|x| NonZeroU64::new(x).expect("chunk shapes should always be non-zero"))
-        .collect();
-    let chunk_representation =
-        ChunkRepresentation::new(chunk_shape, data_type, FillValue::new(fill_value))
-            .map_py_err::<PyValueError>()?;
-    Ok(chunk_representation)
+fn get_data_type_from_dtype(dtype: &str) -> PyResult<DataType> {
+    let data_type =
+        DataType::from_metadata(&MetadataV3::new(dtype)).map_py_err::<PyRuntimeError>()?;
+    Ok(data_type)
 }
 
 fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::ops::Range<u64>> {
@@ -180,7 +191,7 @@ fn slice_to_range(slice: &Bound<'_, PySlice>, length: isize) -> PyResult<std::op
 
 fn selection_to_array_subset(
     selection: &[Bound<'_, PySlice>],
-    shape: &[u64],
+    shape: &[NonZeroU64],
 ) -> PyResult<ArraySubset> {
     if selection.is_empty() {
         Ok(ArraySubset::new_with_shape(vec![1; shape.len()]))
@@ -188,7 +199,7 @@ fn selection_to_array_subset(
         let chunk_ranges = selection
             .iter()
             .zip(shape)
-            .map(|(selection, &shape)| slice_to_range(selection, isize::try_from(shape)?))
+            .map(|(selection, &shape)| slice_to_range(selection, isize::try_from(shape.get())?))
             .collect::<PyResult<Vec<_>>>()?;
         Ok(ArraySubset::new_with_ranges(&chunk_ranges))
     }
