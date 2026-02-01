@@ -20,12 +20,12 @@ use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
-    ArrayPartialDecoderTraits, ArraySubset, ArrayToBytesCodecTraits, ChunkShapeTraits, CodecChain,
-    CodecOptions, DataType, DataTypeExt, FillValue, StoragePartialDecoder, copy_fill_value_into,
-    update_array_bytes,
+    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions, DataType,
+    FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
+use zarrs::plugin::ZarrVersion3;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
@@ -230,10 +230,14 @@ impl CodecPipelineImpl {
         direct_io: bool,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
-        let metadata = match serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()? {
-            ArrayMetadata::V2(v2) => array_metadata_v2_to_v3(&v2).map_py_err::<PyTypeError>()?,
-            ArrayMetadata::V3(v3) => v3,
-        };
+        let (zarr_version, metadata) =
+            match serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()? {
+                ArrayMetadata::V2(v2) => (
+                    ZarrVersion::V2,
+                    array_metadata_v2_to_v3(&v2).map_py_err::<PyTypeError>()?,
+                ),
+                ArrayMetadata::V3(v3) => (ZarrVersion::V3, v3),
+            };
         let codec_metadata = metadata.codecs;
         let codec_chain =
             Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
@@ -250,7 +254,7 @@ impl CodecPipelineImpl {
 
         let data_type = DataType::from_metadata(&metadata.data_type).map_py_err::<PyTypeError>()?;
         let fill_value = data_type
-            .fill_value(&metadata.fill_value)
+            .fill_value(&metadata.fill_value, zarr_version)
             .map_py_err::<PyTypeError>()?;
 
         Ok(Self {
@@ -318,7 +322,6 @@ impl CodecPipelineImpl {
             // For variable length data types, need a codepath with non `_into` methods.
             // Collect all the subsets and copy into value on the Python side?
             let update_chunk_subset = |item: ChunkItem| {
-                let shape = item.shape();
                 let mut output_view = unsafe {
                     // TODO: Is the following correct?
                     //       can we guarantee that when this function is called from Python with arbitrary arguments?
