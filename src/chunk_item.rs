@@ -113,11 +113,9 @@ impl WithSubset {
         let shape: Vec<NonZeroU64> = shape
             .into_iter()
             .map(|dim| {
-                NonZeroU64::new(dim).ok_or_else(|| {
-                    PyErr::new::<PyValueError, _>(
-                        "subset dimensions must be greater than zero".to_string(),
-                    )
-                })
+                NonZeroU64::new(dim)
+                    .ok_or("subset dimensions must be greater than zero")
+                    .map_py_err::<PyValueError>()
             })
             .collect::<PyResult<Vec<NonZeroU64>>>()?;
         let subset = selection_to_array_subset(&subset, &shape)?;
