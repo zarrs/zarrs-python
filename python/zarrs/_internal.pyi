@@ -8,6 +8,17 @@ import numpy.typing
 import zarr.abc.store
 
 @typing.final
+class ChunkItem:
+    def __new__(
+        cls,
+        key: builtins.str,
+        chunk_subset: typing.Sequence[slice],
+        chunk_shape: typing.Sequence[builtins.int],
+        subset: typing.Sequence[slice],
+        shape: typing.Sequence[builtins.int],
+    ) -> ChunkItem: ...
+
+@typing.final
 class CodecPipelineImpl:
     def __new__(
         cls,
@@ -31,14 +42,3 @@ class CodecPipelineImpl:
         value: numpy.typing.NDArray[typing.Any],
         write_empty_chunks: builtins.bool,
     ) -> None: ...
-
-@typing.final
-class ChunkItem:
-    def __new__(
-        cls,
-        key: builtins.str,
-        chunk_subset: typing.Sequence[slice],
-        chunk_shape: typing.Sequence[builtins.int],
-        subset: typing.Sequence[slice],
-        shape: typing.Sequence[builtins.int],
-    ) -> ChunkItem: ...
