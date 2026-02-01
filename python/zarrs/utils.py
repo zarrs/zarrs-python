@@ -10,7 +10,7 @@ import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.indexing import SelectorTuple, is_integer
 
-from zarrs._internal import WithSubset
+from zarrs._internal import ChunkItem
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -148,7 +148,7 @@ def get_implicit_fill_value(dtype: ZDType, fill_value: Any) -> Any:
 
 @dataclass(frozen=True)
 class RustChunkInfo:
-    chunk_info_with_indices: list[WithSubset]
+    chunk_info_with_indices: list[ChunkItem]
     write_empty_chunks: bool
 
 
@@ -160,7 +160,7 @@ def make_chunk_info_for_rust_with_indices(
     shape: tuple[int, ...],
 ) -> RustChunkInfo:
     shape = shape if shape else (1,)  # constant array
-    chunk_info_with_indices: list[WithSubset] = []
+    chunk_info_with_indices: list[ChunkItem] = []
     write_empty_chunks: bool = True
     for (
         byte_getter,
@@ -194,7 +194,7 @@ def make_chunk_info_for_rust_with_indices(
                 f"{shape_chunk_selection} != {shape_chunk_selection_slices}"
             )
         chunk_info_with_indices.append(
-            WithSubset(
+            ChunkItem(
                 key=byte_getter.path,
                 chunk_subset=chunk_selection_as_slices,
                 chunk_shape=chunk_spec.shape,

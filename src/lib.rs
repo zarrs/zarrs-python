@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-use chunk_item::WithSubset;
+use chunk_item::ChunkItem;
 use itertools::Itertools;
 use numpy::npyffi::PyArrayObject;
 use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
@@ -57,7 +57,7 @@ pub struct CodecPipelineImpl {
 impl CodecPipelineImpl {
     fn retrieve_chunk_bytes<'a>(
         &self,
-        item: &WithSubset,
+        item: &ChunkItem,
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
@@ -82,7 +82,7 @@ impl CodecPipelineImpl {
 
     fn store_chunk_bytes(
         &self,
-        item: &WithSubset,
+        item: &ChunkItem,
         codec_chain: &CodecChain,
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
@@ -114,7 +114,7 @@ impl CodecPipelineImpl {
 
     fn store_chunk_subset_bytes(
         &self,
-        item: &WithSubset,
+        item: &ChunkItem,
         codec_chain: &CodecChain,
         chunk_subset_bytes: ArrayBytes,
         codec_options: &CodecOptions,
@@ -268,7 +268,7 @@ impl CodecPipelineImpl {
     fn retrieve_chunks_and_apply_index(
         &self,
         py: Python,
-        chunk_descriptions: Vec<chunk_item::WithSubset>, // FIXME: Ref / iterable?
+        chunk_descriptions: Vec<chunk_item::ChunkItem>, // FIXME: Ref / iterable?
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
@@ -317,7 +317,7 @@ impl CodecPipelineImpl {
             // FIXME: the `decode_into` methods only support fixed length data types.
             // For variable length data types, need a codepath with non `_into` methods.
             // Collect all the subsets and copy into value on the Python side?
-            let update_chunk_subset = |item: WithSubset| {
+            let update_chunk_subset = |item: ChunkItem| {
                 let shape = item.shape();
                 let mut output_view = unsafe {
                     // TODO: Is the following correct?
@@ -380,7 +380,7 @@ impl CodecPipelineImpl {
     fn store_chunks_with_indices(
         &self,
         py: Python,
-        chunk_descriptions: Vec<chunk_item::WithSubset>,
+        chunk_descriptions: Vec<chunk_item::ChunkItem>,
         value: &Bound<'_, PyUntypedArray>,
         write_empty_chunks: bool,
     ) -> PyResult<()> {
@@ -408,7 +408,7 @@ impl CodecPipelineImpl {
         codec_options.set_store_empty_chunks(write_empty_chunks);
 
         py.detach(move || {
-            let store_chunk = |item: WithSubset| match &input {
+            let store_chunk = |item: ChunkItem| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
                         .extract_array_subset(&item.subset, &input_shape, &self.data_type)
@@ -454,7 +454,7 @@ impl CodecPipelineImpl {
 fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<CodecPipelineImpl>()?;
-    m.add_class::<chunk_item::WithSubset>()?;
+    m.add_class::<chunk_item::ChunkItem>()?;
     Ok(())
 }
 

@@ -4,7 +4,7 @@ use zarrs::array::{
     concurrency::calc_concurrency_outer_inner,
 };
 
-use crate::{CodecPipelineImpl, chunk_item::WithSubset, utils::PyCodecErrExt as _};
+use crate::{CodecPipelineImpl, chunk_item::ChunkItem, utils::PyCodecErrExt as _};
 
 pub trait ChunkConcurrentLimitAndCodecOptions {
     fn get_chunk_concurrent_limit_and_codec_options(
@@ -13,7 +13,7 @@ pub trait ChunkConcurrentLimitAndCodecOptions {
     ) -> PyResult<Option<(usize, CodecOptions)>>;
 }
 
-impl ChunkConcurrentLimitAndCodecOptions for Vec<WithSubset> {
+impl ChunkConcurrentLimitAndCodecOptions for Vec<ChunkItem> {
     fn get_chunk_concurrent_limit_and_codec_options(
         &self,
         codec_pipeline_impl: &CodecPipelineImpl,

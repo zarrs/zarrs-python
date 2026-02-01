@@ -30,7 +30,7 @@ fn to_nonzero_u64_vec(v: Vec<u64>) -> PyResult<Vec<NonZeroU64>> {
 #[derive(Clone)]
 #[gen_stub_pyclass]
 #[pyclass]
-pub(crate) struct WithSubset {
+pub(crate) struct ChunkItem {
     key: StoreKey,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,
@@ -40,7 +40,7 @@ pub(crate) struct WithSubset {
 
 #[gen_stub_pymethods]
 #[pymethods]
-impl WithSubset {
+impl ChunkItem {
     #[new]
     #[allow(clippy::needless_pass_by_value)]
     fn new(
@@ -72,7 +72,7 @@ impl WithSubset {
         })
     }
 }
-impl WithSubset {
+impl ChunkItem {
     pub fn key(&self) -> &StoreKey {
         &self.key
     }

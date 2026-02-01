@@ -22,18 +22,18 @@ class CodecPipelineImpl:
     ) -> CodecPipelineImpl: ...
     def retrieve_chunks_and_apply_index(
         self,
-        chunk_descriptions: typing.Sequence[WithSubset],
+        chunk_descriptions: typing.Sequence[ChunkItem],
         value: numpy.typing.NDArray[typing.Any],
     ) -> None: ...
     def store_chunks_with_indices(
         self,
-        chunk_descriptions: typing.Sequence[WithSubset],
+        chunk_descriptions: typing.Sequence[ChunkItem],
         value: numpy.typing.NDArray[typing.Any],
         write_empty_chunks: builtins.bool,
     ) -> None: ...
 
 @typing.final
-class WithSubset:
+class ChunkItem:
     def __new__(
         cls,
         key: builtins.str,
@@ -41,4 +41,4 @@ class WithSubset:
         chunk_shape: typing.Sequence[builtins.int],
         subset: typing.Sequence[slice],
         shape: typing.Sequence[builtins.int],
-    ) -> WithSubset: ...
+    ) -> ChunkItem: ...
