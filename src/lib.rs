@@ -257,7 +257,7 @@ impl CodecPipelineImpl {
             .or_else(|_| {
                 Err(match &metadata {
                     ArrayMetadata::V2(metadata) => format!(
-                        "incompatible fill value metadata: dtype={}, fill_value={}",
+                        "incompatible fill value metadata: dtype={:?}, fill_value={}",
                         metadata.dtype, metadata.fill_value
                     ),
                     ArrayMetadata::V3(metadata) => format!(
