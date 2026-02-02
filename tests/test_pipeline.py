@@ -18,6 +18,11 @@ from zarr.storage import LocalStore
 
 import zarrs
 
+# Create a single temp directory for all test arrays
+_test_tmpdir = tempfile.TemporaryDirectory(prefix="zarrs_test_")
+_test_arrays_dir = Path(_test_tmpdir.name)
+_test_array_counter = 0
+
 axis_size_ = 10
 chunk_size_ = axis_size_ // 2
 fill_value_ = 32767
@@ -74,9 +79,14 @@ def pytest_generate_tests(metafunc):
                     if sum(isinstance(i, EllipsisType) for i in index) > 1:
                         continue
                     for indexing_method_param in indexing_method_params:
+                        global _test_array_counter
                         arr = gen_arr(
-                            fill_value_, Path(tempfile.mktemp()), dimensionality, format
+                            fill_value_,
+                            _test_arrays_dir / str(_test_array_counter),
+                            dimensionality,
+                            format,
                         )
+                        _test_array_counter += 1
                         indexing_method = indexing_method_param.values[0]
                         dimensionality_id = f"{dimensionality}d"
                         id = "-".join(
