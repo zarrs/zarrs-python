@@ -230,17 +230,15 @@ impl CodecPipelineImpl {
         direct_io: bool,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
-        let (zarr_version, metadata) =
-            match serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()? {
-                ArrayMetadata::V2(v2) => (
-                    ZarrVersion::V2,
-                    array_metadata_v2_to_v3(&v2).map_py_err::<PyTypeError>()?,
-                ),
-                ArrayMetadata::V3(v3) => (ZarrVersion::V3, v3),
-            };
-        let codec_metadata = metadata.codecs;
+        let metadata = serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
+        let metadata_v3 = match &metadata {
+            ArrayMetadata::V2(v2) => {
+                Cow::Owned(array_metadata_v2_to_v3(v2).map_py_err::<PyTypeError>()?)
+            }
+            ArrayMetadata::V3(v3) => Cow::Borrowed(v3),
+        };
         let codec_chain =
-            Arc::new(CodecChain::from_metadata(&codec_metadata).map_py_err::<PyTypeError>()?);
+            Arc::new(CodecChain::from_metadata(&metadata_v3.codecs).map_py_err::<PyTypeError>()?);
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
         let chunk_concurrent_minimum =
@@ -252,9 +250,22 @@ impl CodecPipelineImpl {
         let store: ReadableWritableListableStorage =
             (&store_config).try_into().map_py_err::<PyTypeError>()?;
 
-        let data_type = DataType::from_metadata(&metadata.data_type).map_py_err::<PyTypeError>()?;
+        let data_type =
+            DataType::from_metadata(&metadata_v3.data_type).map_py_err::<PyTypeError>()?;
         let fill_value = data_type
-            .fill_value(&metadata.fill_value, zarr_version)
+            .fill_value(&metadata_v3.fill_value, ZarrVersion::V3)
+            .or_else(|_| {
+                Err(match &metadata {
+                    ArrayMetadata::V2(metadata) => format!(
+                        "incompatible fill value metadata: dtype={}, fill_value={}",
+                        metadata.dtype, metadata.fill_value
+                    ),
+                    ArrayMetadata::V3(metadata) => format!(
+                        "incompatible fill value metadata: data_type={}, fill_value={}",
+                        metadata.data_type, metadata.fill_value
+                    ),
+                })
+            })
             .map_py_err::<PyTypeError>()?;
 
         Ok(Self {
