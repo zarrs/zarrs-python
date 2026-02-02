@@ -3,7 +3,6 @@ from __future__ import annotations
 import operator
 import pickle
 import platform
-from contextlib import contextmanager
 from functools import reduce
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeAlias
@@ -17,7 +16,7 @@ import zarr.codecs
 import zarrs
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Generator
     from types import EllipsisType
 
     Index: TypeAlias = tuple[int | slice | np.ndarray | EllipsisType, ...]
@@ -97,8 +96,8 @@ def test_pipeline_used(
     assert spy_write.call_count == 1
 
 
-@contextmanager
-def use_zarrs_direct_io():
+@pytest.fixture
+def use_zarrs_direct_io() -> Generator[None]:
     zarr.config.set(
         {
             "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
@@ -117,15 +116,15 @@ def use_zarrs_direct_io():
 @pytest.mark.skipif(
     platform.system() != "Linux", reason="Can only run O_DIRECT on linux"
 )
-def test_direct_io(tmp_path: Path):
-    with use_zarrs_direct_io():
-        z = zarr.create_array(
-            tmp_path / "foo.zarr",
-            dtype=np.float64,
-            shape=(80, 100),
-            chunks=(10, 10),
-            shards=(20, 20),
-        )
-        ground_truth_arr = np.random.random(z.shape)
-        z[...] = ground_truth_arr
-        np.testing.assert_array_equal(z[...], ground_truth_arr)
+@pytest.mark.usefixtures("use_zarrs_direct_io")
+def test_direct_io(tmp_path: Path) -> None:
+    z = zarr.create_array(
+        tmp_path / "foo.zarr",
+        dtype=np.float64,
+        shape=(80, 100),
+        chunks=(10, 10),
+        shards=(20, 20),
+    )
+    ground_truth_arr = np.random.random(z.shape)
+    z[...] = ground_truth_arr
+    np.testing.assert_array_equal(z[...], ground_truth_arr)
