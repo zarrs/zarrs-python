@@ -4,7 +4,7 @@ use zarrs::array::{
     concurrency::calc_concurrency_outer_inner,
 };
 
-use crate::{CodecPipelineImpl, chunk_item::ChunksItem, utils::PyCodecErrExt as _};
+use crate::{CodecPipelineImpl, chunk_item::ChunkItem, utils::PyCodecErrExt as _};
 
 pub trait ChunkConcurrentLimitAndCodecOptions {
     fn get_chunk_concurrent_limit_and_codec_options(
@@ -13,22 +13,19 @@ pub trait ChunkConcurrentLimitAndCodecOptions {
     ) -> PyResult<Option<(usize, CodecOptions)>>;
 }
 
-impl<T> ChunkConcurrentLimitAndCodecOptions for Vec<T>
-where
-    T: ChunksItem,
-{
+impl ChunkConcurrentLimitAndCodecOptions for Vec<ChunkItem> {
     fn get_chunk_concurrent_limit_and_codec_options(
         &self,
         codec_pipeline_impl: &CodecPipelineImpl,
     ) -> PyResult<Option<(usize, CodecOptions)>> {
         let num_chunks = self.len();
-        let Some(chunk_descriptions0) = self.first() else {
+        let Some(item) = self.first() else {
             return Ok(None);
         };
 
         let codec_concurrency = codec_pipeline_impl
             .codec_chain
-            .recommended_concurrency(chunk_descriptions0.shape(), chunk_descriptions0.data_type())
+            .recommended_concurrency(&item.shape, &codec_pipeline_impl.data_type)
             .map_codec_err()?;
 
         let min_concurrent_chunks =

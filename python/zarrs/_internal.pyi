@@ -8,8 +8,15 @@ import numpy.typing
 import zarr.abc.store
 
 @typing.final
-class Basic:
-    def __new__(cls, byte_interface: typing.Any, chunk_spec: typing.Any) -> Basic: ...
+class ChunkItem:
+    def __new__(
+        cls,
+        key: builtins.str,
+        chunk_subset: typing.Sequence[slice],
+        chunk_shape: typing.Sequence[builtins.int],
+        subset: typing.Sequence[slice],
+        shape: typing.Sequence[builtins.int],
+    ) -> ChunkItem: ...
 
 @typing.final
 class CodecPipelineImpl:
@@ -26,22 +33,12 @@ class CodecPipelineImpl:
     ) -> CodecPipelineImpl: ...
     def retrieve_chunks_and_apply_index(
         self,
-        chunk_descriptions: typing.Sequence[WithSubset],
+        chunk_descriptions: typing.Sequence[ChunkItem],
         value: numpy.typing.NDArray[typing.Any],
     ) -> None: ...
     def store_chunks_with_indices(
         self,
-        chunk_descriptions: typing.Sequence[WithSubset],
+        chunk_descriptions: typing.Sequence[ChunkItem],
         value: numpy.typing.NDArray[typing.Any],
         write_empty_chunks: builtins.bool,
     ) -> None: ...
-
-@typing.final
-class WithSubset:
-    def __new__(
-        cls,
-        item: Basic,
-        chunk_subset: typing.Sequence[slice],
-        subset: typing.Sequence[slice],
-        shape: typing.Sequence[builtins.int],
-    ) -> WithSubset: ...

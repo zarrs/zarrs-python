@@ -4,7 +4,7 @@ use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
 use zarrs::array::CodecError;
 
-use crate::{ChunksItem, WithSubset};
+use crate::ChunkItem;
 
 pub(crate) trait PyErrExt<T> {
     fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T>;
@@ -55,7 +55,7 @@ impl PyUntypedArrayExt for Bound<'_, PyUntypedArray> {
     }
 }
 
-pub fn is_whole_chunk(item: &WithSubset) -> bool {
+pub fn is_whole_chunk(item: &ChunkItem) -> bool {
     item.chunk_subset.start().iter().all(|&o| o == 0)
-        && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(item.shape())
+        && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(&item.shape)
 }
