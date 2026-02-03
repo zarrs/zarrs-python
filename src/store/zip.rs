@@ -53,7 +53,7 @@ impl TryInto<ReadableListableStorage> for &ZipStoreConfig {
 
         // Wrap it in the Zip adapter
         // ZipStorageAdapter only supports read operations (ReadableListableStorage)
-        // 
+        //
         // PERFORMANCE NOTE: zarrs_zip (v0.4.0) may be slower than Python's zipfile module
         // for ZIP stores due to:
         // 1. Less mature optimizations (Python's zipfile is highly optimized C code)
