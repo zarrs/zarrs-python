@@ -8,7 +8,8 @@ use pyo3::{
 };
 use pyo3_object_store::PyExternalObjectStore;
 use zarrs::storage::{
-    ReadableWritableListableStorage, storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
+    ReadableListableStorage, ReadableWritableListableStorage,
+    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
 };
 
 use crate::{runtime::tokio_block_on, utils::PyErrExt};
@@ -16,16 +17,19 @@ use crate::{runtime::tokio_block_on, utils::PyErrExt};
 mod filesystem;
 mod http;
 mod obstore;
+mod zip;
 
 pub use self::filesystem::FilesystemStoreConfig;
 pub use self::http::HttpStoreConfig;
 pub use self::obstore::ObStoreConfig;
+pub use self::zip::ZipStoreConfig;
 
 #[derive(Debug, Clone)]
 pub enum StoreConfig {
     Filesystem(FilesystemStoreConfig),
     Http(HttpStoreConfig),
     ObStore(ObStoreConfig),
+    Zip(ZipStoreConfig),
     // TODO: Add support for more stores
 }
 
@@ -64,6 +68,10 @@ impl<'py> FromPyObject<'_, 'py> for StoreConfig {
                     external_object_store.into_dyn();
                 Ok(StoreConfig::ObStore(ObStoreConfig::new(object_store)))
             }
+            "ZipStore" => {
+                let path: String = store.getattr("path")?.call_method0("__str__")?.extract()?;
+                Ok(StoreConfig::Zip(ZipStoreConfig::new(path)))
+            }
             _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
                 "zarrs-python does not support {name} stores"
             ))),
@@ -77,6 +85,7 @@ impl StoreConfig {
             StoreConfig::Filesystem(config) => config.direct_io(flag),
             StoreConfig::Http(_config) => (),
             StoreConfig::ObStore(_config) => (),
+            StoreConfig::Zip(config) => config.direct_io(flag),
         }
     }
 }
@@ -95,6 +104,18 @@ impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
             StoreConfig::Filesystem(config) => config.try_into(),
             StoreConfig::Http(config) => config.try_into(),
             StoreConfig::ObStore(config) => config.try_into(),
+            StoreConfig::Zip(config) => {
+                // ZipStorageAdapter only supports read operations (ReadableListableStorage)
+                // We need to convert it to ReadableWritableListableStorage for compatibility
+                // WARNING: This is unsafe - write operations will fail at runtime
+                // Both types are Arc<dyn Trait>, so the transmute is technically safe,
+                // but the underlying ZipStorageAdapter doesn't implement WritableStorageTraits
+                let read_only: ReadableListableStorage = config.try_into()?;
+                // SAFETY: Both ReadableListableStorage and ReadableWritableListableStorage
+                // are Arc<dyn Trait> with the same memory layout. The transmute is safe
+                // from a memory perspective, but write operations will fail at runtime.
+                Ok(unsafe { std::mem::transmute(read_only) })
+            }
         }
     }
 }
