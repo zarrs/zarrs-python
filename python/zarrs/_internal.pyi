@@ -8,6 +8,40 @@ import numpy.typing
 import zarr.abc.store
 
 @typing.final
+class ArrayImpl:
+    @property
+    def shape(self) -> builtins.list[builtins.int]: ...
+    @property
+    def ndim(self) -> builtins.int: ...
+    @property
+    def dtype(self) -> builtins.str: ...
+    def __new__(
+        cls,
+        store_config: zarr.abc.store.Store,
+        path: builtins.str,
+        *,
+        validate_checksums: builtins.bool = False,
+        num_threads: builtins.int | None = None,
+        direct_io: builtins.bool = False,
+    ) -> ArrayImpl: ...
+    def retrieve(
+        self,
+        ranges: typing.Sequence[tuple[builtins.int, builtins.int]],
+        output: numpy.typing.NDArray[typing.Any],
+    ) -> None: ...
+    def store(
+        self,
+        ranges: typing.Sequence[tuple[builtins.int, builtins.int]],
+        input: numpy.typing.NDArray[typing.Any],
+    ) -> None: ...
+    def copy_from(
+        self,
+        source: ArrayImpl,
+        source_ranges: typing.Sequence[tuple[builtins.int, builtins.int]],
+        dest_ranges: typing.Sequence[tuple[builtins.int, builtins.int]],
+    ) -> None: ...
+
+@typing.final
 class ChunkItem:
     def __new__(
         cls,
