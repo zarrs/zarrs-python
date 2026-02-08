@@ -21,6 +21,7 @@ class ArrayImpl:
         path: builtins.str,
         *,
         validate_checksums: builtins.bool = False,
+        chunk_concurrent_minimum: builtins.int | None = None,
         num_threads: builtins.int | None = None,
         direct_io: builtins.bool = False,
     ) -> ArrayImpl: ...
