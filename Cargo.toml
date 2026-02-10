@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.27.1", features = ["abi3-py311"] }
-zarrs = { version = "0.23.0", features = ["async", "zlib", "pcodec", "bz2"] }
+zarrs = { version = "0.23.1", features = ["async", "zlib", "pcodec", "bz2"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
@@ -26,6 +26,7 @@ itertools = "0.14.0"
 bytemuck = { version = "1.24.0", features = ["must_cast"] }
 pyo3-object_store = "0.7.0" # object_store 0.12
 zarrs_object_store = "0.5.0" # object_store 0.12
+mimalloc = { version = "0.1", default-features = false }
 
 [profile.release]
 lto = true

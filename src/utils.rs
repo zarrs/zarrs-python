@@ -1,7 +1,11 @@
 use std::fmt::Display;
+use std::ptr::NonNull;
 
-use numpy::{PyUntypedArray, PyUntypedArrayMethods};
+use numpy::npyffi::PyArrayObject;
+use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
+use pyo3::exceptions::PyValueError;
 use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
+use unsafe_cell_slice::UnsafeCellSlice;
 use zarrs::array::CodecError;
 
 use crate::ChunkItem;
@@ -58,4 +62,54 @@ impl PyUntypedArrayExt for Bound<'_, PyUntypedArray> {
 pub fn is_whole_chunk(item: &ChunkItem) -> bool {
     item.chunk_subset.start().iter().all(|&o| o == 0)
         && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(&item.shape)
+}
+
+pub fn py_untyped_array_to_array_object<'a>(
+    value: &'a Bound<'_, PyUntypedArray>,
+) -> &'a PyArrayObject {
+    // TODO: Upstream a PyUntypedArray.as_array_ref()?
+    //       https://github.com/zarrs/zarrs-python/pull/80/files/75be39184905d688ac04a5f8bca08c5241c458cd#r1918365296
+    let array_object_ptr: NonNull<PyArrayObject> = NonNull::new(value.as_array_ptr())
+        .expect("bug in numpy crate: Bound<'_, PyUntypedArray>::as_array_ptr unexpectedly returned a null pointer");
+    let array_object: &'a PyArrayObject = unsafe {
+        // SAFETY: the array object pointed to by array_object_ptr is valid for 'a
+        array_object_ptr.as_ref()
+    };
+    array_object
+}
+
+pub fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
+    if !value.is_c_contiguous() {
+        return Err(PyErr::new::<PyValueError, _>(
+            "input array must be a C contiguous array".to_string(),
+        ));
+    }
+    let array_object: &PyArrayObject = py_untyped_array_to_array_object(value);
+    let array_data = array_object.data.cast::<u8>();
+    let array_len = value.len() * value.dtype().itemsize();
+    let slice = unsafe {
+        // SAFETY: array_data is a valid pointer to a u8 array of length array_len
+        debug_assert!(!array_data.is_null());
+        std::slice::from_raw_parts(array_data, array_len)
+    };
+    Ok(slice)
+}
+
+pub fn nparray_to_unsafe_cell_slice<'a>(
+    value: &'a Bound<'_, PyUntypedArray>,
+) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
+    if !value.is_c_contiguous() {
+        return Err(PyErr::new::<PyValueError, _>(
+            "input array must be a C contiguous array".to_string(),
+        ));
+    }
+    let array_object: &PyArrayObject = py_untyped_array_to_array_object(value);
+    let array_data = array_object.data.cast::<u8>();
+    let array_len = value.len() * value.dtype().itemsize();
+    let output = unsafe {
+        // SAFETY: array_data is a valid pointer to a u8 array of length array_len
+        debug_assert!(!array_data.is_null());
+        std::slice::from_raw_parts_mut(array_data, array_len)
+    };
+    Ok(UnsafeCellSlice::new(output))
 }
