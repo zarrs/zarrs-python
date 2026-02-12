@@ -16,9 +16,9 @@ if TYPE_CHECKING:
     from types import EllipsisType
 
     from zarr.abc.store import ByteGetter, ByteSetter
-    from zarr.dtype import ZDType
     from zarr.core.array_spec import ArraySpec
     from zarr.core.indexing import SelectorTuple
+    from zarr.dtype import ZDType
 
 
 # adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
