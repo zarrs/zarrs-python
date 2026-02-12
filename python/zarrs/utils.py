@@ -7,7 +7,7 @@ from functools import reduce
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from zarr.core.indexing import SelectorTuple, is_integer
+from zarr.core.indexing import is_integer
 
 from zarrs._internal import ChunkItem
 
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.dtype import ZDType
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.indexing import SelectorTuple
 
 
 # adapted from https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
