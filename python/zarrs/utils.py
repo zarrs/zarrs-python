@@ -170,14 +170,6 @@ def make_chunk_info_for_rust_with_indices(
         _,
     ) in batch_info:
         write_empty_chunks = chunk_spec.config.write_empty_chunks
-        if chunk_spec.fill_value is None:
-            chunk_spec = ArraySpec(
-                chunk_spec.shape,
-                chunk_spec.dtype,
-                get_implicit_fill_value(chunk_spec.dtype, chunk_spec.fill_value),
-                chunk_spec.config,
-                chunk_spec.prototype,
-            )
         out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
         shape_chunk_selection_slices = get_shape_for_selector(
