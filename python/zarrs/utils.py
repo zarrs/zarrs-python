@@ -7,7 +7,6 @@ from functools import reduce
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from zarr.core.array_spec import ArraySpec
 from zarr.core.indexing import SelectorTuple, is_integer
 
 from zarrs._internal import ChunkItem
