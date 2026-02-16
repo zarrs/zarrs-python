@@ -1,22 +1,22 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::ptr::NonNull;
 use std::sync::Arc;
 
 use chunk_item::ChunkItem;
 use itertools::Itertools;
-use numpy::npyffi::PyArrayObject;
-use numpy::{PyArrayDescrMethods, PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
-use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
@@ -28,6 +28,7 @@ use zarrs::convert::array_metadata_v2_to_v3;
 use zarrs::plugin::ZarrVersion;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
+mod array;
 mod chunk_item;
 mod concurrency;
 mod runtime;
@@ -154,56 +155,6 @@ impl CodecPipelineImpl {
             self.store_chunk_bytes(item, codec_chain, chunk_bytes_new, codec_options)
         }
     }
-
-    fn py_untyped_array_to_array_object<'a>(
-        value: &'a Bound<'_, PyUntypedArray>,
-    ) -> &'a PyArrayObject {
-        // TODO: Upstream a PyUntypedArray.as_array_ref()?
-        //       https://github.com/zarrs/zarrs-python/pull/80/files/75be39184905d688ac04a5f8bca08c5241c458cd#r1918365296
-        let array_object_ptr: NonNull<PyArrayObject> = NonNull::new(value.as_array_ptr())
-            .expect("bug in numpy crate: Bound<'_, PyUntypedArray>::as_array_ptr unexpectedly returned a null pointer");
-        let array_object: &'a PyArrayObject = unsafe {
-            // SAFETY: the array object pointed to by array_object_ptr is valid for 'a
-            array_object_ptr.as_ref()
-        };
-        array_object
-    }
-
-    fn nparray_to_slice<'a>(value: &'a Bound<'_, PyUntypedArray>) -> Result<&'a [u8], PyErr> {
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
-        let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
-        let slice = unsafe {
-            // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            debug_assert!(!array_data.is_null());
-            std::slice::from_raw_parts(array_data, array_len)
-        };
-        Ok(slice)
-    }
-
-    fn nparray_to_unsafe_cell_slice<'a>(
-        value: &'a Bound<'_, PyUntypedArray>,
-    ) -> Result<UnsafeCellSlice<'a, u8>, PyErr> {
-        if !value.is_c_contiguous() {
-            return Err(PyErr::new::<PyValueError, _>(
-                "input array must be a C contiguous array".to_string(),
-            ));
-        }
-        let array_object: &PyArrayObject = Self::py_untyped_array_to_array_object(value);
-        let array_data = array_object.data.cast::<u8>();
-        let array_len = value.len() * value.dtype().itemsize();
-        let output = unsafe {
-            // SAFETY: array_data is a valid pointer to a u8 array of length array_len
-            debug_assert!(!array_data.is_null());
-            std::slice::from_raw_parts_mut(array_data, array_len)
-        };
-        Ok(UnsafeCellSlice::new(output))
-    }
 }
 
 #[gen_stub_pymethods]
@@ -287,7 +238,7 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
     ) -> PyResult<()> {
         // Get input array
-        let output = Self::nparray_to_unsafe_cell_slice(value)?;
+        let output = utils::nparray_to_unsafe_cell_slice(value)?;
         let output_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
@@ -403,7 +354,7 @@ impl CodecPipelineImpl {
         }
 
         // Get input array
-        let input_slice = Self::nparray_to_slice(value)?;
+        let input_slice = utils::nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
             // FIXME: Handle variable length data types, convert value to bytes and offsets
             InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
@@ -468,6 +419,7 @@ fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<CodecPipelineImpl>()?;
     m.add_class::<chunk_item::ChunkItem>()?;
+    m.add_class::<array::ArrayImpl>()?;
     Ok(())
 }
 
