@@ -41,10 +41,12 @@ class UnsupportedIndexType(Exception):
 def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[slice]:
     if isinstance(selector_tuple, slice):
         return [selector_tuple]
-    if all(isinstance(s, slice) for s in selector_tuple):
+    if all(
+        isinstance(s, slice) and (s.step is None or s.step == 1) for s in selector_tuple
+    ):
         return list(selector_tuple)
     raise UnsupportedIndexType(
-        f"Invalid index type detected: {type(selector_tuple[0])}"
+        f"Invalid index type detected among indexes: {selector_tuple}"
     )
 
 
