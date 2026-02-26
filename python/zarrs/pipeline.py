@@ -26,9 +26,7 @@ if TYPE_CHECKING:
 
 from ._internal import CodecPipelineImpl
 from .utils import (
-    CollapsedDimensionError,
-    DiscontiguousArrayError,
-    FillValueNoneError,
+    UnsupportedIndexTypeError,
     make_chunk_info_for_rust_with_indices,
 )
 
@@ -184,10 +182,8 @@ class ZarrsCodecPipeline(CodecPipeline):
             )
         except (
             UnsupportedMetadataError,
-            DiscontiguousArrayError,
-            CollapsedDimensionError,
+            UnsupportedIndexTypeError,
             UnsupportedDataTypeError,
-            FillValueNoneError,
         ):
             if self.python_impl is None:
                 raise
@@ -219,10 +215,8 @@ class ZarrsCodecPipeline(CodecPipeline):
             )
         except (
             UnsupportedMetadataError,
-            DiscontiguousArrayError,
-            CollapsedDimensionError,
+            UnsupportedIndexTypeError,
             UnsupportedDataTypeError,
-            FillValueNoneError,
         ):
             if self.python_impl is None:
                 raise

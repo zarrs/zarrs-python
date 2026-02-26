@@ -21,20 +21,7 @@ if TYPE_CHECKING:
 def get_max_threads() -> int:
     return (os.cpu_count() or 1) + 4
 
-
-class DiscontiguousArrayError(Exception):
-    pass
-
-
-class CollapsedDimensionError(Exception):
-    pass
-
-
-class FillValueNoneError(Exception):
-    pass
-
-
-class UnsupportedIndexType(Exception):
+class UnsupportedIndexTypeError(Exception):
     pass
 
 
@@ -42,10 +29,10 @@ def selector_tuple_to_slice_selection(selector_tuple: SelectorTuple) -> list[sli
     if isinstance(selector_tuple, slice):
         return [selector_tuple]
     if all(
-        isinstance(s, slice) and (s.step is None or s.step == 1) for s in selector_tuple
+        isinstance(s, slice) and (s.step is None or s.step == 1) or isinstance(s, int) for s in selector_tuple
     ):
-        return list(selector_tuple)
-    raise UnsupportedIndexType(
+        return list(s if isinstance(s, slice) else slice(s, s + 1) for s in selector_tuple)
+    raise UnsupportedIndexTypeError(
         f"Invalid index type detected among indexes: {selector_tuple}"
     )
 
