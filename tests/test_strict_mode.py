@@ -15,10 +15,7 @@ import pytest
 import zarr
 from zarr.storage import StorePath
 
-from zarrs.pipeline import (
-    DiscontiguousArrayError,
-    UnsupportedDataTypeError,
-)
+from zarrs.pipeline import UnsupportedIndexTypeError
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
@@ -60,7 +57,7 @@ class TestStrictMode:
         )
 
         with (
-            pytest.raises(UnsupportedDataTypeError)
+            pytest.raises(UnsupportedIndexTypeError)
             if codec_pipeline_strict
             else nullcontext()
         ):
@@ -90,7 +87,7 @@ class TestStrictMode:
         arr[:] = data
 
         with (
-            pytest.raises(DiscontiguousArrayError)
+            pytest.raises(UnsupportedIndexTypeError)
             if codec_pipeline_strict
             else nullcontext()
         ):
