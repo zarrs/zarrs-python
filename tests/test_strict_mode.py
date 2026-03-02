@@ -92,7 +92,18 @@ class TestStrictMode:
             else nullcontext()
         ):
             arr[:, ::2] = data[:, ::2]
+        with (
+            pytest.raises(UnsupportedIndexTypeError)
+            if codec_pipeline_strict
+            else nullcontext()
+        ):
             arr[[0, 2], [0, 1]] = data[[0, 2], [0, 1]]
+        with (
+            pytest.raises(UnsupportedIndexTypeError)
+            if codec_pipeline_strict
+            else nullcontext()
+        ):
+            arr[np.array([0, 1, 2, 3])]
 
     @pytest.mark.parametrize("store", ["local"], indirect=["store"])
     def test_supported_operations_still_work(
@@ -118,7 +129,3 @@ class TestStrictMode:
 
         # Integer indexing should work
         assert arr[5, 5] == data[5, 5]
-
-        # Contiguous array indexing should work
-        indices = np.array([1, 2, 3])
-        assert np.array_equal(arr[indices, 0], data[indices, 0])
