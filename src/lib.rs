@@ -21,7 +21,7 @@ use utils::is_whole_chunk;
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
     ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions, DataType,
-    FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
+    DecodeMode, FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
@@ -218,6 +218,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
+        decode_mode=None,
     ))]
     #[new]
     fn new(
@@ -228,6 +229,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
+        decode_mode: Option<&str>,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
         let metadata = serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
@@ -239,7 +241,19 @@ impl CodecPipelineImpl {
         };
         let codec_chain =
             Arc::new(CodecChain::from_metadata(&metadata_v3.codecs).map_py_err::<PyTypeError>()?);
-        let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
+        let decode_mode = match decode_mode {
+            None | Some("auto") => DecodeMode::Auto,
+            Some("partial") => DecodeMode::Partial,
+            Some("full") => DecodeMode::Full,
+            Some(s) => {
+                return Err(PyErr::new::<PyValueError, _>(format!(
+                    "invalid decode_mode {s:?}, expected \"auto\", \"partial\", or \"full\""
+                )));
+            }
+        };
+        let codec_options = CodecOptions::default()
+            .with_validate_checksums(validate_checksums)
+            .with_decode_mode(decode_mode);
 
         let chunk_concurrent_minimum =
             chunk_concurrent_minimum.unwrap_or(global_config().chunk_concurrent_minimum());
@@ -300,7 +314,9 @@ impl CodecPipelineImpl {
         // Assemble partial decoders ahead of time and in parallel
         let partial_chunk_items = chunk_descriptions
             .iter()
-            .filter(|item| !(is_whole_chunk(item)))
+            .filter(|item| {
+                !is_whole_chunk(item) || codec_options.decode_mode() == DecodeMode::Partial
+            })
             .unique_by(|item| item.key.clone())
             .collect::<Vec<_>>();
         let mut partial_decoder_cache: HashMap<StoreKey, Arc<dyn ArrayPartialDecoderTraits>> =
@@ -350,7 +366,7 @@ impl CodecPipelineImpl {
                 };
                 let target = ArrayBytesDecodeIntoTarget::Fixed(&mut output_view);
                 // See zarrs::array::Array::retrieve_chunk_subset_into
-                if is_whole_chunk(&item) {
+                if is_whole_chunk(&item) && codec_options.decode_mode() != DecodeMode::Partial {
                     // See zarrs::array::Array::retrieve_chunk_into
                     if let Some(chunk_encoded) =
                         self.store.get(&item.key).map_py_err::<PyRuntimeError>()?
