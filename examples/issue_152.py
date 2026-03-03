@@ -1,6 +1,5 @@
 import platform
 import subprocess
-import tempfile
 import time
 
 import numpy as np
@@ -14,6 +13,7 @@ def clear_cache():
         subprocess.call(["sudo", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"])
     else:
         raise Exception("Unsupported platform")
+
 
 zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 
