@@ -6,12 +6,12 @@ use pyo3::{
     types::{PyAnyMethods, PyModule},
 };
 
-use crate::CodecPipelineImpl;
+use crate::utils::nparray_to_unsafe_cell_slice;
 
 #[test]
 fn test_nparray_to_unsafe_cell_slice_empty() -> PyResult<()> {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let arr: Bound<'_, PyUntypedArray> = PyModule::from_code(
             py,
             c_str!(
@@ -26,7 +26,7 @@ fn test_nparray_to_unsafe_cell_slice_empty() -> PyResult<()> {
         .call0()?
         .extract()?;
 
-        let slice = CodecPipelineImpl::nparray_to_unsafe_cell_slice(&arr)?;
+        let slice = nparray_to_unsafe_cell_slice(&arr)?;
         assert!(slice.is_empty());
         Ok(())
     })

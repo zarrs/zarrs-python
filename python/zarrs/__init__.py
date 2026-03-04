@@ -1,4 +1,5 @@
 from ._internal import __version__
+from .array import ZarrsArray
 from .pipeline import ZarrsCodecPipeline as _ZarrsCodecPipeline
 from .utils import CollapsedDimensionError, DiscontiguousArrayError
 
@@ -9,6 +10,7 @@ class ZarrsCodecPipeline(_ZarrsCodecPipeline):
 
 
 __all__ = [
+    "ZarrsArray",
     "ZarrsCodecPipeline",
     "DiscontiguousArrayError",
     "CollapsedDimensionError",
