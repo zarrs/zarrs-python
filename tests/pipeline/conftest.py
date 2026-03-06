@@ -37,21 +37,13 @@ def fill_value() -> int:
     return fill_value_
 
 
-non_numpy_indices = [
+indexers = [
     pytest.param(slice(1, 3), id="slice_in_chunk"),
     pytest.param(slice(1, 7), id="slice_across_chunks"),
     pytest.param(2, id="int"),
     pytest.param(slice(None), id="full_slice"),
     pytest.param(Ellipsis, id="ellipsis"),
 ]
-
-numpy_indices = [
-    pytest.param(np.array([1, 2]), id="contiguous_in_chunk_array"),
-    pytest.param(np.array([0, 3]), id="discontinuous_in_chunk_array"),
-    pytest.param(np.array([0, 6]), id="across_chunks_indices_array"),
-]
-
-all_indices = numpy_indices + non_numpy_indices
 
 indexing_method_params = [
     pytest.param(lambda x: getattr(x, "oindex"), id="oindex"),
@@ -106,7 +98,6 @@ def arr(tmp_path: Path, dimensionality: int, format: Literal[2, 3]) -> zarr.Arra
 
 def roundtrip_params() -> Generator[ParameterSet]:
     for format, dimensionality in product(zarr_formats, dimensionalities_):
-        indexers = non_numpy_indices if dimensionality > 2 else all_indices
         for index_param_prod in product(indexers, repeat=dimensionality):
             index = tuple(index_param.values[0] for index_param in index_param_prod)
             # multi-ellipsis indexing is not supported

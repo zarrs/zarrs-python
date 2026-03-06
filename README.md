@@ -89,38 +89,7 @@ Chunk concurrency is typically favored because:
 
 ## Supported Indexing Methods
 
-The following methods will trigger use with the old zarr-python pipeline:
-
-1. Any `oindex` or `vindex` integer `np.ndarray` indexing with dimensionality >=3 i.e.,
-
-   ```python
-   arr[np.array([...]), :, np.array([...])]
-   arr[np.array([...]), np.array([...]), np.array([...])]
-   arr[np.array([...]), np.array([...]), np.array([...])] = ...
-   arr.oindex[np.array([...]), np.array([...]), np.array([...])] = ...
-   ```
-
-2. Any `vindex` or `oindex` discontinuous integer `np.ndarray` indexing for writes in 2D
-
-   ```python
-   arr[np.array([0, 5]), :] = ...
-   arr.oindex[np.array([0, 5]), :] = ...
-   ```
-
-3. `vindex` writes in 2D where both indexers are integer `np.ndarray` indices i.e.,
-
-   ```python
-   arr[np.array([...]), np.array([...])] = ...
-   ```
-
-4. Ellipsis indexing.  We have tested some, but others fail even with `zarr-python`'s default codec pipeline.  Thus for now we advise proceeding with caution here.
-
-   ```python
-   arr[0:10, ..., 0:5]
-   ```
-
-
-Furthermore, using anything except contiguous (i.e., slices or consecutive integer) `np.ndarray` for numeric data will fall back to the default `zarr-python` implementation.
+The only supported methods are `slice` and `Ellipsis`-based methods - everything else will fall back to the `zarr-python` implementation (if `codec_pipeline.strict` is not enabled).
 
 Please file an issue if you believe we have more holes in our coverage than we are aware of or you wish to contribute!  For example, we have an [issue in zarrs for integer-array indexing](https://github.com/LDeakin/zarrs/issues/52) that would unblock a lot the use of the rust pipeline for that use-case (very useful for mini-batch training perhaps!).
 
