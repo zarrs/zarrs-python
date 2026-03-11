@@ -60,7 +60,7 @@ def make_chunk_info_for_rust_with_indices(
     drop_axes: tuple[int, ...],
     shape: tuple[int, ...],
 ) -> RustChunkInfo:
-    shape = shape if shape else (1,)  # constant array
+    is_shape_constant = shape == ()
     chunk_info_with_indices: list[ChunkItem] = []
     write_empty_chunks: bool = True
     for (
@@ -71,15 +71,28 @@ def make_chunk_info_for_rust_with_indices(
         _,
     ) in batch_info:
         write_empty_chunks = chunk_spec.config.write_empty_chunks
-        out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
+        out_selection_as_slices_iter = iter(selector_tuple_to_slice_selection(out_selection))
+        out_selection_as_slices_expanded = list(next(out_selection_as_slices_iter) if not isinstance(c, int) else slice(0, 1) for c in chunk_selection)
+        if is_shape_constant:
+            io_array_shape = (1,)
+        else:
+            shape_iter = iter(shape)
+            try:
+                io_array_shape = list(next(shape_iter) if not isinstance(c, int) else 1 for c in chunk_selection)
+            except RuntimeError as e:
+                if isinstance(e.__cause__, StopIteration):
+                    raise IndexError(
+                        f"the size of the chunk subset {chunk_selection} and input/output subset {shape} are incompatible"
+                    ) from None
+                raise
         chunk_info_with_indices.append(
             ChunkItem(
                 key=byte_getter.path,
                 chunk_subset=chunk_selection_as_slices,
                 chunk_shape=chunk_spec.shape,
-                subset=out_selection_as_slices,
-                shape=shape,
+                subset=out_selection_as_slices_expanded,
+                shape=io_array_shape,
             )
         )
     return RustChunkInfo(chunk_info_with_indices, write_empty_chunks)
