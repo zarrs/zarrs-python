@@ -15,7 +15,7 @@ import pytest
 import zarr
 from zarr.storage import StorePath
 
-from zarrs.pipeline import UnsupportedIndexTypeError
+from zarrs.pipeline import UnsupportedDataTypeError, UnsupportedIndexTypeError
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
@@ -57,7 +57,7 @@ class TestStrictMode:
         )
 
         with (
-            pytest.raises(UnsupportedIndexTypeError)
+            pytest.raises(UnsupportedDataTypeError)
             if codec_pipeline_strict
             else nullcontext()
         ):
