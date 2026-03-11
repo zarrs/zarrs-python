@@ -30,7 +30,7 @@ class DiscontiguousArrayError(Exception):
     pass
 
 
-class CollapsedDimensionError(Exception):
+class UnsupportedVIndexingError(Exception):
     pass
 
 
@@ -160,7 +160,7 @@ def make_chunk_info_for_rust_with_indices(
     drop_axes: tuple[int, ...],
     shape: tuple[int, ...],
 ) -> RustChunkInfo:
-    shape = shape if shape else (1,)  # constant array
+    is_constant = shape == ()
     chunk_info_with_indices: list[ChunkItem] = []
     write_empty_chunks: bool = True
     for (
@@ -182,17 +182,39 @@ def make_chunk_info_for_rust_with_indices(
         shape_chunk_selection = get_shape_for_selector(
             chunk_selection, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
-        if prod_op(shape_chunk_selection) != prod_op(shape_chunk_selection_slices):
-            raise CollapsedDimensionError(
+        if (chunk_size := prod_op(shape_chunk_selection)) != prod_op(shape_chunk_selection_slices):
+            raise UnsupportedVIndexingError(
                 f"{shape_chunk_selection} != {shape_chunk_selection_slices}"
             )
+        if not is_constant and chunk_size > prod_op(shape):
+            raise IndexError(
+                f"the size of the chunk subset {chunk_size} and input/output subset {prod_op(shape)} are incompatible"
+            )
+        # We need to have io_array_shape and out_selection_expanded with dimensionalities matching that of the underlying array.
+        # So if we detect that a dimension has been dropped (due to a singleton axis) when converting to slices, we update these two values.
+        if not is_constant and len(shape_chunk_selection) != len(shape_chunk_selection_slices):
+            shape_ctr = 0
+            io_array_shape = []
+            out_selection_expanded = []
+            for shape_chunk in shape_chunk_selection_slices:
+                # Append 1/size-1 slice if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
+                if shape_chunk == 1 and (shape_ctr >= len(shape_chunk_selection) or shape_chunk != shape_chunk_selection[shape_ctr]):
+                    io_array_shape += [1]
+                    out_selection_expanded += [slice(0, 1)]
+                else:
+                    io_array_shape += [shape[shape_ctr]]
+                    out_selection_expanded += [out_selection_as_slices[shape_ctr]]
+                    shape_ctr += 1
+        else:
+            io_array_shape = shape
+            out_selection_expanded = out_selection_as_slices
         chunk_info_with_indices.append(
             ChunkItem(
                 key=byte_getter.path,
                 chunk_subset=chunk_selection_as_slices,
                 chunk_shape=chunk_spec.shape,
-                subset=out_selection_as_slices,
-                shape=shape,
+                subset=out_selection_expanded,
+                shape=io_array_shape,
             )
         )
     return RustChunkInfo(chunk_info_with_indices, write_empty_chunks)
