@@ -210,6 +210,8 @@ def make_chunk_info_for_rust_with_indices(
                     or shape_chunk != shape_chunk_selection[shape_ctr]
                 ):
                     drop_axes += (idx_shape,)
+                else:
+                    shape_ctr += 1
         if drop_axes:
             for axis in drop_axes:
                 io_array_shape.insert(axis, 1)
