@@ -182,7 +182,9 @@ def make_chunk_info_for_rust_with_indices(
         shape_chunk_selection = get_shape_for_selector(
             chunk_selection, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
-        if (chunk_size := prod_op(shape_chunk_selection)) != prod_op(shape_chunk_selection_slices):
+        if (chunk_size := prod_op(shape_chunk_selection)) != prod_op(
+            shape_chunk_selection_slices
+        ):
             raise UnsupportedVIndexingError(
                 f"{shape_chunk_selection} != {shape_chunk_selection_slices}"
             )
@@ -195,11 +197,18 @@ def make_chunk_info_for_rust_with_indices(
         # We need to have io_array_shape and out_selection_expanded with dimensionalities matching that of the underlying array.
         # `drop_axes`` is only triggered via fancy outer-indexing, and everything else silently drops.
         # So if we detect that a dimension has been dropped silently (due to a singleton axis, like `z[1, ...]`) after converting to slices, we update these two values.
-        if not drop_axes and not is_constant and len(shape_chunk_selection) != len(shape_chunk_selection_slices):
+        if (
+            not drop_axes
+            and not is_constant
+            and len(shape_chunk_selection) != len(shape_chunk_selection_slices)
+        ):
             shape_ctr = 0
             for idx_shape, shape_chunk in enumerate(shape_chunk_selection_slices):
                 # Detect if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
-                if shape_chunk == 1 and (shape_ctr >= len(shape_chunk_selection) or shape_chunk != shape_chunk_selection[shape_ctr]):
+                if shape_chunk == 1 and (
+                    shape_ctr >= len(shape_chunk_selection)
+                    or shape_chunk != shape_chunk_selection[shape_ctr]
+                ):
                     drop_axes += (idx_shape,)
         if drop_axes:
             for axis in drop_axes:

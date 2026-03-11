@@ -1,6 +1,6 @@
 from ._internal import __version__
 from .pipeline import ZarrsCodecPipeline as _ZarrsCodecPipeline
-from .utils import UnsupportedVIndexingError, DiscontiguousArrayError
+from .utils import DiscontiguousArrayError, UnsupportedVIndexingError
 
 
 # Need to do this redirection so people can access the pipeline as `zarrs.ZarrsCodecPipeline` instead of `zarrs.pipeline.ZarrsCodecPipeline`

@@ -422,7 +422,11 @@ impl CodecPipelineImpl {
             let store_chunk = |item: ChunkItem| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
-                        .extract_array_subset(&item.subset,  bytemuck::must_cast_slice(&item.array_shape), &self.data_type)
+                        .extract_array_subset(
+                            &item.subset,
+                            bytemuck::must_cast_slice(&item.array_shape),
+                            &self.data_type,
+                        )
                         .map_codec_err()?;
                     self.store_chunk_subset_bytes(
                         &item,

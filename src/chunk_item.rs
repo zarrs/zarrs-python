@@ -32,7 +32,7 @@ pub(crate) struct ChunkItem {
     pub subset: ArraySubset,
     pub shape: Vec<NonZeroU64>,
     pub num_elements: u64,
-    pub array_shape: Vec<NonZeroU64>
+    pub array_shape: Vec<NonZeroU64>,
 }
 
 #[gen_stub_pymethods]
@@ -66,7 +66,7 @@ impl ChunkItem {
             subset,
             shape: chunk_shape_nonzero_u64,
             num_elements,
-            array_shape: shape_nonzero_u64
+            array_shape: shape_nonzero_u64,
         })
     }
 }
