@@ -190,24 +190,21 @@ def make_chunk_info_for_rust_with_indices(
             raise IndexError(
                 f"the size of the chunk subset {chunk_size} and input/output subset {prod_op(shape)} are incompatible"
             )
+        io_array_shape = list(shape)
+        out_selection_expanded = out_selection_as_slices
         # We need to have io_array_shape and out_selection_expanded with dimensionalities matching that of the underlying array.
-        # So if we detect that a dimension has been dropped (due to a singleton axis) when converting to slices, we update these two values.
-        if not is_constant and len(shape_chunk_selection) != len(shape_chunk_selection_slices):
+        # `drop_axes`` is only triggered via fancy outer-indexing, and everything else silently drops.
+        # So if we detect that a dimension has been dropped silently (due to a singleton axis, like `z[1, ...]`) after converting to slices, we update these two values.
+        if not drop_axes and not is_constant and len(shape_chunk_selection) != len(shape_chunk_selection_slices):
             shape_ctr = 0
-            io_array_shape = []
-            out_selection_expanded = []
-            for shape_chunk in shape_chunk_selection_slices:
-                # Append 1/size-1 slice if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
+            for idx_shape, shape_chunk in enumerate(shape_chunk_selection_slices):
+                # Detect if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
                 if shape_chunk == 1 and (shape_ctr >= len(shape_chunk_selection) or shape_chunk != shape_chunk_selection[shape_ctr]):
-                    io_array_shape += [1]
-                    out_selection_expanded += [slice(0, 1)]
-                else:
-                    io_array_shape += [shape[shape_ctr]]
-                    out_selection_expanded += [out_selection_as_slices[shape_ctr]]
-                    shape_ctr += 1
-        else:
-            io_array_shape = shape
-            out_selection_expanded = out_selection_as_slices
+                    drop_axes += (idx_shape,)
+        if drop_axes:
+            for axis in drop_axes:
+                io_array_shape.insert(axis, 1)
+                out_selection_expanded.insert(axis, slice(0, 1))
         chunk_info_with_indices.append(
             ChunkItem(
                 key=byte_getter.path,
