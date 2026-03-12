@@ -171,8 +171,12 @@ def make_chunk_info_for_rust_with_indices(
         _,
     ) in batch_info:
         write_empty_chunks = chunk_spec.config.write_empty_chunks
+        # Convert the selector tuples to ones that only have slices i.e., `i: int` replaced by slice(i, i+1)
         out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
+        # Because `chunk_selection_as_slices` contains only slices, certain types of vindex-ing are not going to be able to be processed by the zarrs pipeline.
+        # Thus we get the shapes of the input selector and the the converted-to-slices selector to check if they differ.
+        # If they differ, then the indexing operation is not supported because it is not describe-able as slices.
         shape_chunk_selection_slices = get_shape_for_selector(
             tuple(chunk_selection_as_slices),
             chunk_spec.shape,
@@ -190,13 +194,16 @@ def make_chunk_info_for_rust_with_indices(
             )
         if not is_constant and chunk_size > prod_op(shape):
             raise IndexError(
-                f"the size of the chunk subset {chunk_size} and input/output subset {prod_op(shape)} are incompatible"
+                f"the size of the chunk subset {shape_chunk_selection} and input/output subset {shape} are incompatible"
             )
+
         io_array_shape = list(shape)
         out_selection_expanded = out_selection_as_slices
         # We need to have io_array_shape and out_selection_expanded with dimensionalities matching that of the underlying array.
-        # `drop_axes`` is only triggered via fancy outer-indexing, and everything else silently drops.
-        # So if we detect that a dimension has been dropped silently (due to a singleton axis, like `z[1, ...]`) after converting to slices, we update these two values.
+        # `drop_axes`` is only triggered via fancy outer-indexing because applying `chunk_selection_as_slices` to the chunk array would not drop a dimension that the out-array thinks should be dropped, thus that dimension needs to be indicated.
+        # However, other indexing operations can silently drop a dimension on input to match the output, like `z[1, ...]`.
+        # In other words, applying the `chunk_selection_as_slices` to a chunk array would drop a dimension, but `out_selection` already encodes this dropped dimension because zarr-python constructs the out-array missing the dimension.
+        # So if we detect that a dimension has been dropped silently like this after converting to slices, we update to handle the dropped dimension.
         if (
             not drop_axes
             and not is_constant

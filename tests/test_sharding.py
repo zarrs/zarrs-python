@@ -148,9 +148,12 @@ def test_sharding_partial_readwrite(
 
     a[:] = data
 
-    for x in range(data.shape[0]):
-        read_data = a[x, :, :]
-        assert np.array_equal(data[x], read_data)
+    for axis in range(len(data.shape)):
+        for x in range(data.shape[0]):
+            selector = [slice(None), slice(None), slice(None)]
+            selector[axis] = x
+            read_data = a[*tuple(selector)]
+            assert np.array_equal(data[*tuple(selector)], read_data)
 
 
 @pytest.mark.parametrize(
