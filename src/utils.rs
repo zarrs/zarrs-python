@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
-use numpy::{PyUntypedArray, PyUntypedArrayMethods};
-use pyo3::{Bound, PyErr, PyResult, PyTypeInfo};
+use pyo3::{PyErr, PyResult, PyTypeInfo};
 use zarrs::array::CodecError;
 
 use crate::ChunkItem;
@@ -34,23 +33,6 @@ impl<T> PyCodecErrExt<T> for Result<T, CodecError> {
             CodecError::IOError(_) => PyErr::new::<pyo3::exceptions::PyOSError, _>(format!("{e}")),
             // all the rest: some unknown runtime problem
             e => PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{e}")),
-        })
-    }
-}
-
-pub(crate) trait PyUntypedArrayExt {
-    fn shape_zarr(&self) -> PyResult<Vec<u64>>;
-}
-
-impl PyUntypedArrayExt for Bound<'_, PyUntypedArray> {
-    fn shape_zarr(&self) -> PyResult<Vec<u64>> {
-        Ok(if self.shape().is_empty() {
-            vec![1] // scalar value
-        } else {
-            self.shape()
-                .iter()
-                .map(|&i| u64::try_from(i))
-                .collect::<Result<_, _>>()?
         })
     }
 }
