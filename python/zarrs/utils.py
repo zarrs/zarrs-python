@@ -196,7 +196,6 @@ def make_chunk_info_for_rust_with_indices(
             raise IndexError(
                 f"the size of the chunk subset {shape_chunk_selection} and input/output subset {shape} are incompatible"
             )
-
         io_array_shape = list(shape)
         out_selection_expanded = out_selection_as_slices
         # We need to have io_array_shape and out_selection_expanded with dimensionalities matching that of the underlying array.
@@ -204,21 +203,16 @@ def make_chunk_info_for_rust_with_indices(
         # However, other indexing operations can silently drop a dimension on input to match the output, like `z[1, ...]`.
         # In other words, applying the `chunk_selection_as_slices` to a chunk array would drop a dimension, but `out_selection` already encodes this dropped dimension because zarr-python constructs the out-array missing the dimension.
         # So if we detect that a dimension has been dropped silently like this after converting to slices, we update to handle the dropped dimension.
-        if (
-            not drop_axes
-            and not is_constant
-            and len(shape_chunk_selection) != len(shape_chunk_selection_slices)
+        scs_iter = iter(shape_chunk_selection)
+        scs_current = next(scs_iter, None)
+        for idx_shape, shape_chunk_from_slices in enumerate(
+            shape_chunk_selection_slices
         ):
-            shape_ctr = 0
-            for idx_shape, shape_chunk in enumerate(shape_chunk_selection_slices):
-                # Detect if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
-                if shape_chunk == 1 and (
-                    shape_ctr >= len(shape_chunk_selection)
-                    or shape_chunk != shape_chunk_selection[shape_ctr]
-                ):
-                    drop_axes += (idx_shape,)
-                else:
-                    shape_ctr += 1
+            # Detect if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
+            if shape_chunk_from_slices == 1 != scs_current:
+                drop_axes += (idx_shape,)
+            else:
+                scs_current = next(scs_iter, None)
         if drop_axes:
             for axis in drop_axes:
                 io_array_shape.insert(axis, 1)
