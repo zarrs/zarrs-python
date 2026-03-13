@@ -30,7 +30,7 @@ class DiscontiguousArrayError(Exception):
     pass
 
 
-class CollapsedDimensionError(Exception):
+class UnsupportedVIndexingError(Exception):
     pass
 
 
@@ -160,7 +160,7 @@ def make_chunk_info_for_rust_with_indices(
     drop_axes: tuple[int, ...],
     shape: tuple[int, ...],
 ) -> RustChunkInfo:
-    shape = shape if shape else (1,)  # constant array
+    is_constant = shape == ()
     chunk_info_with_indices: list[ChunkItem] = []
     write_empty_chunks: bool = True
     for (
@@ -171,8 +171,12 @@ def make_chunk_info_for_rust_with_indices(
         _,
     ) in batch_info:
         write_empty_chunks = chunk_spec.config.write_empty_chunks
+        # Convert the selector tuples to ones that only have slices i.e., `i: int` replaced by slice(i, i+1)
         out_selection_as_slices = selector_tuple_to_slice_selection(out_selection)
         chunk_selection_as_slices = selector_tuple_to_slice_selection(chunk_selection)
+        # Because `chunk_selection_as_slices` contains only slices, certain types of vindex-ing are not going to be able to be processed by the zarrs pipeline.
+        # Thus we get the shapes of the input selector and the the converted-to-slices selector to check if they differ.
+        # If they differ, then the indexing operation is not supported because it is not describe-able as slices.
         shape_chunk_selection_slices = get_shape_for_selector(
             tuple(chunk_selection_as_slices),
             chunk_spec.shape,
@@ -182,17 +186,44 @@ def make_chunk_info_for_rust_with_indices(
         shape_chunk_selection = get_shape_for_selector(
             chunk_selection, chunk_spec.shape, pad=True, drop_axes=drop_axes
         )
-        if prod_op(shape_chunk_selection) != prod_op(shape_chunk_selection_slices):
-            raise CollapsedDimensionError(
+        if (chunk_size := prod_op(shape_chunk_selection)) != prod_op(
+            shape_chunk_selection_slices
+        ):
+            raise UnsupportedVIndexingError(
                 f"{shape_chunk_selection} != {shape_chunk_selection_slices}"
             )
+        if not is_constant and chunk_size > prod_op(shape):
+            raise IndexError(
+                f"the size of the chunk subset {shape_chunk_selection} and input/output subset {shape} are incompatible"
+            )
+        io_array_shape = list(shape)
+        out_selection_expanded = out_selection_as_slices
+        # We need to have io_array_shape and out_selection_expanded with dimensionalities matching that of the underlying array.
+        # `drop_axes`` is only triggered via fancy outer-indexing because applying `chunk_selection_as_slices` to the chunk array would not drop a dimension that the out-array thinks should be dropped, thus that dimension needs to be indicated.
+        # However, other indexing operations can silently drop a dimension on input to match the output, like `z[1, ...]`.
+        # In other words, applying the `chunk_selection_as_slices` to a chunk array would drop a dimension, but `out_selection` already encodes this dropped dimension because zarr-python constructs the out-array missing the dimension.
+        # So if we detect that a dimension has been dropped silently like this after converting to slices, we update to handle the dropped dimension.
+        scs_iter = iter(shape_chunk_selection)
+        scs_current = next(scs_iter, None)
+        for idx_shape, shape_chunk_from_slices in enumerate(
+            shape_chunk_selection_slices
+        ):
+            # Detect if this dimension has been dropped on the io_array i.e., shape_chunk_selection has been exhausted so there is an extra 1-sized dimension at the end or has a mismatch with the "full" chunk shape `shape_chunk_selection_slices`.
+            if shape_chunk_from_slices == 1 != scs_current:
+                drop_axes += (idx_shape,)
+            else:
+                scs_current = next(scs_iter, None)
+        if drop_axes:
+            for axis in drop_axes:
+                io_array_shape.insert(axis, 1)
+                out_selection_expanded.insert(axis, slice(0, 1))
         chunk_info_with_indices.append(
             ChunkItem(
                 key=byte_getter.path,
                 chunk_subset=chunk_selection_as_slices,
                 chunk_shape=chunk_spec.shape,
-                subset=out_selection_as_slices,
-                shape=shape,
+                subset=out_selection_expanded,
+                shape=io_array_shape,
             )
         )
     return RustChunkInfo(chunk_info_with_indices, write_empty_chunks)

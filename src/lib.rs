@@ -38,7 +38,7 @@ mod utils;
 
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
-use crate::utils::{PyCodecErrExt, PyErrExt as _, PyUntypedArrayExt as _};
+use crate::utils::{PyCodecErrExt, PyErrExt as _};
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -288,7 +288,6 @@ impl CodecPipelineImpl {
     ) -> PyResult<()> {
         // Get input array
         let output = Self::nparray_to_unsafe_cell_slice(value)?;
-        let output_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, codec_options)) =
@@ -343,7 +342,7 @@ impl CodecPipelineImpl {
                             .fixed_size()
                             .ok_or("variable length data type not supported")
                             .map_py_err::<PyTypeError>()?,
-                        &output_shape,
+                        bytemuck::must_cast_slice(&item.array_shape),
                         item.subset.clone(),
                     )
                     .map_py_err::<PyRuntimeError>()?
@@ -410,7 +409,6 @@ impl CodecPipelineImpl {
         } else {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))
         };
-        let input_shape: Vec<u64> = value.shape_zarr()?;
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, mut codec_options)) =
@@ -424,7 +422,11 @@ impl CodecPipelineImpl {
             let store_chunk = |item: ChunkItem| match &input {
                 InputValue::Array(input) => {
                     let chunk_subset_bytes = input
-                        .extract_array_subset(&item.subset, &input_shape, &self.data_type)
+                        .extract_array_subset(
+                            &item.subset,
+                            bytemuck::must_cast_slice(&item.array_shape),
+                            &self.data_type,
+                        )
                         .map_codec_err()?;
                     self.store_chunk_subset_bytes(
                         &item,
