@@ -18,10 +18,12 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
+use zarrs::array::codec::{ShardingCodecOptions, SubchunkWriteOrder};
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
-    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions, DataType,
-    FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
+    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions,
+    CodecSpecificOptions, DataType, FillValue, StoragePartialDecoder, copy_fill_value_into,
+    update_array_bytes,
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
@@ -38,7 +40,7 @@ mod utils;
 
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
-use crate::utils::{PyCodecErrExt, PyErrExt as _};
+use crate::utils::{PyCodecErrExt, PyErrExt as _, SubchunkWriteOrderWrapper};
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -218,6 +220,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
+        subchunk_write_order=SubchunkWriteOrderWrapper(SubchunkWriteOrder::Random),
     ))]
     #[new]
     fn new(
@@ -228,6 +231,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
+        subchunk_write_order: SubchunkWriteOrderWrapper,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
         let metadata = serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
@@ -237,8 +241,16 @@ impl CodecPipelineImpl {
             }
             ArrayMetadata::V3(v3) => Cow::Borrowed(v3),
         };
-        let codec_chain =
-            Arc::new(CodecChain::from_metadata(&metadata_v3.codecs).map_py_err::<PyTypeError>()?);
+        let codec_chain = Arc::new(
+            CodecChain::from_metadata(&metadata_v3.codecs)
+                .map_py_err::<PyTypeError>()?
+                .with_codec_specific_options(
+                    &CodecSpecificOptions::default().with_option(
+                        ShardingCodecOptions::default()
+                            .with_subchunk_write_order(subchunk_write_order.0),
+                    ),
+                ),
+        );
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
         let chunk_concurrent_minimum =

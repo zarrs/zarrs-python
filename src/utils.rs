@@ -1,7 +1,10 @@
 use std::fmt::Display;
 
-use pyo3::{PyErr, PyResult, PyTypeInfo};
-use zarrs::array::CodecError;
+use pyo3::{
+    Borrowed, Bound, FromPyObject, IntoPyObject, PyAny, PyErr, PyResult, PyTypeInfo, Python,
+    exceptions::PyValueError, types::PyString,
+};
+use zarrs::array::{CodecError, codec::SubchunkWriteOrder};
 
 use crate::ChunkItem;
 
@@ -40,4 +43,41 @@ impl<T> PyCodecErrExt<T> for Result<T, CodecError> {
 pub fn is_whole_chunk(item: &ChunkItem) -> bool {
     item.chunk_subset.start().iter().all(|&o| o == 0)
         && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(&item.shape)
+}
+
+#[derive(Debug, Clone)]
+pub struct SubchunkWriteOrderWrapper(pub SubchunkWriteOrder);
+
+impl<'py> IntoPyObject<'py> for SubchunkWriteOrderWrapper {
+    type Target = PyString;
+    type Output = Bound<'py, PyString>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        match self.0 {
+            SubchunkWriteOrder::C => Ok("C".into_pyobject(py)?),
+            SubchunkWriteOrder::Random => Ok("random".into_pyobject(py)?),
+            _ => unreachable!("Unrecognized subchunk write order, only `C` and `random` allowed."),
+        }
+    }
+}
+
+impl<'py> FromPyObject<'_, 'py> for SubchunkWriteOrderWrapper {
+    type Error = PyErr;
+
+    fn extract(option: Borrowed<'_, 'py, PyAny>) -> PyResult<SubchunkWriteOrderWrapper> {
+        match option.extract::<&str>()? {
+            "C" => Ok(SubchunkWriteOrderWrapper(SubchunkWriteOrder::C)),
+            "random" => Ok(SubchunkWriteOrderWrapper(SubchunkWriteOrder::Random)),
+            _ => Err(PyValueError::new_err(
+                "Unrecognized subchunk write order, only `C` and `random` allowed.",
+            )),
+        }
+    }
+}
+
+impl pyo3_stub_gen::PyStubType for SubchunkWriteOrderWrapper {
+    fn type_output() -> pyo3_stub_gen::TypeInfo {
+        pyo3_stub_gen::TypeInfo::builtin("str")
+    }
 }
