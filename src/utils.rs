@@ -57,7 +57,9 @@ impl<'py> IntoPyObject<'py> for SubchunkWriteOrderWrapper {
         match self.0 {
             SubchunkWriteOrder::C => Ok("C".into_pyobject(py)?),
             SubchunkWriteOrder::Random => Ok("random".into_pyobject(py)?),
-            _ => unreachable!("Unrecognized subchunk write order, only `C` and `random` allowed."),
+            _ => Err(PyValueError::new_err(
+                "Unrecognized subchunk write order for converting to python object, only `C` and `random` allowed.",
+            )),
         }
     }
 }
@@ -70,7 +72,7 @@ impl<'py> FromPyObject<'_, 'py> for SubchunkWriteOrderWrapper {
             "C" => Ok(SubchunkWriteOrderWrapper(SubchunkWriteOrder::C)),
             "random" => Ok(SubchunkWriteOrderWrapper(SubchunkWriteOrder::Random)),
             _ => Err(PyValueError::new_err(
-                "Unrecognized subchunk write order, only `C` and `random` allowed.",
+                "Unrecognized subchunk write order while extracting to rust, only `C` and `random` allowed.",
             )),
         }
     }
