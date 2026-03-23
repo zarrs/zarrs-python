@@ -67,7 +67,7 @@ zarr.config.set({
         "direct_io": False,
         "strict": False,
         "subchunk_write_order": "C",
-},
+    },
 })
 ```
 
