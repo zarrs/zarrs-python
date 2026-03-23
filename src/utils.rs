@@ -80,6 +80,6 @@ impl<'py> FromPyObject<'_, 'py> for SubchunkWriteOrderWrapper {
 
 impl pyo3_stub_gen::PyStubType for SubchunkWriteOrderWrapper {
     fn type_output() -> pyo3_stub_gen::TypeInfo {
-        pyo3_stub_gen::TypeInfo::builtin("str")
+        pyo3_stub_gen::TypeInfo::with_module("typing.Literal['C', 'random']", "typing".into())
     }
 }
