@@ -211,6 +211,7 @@ impl CodecPipelineImpl {
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
+    #[allow(clippy::too_many_arguments)] // python functions can have defaults
     #[pyo3(signature = (
         array_metadata,
         store_config,
@@ -266,17 +267,15 @@ impl CodecPipelineImpl {
             DataType::from_metadata(&metadata_v3.data_type).map_py_err::<PyTypeError>()?;
         let fill_value = data_type
             .fill_value(&metadata_v3.fill_value, ZarrVersion::V3)
-            .or_else(|_| {
-                Err(match &metadata {
-                    ArrayMetadata::V2(metadata) => format!(
-                        "incompatible fill value metadata: dtype={}, fill_value={}",
-                        metadata.dtype, metadata.fill_value
-                    ),
-                    ArrayMetadata::V3(metadata) => format!(
-                        "incompatible fill value metadata: data_type={}, fill_value={}",
-                        metadata.data_type, metadata.fill_value
-                    ),
-                })
+            .map_err(|_| match &metadata {
+                ArrayMetadata::V2(metadata) => format!(
+                    "incompatible fill value metadata: dtype={}, fill_value={}",
+                    metadata.dtype, metadata.fill_value
+                ),
+                ArrayMetadata::V3(metadata) => format!(
+                    "incompatible fill value metadata: data_type={}, fill_value={}",
+                    metadata.data_type, metadata.fill_value
+                ),
             })
             .map_py_err::<PyTypeError>()?;
 

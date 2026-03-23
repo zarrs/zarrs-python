@@ -45,7 +45,7 @@ pub fn is_whole_chunk(item: &ChunkItem) -> bool {
         && item.chunk_subset.shape() == bytemuck::must_cast_slice::<_, u64>(&item.shape)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct SubchunkWriteOrderWrapper(pub SubchunkWriteOrder);
 
 impl<'py> IntoPyObject<'py> for SubchunkWriteOrderWrapper {
