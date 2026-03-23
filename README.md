@@ -66,8 +66,8 @@ zarr.config.set({
         "chunk_concurrent_minimum": 4,
         "direct_io": False,
         "strict": False,
-        "subchunk_write_order": "C"
-    }
+        "subchunk_write_order": "C",
+},
 })
 ```
 
