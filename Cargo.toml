@@ -29,3 +29,8 @@ zarrs_object_store = "0.5.0" # object_store 0.12
 
 [profile.release]
 lto = true
+
+[patch.crates-io]
+zarrs = { git = "https://github.com/zarrs/zarrs.git", branch = "feat/DecodeMode" }
+zarrs_storage = { git = "https://github.com/zarrs/zarrs.git", branch = "feat/DecodeMode" }
+zarrs_codec = { git = "https://github.com/zarrs/zarrs.git", branch = "feat/DecodeMode" }
