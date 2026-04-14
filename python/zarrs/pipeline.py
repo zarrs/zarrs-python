@@ -62,6 +62,9 @@ def get_codec_pipeline_impl(
             ),
             num_threads=config.get("threading.max_workers", None),
             direct_io=config.get("codec_pipeline.direct_io", False),
+            subchunk_write_order=config.get(
+                "codec_pipeline.subchunk_write_order", "random"
+            ),
         )
     except TypeError as e:
         if strict:
