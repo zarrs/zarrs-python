@@ -1,8 +1,9 @@
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 import pytest
+import zarr
 from zarr import Array, AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -367,3 +368,36 @@ async def test_sharding_with_empty_inner_chunk(
     print("read data")
     data_read = await a.getitem(...)
     assert np.array_equal(data_read, data)
+
+
+@pytest.mark.parametrize(
+    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
+)
+@pytest.mark.parametrize("subchunk_write_order", ["C", "random"])
+async def test_sharding_subchunk_write_order(
+    store: Store,
+    index_location: ShardingCodecIndexLocation,
+    subchunk_write_order: Literal["C", "random"],
+) -> None:
+    with zarr.config.set({"codec_pipeline.subchunk_write_order": subchunk_write_order}):
+        path = f"sharding_with_empty_inner_chunk_{index_location}"
+        spath = StorePath(store, path)
+        codec = ShardingCodec(chunk_shape=(2, 2), index_location=index_location)
+        a = await AsyncArray.create(
+            spath,
+            shape=(16, 16),
+            chunk_shape=(16, 16),
+            dtype="uint32",
+            fill_value=0,
+            codecs=[codec],
+        )
+        await a.setitem(..., np.arange(16 * 16).reshape((16, 16)))
+        index = await codec._load_shard_index(a.store_path / "/c/0/0", (8, 8))
+        index_offsets = index.offsets_and_lengths[index.get_full_chunk_map()].ravel()[
+            ::2
+        ]
+        assert len(index_offsets) == 64  # 8 * 8
+        if subchunk_write_order == "C":
+            np.testing.assert_equal(np.sort(index_offsets), index_offsets)
+        else:
+            assert not np.array_equal(np.sort(index_offsets), index_offsets)
