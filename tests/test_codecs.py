@@ -189,6 +189,7 @@ def test_invalid_metadata(store: Store) -> None:
     #         filters=[
     #             TransposeCodec(order=order_from_dim("F", 2)),
     #         ],
+    #         serializer=BytesCodec(endian="big"),
     #     )
     spath3 = StorePath(store, "invalid_order")
     with pytest.raises(TypeError):
