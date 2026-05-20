@@ -51,6 +51,8 @@ The `ZarrsCodecPipeline` specific options are:
   - Defaults to `False`.
 - `codec_pipeline.strict`: raise exceptions for unsupported operations instead of falling back to the default codec pipeline of `zarr-python`.
   - Defaults to `False`.
+- `codec_pipeline.subchunk_write_order`: Tells `zarrs` in what order to write subchunks within a shard. One of "C" or "random." "C" ordering is `numpy`-speak for [row-major](https://en.wikipedia.org/wiki/Row-_and_column-major_order). "Random" is a bit of a misnomer and implies no ordering in reality, instead being unordered as a result of `rayon`'s lack of ordering guarantee.
+  - Defaults to `random`.
 
 For example:
 ```python
@@ -63,8 +65,9 @@ zarr.config.set({
         "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
         "direct_io": False,
-        "strict": False
-    }
+        "strict": False,
+        "subchunk_write_order": "C",
+    },
 })
 ```
 

@@ -10,8 +10,8 @@ use crate::CodecPipelineImpl;
 
 #[test]
 fn test_nparray_to_unsafe_cell_slice_empty() -> PyResult<()> {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let arr: Bound<'_, PyUntypedArray> = PyModule::from_code(
             py,
             c_str!(
