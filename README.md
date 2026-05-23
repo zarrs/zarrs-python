@@ -49,6 +49,10 @@ The `ZarrsCodecPipeline` specific options are:
   - Defaults to `True`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
 - `codec_pipeline.direct_io`: enable `O_DIRECT` read/write, needs support from the operating system (currently only Linux) and file system.
   - Defaults to `False`.
+- `codec_pipeline.decode_mode`: controls the decode path used when reading a chunk subset.
+  - `"auto"` (default): use the full-chunk decode path when the requested subset covers the entire chunk, and the partial-decoder path otherwise.
+  - `"partial"`: always use the partial-decoder path, even for whole-chunk reads. Useful for codecs (e.g. sharding) where partial decoding is more efficient even for full-chunk reads.
+  - `"full"`: always decode the full chunk and extract the subset.
 - `codec_pipeline.strict`: raise exceptions for unsupported operations instead of falling back to the default codec pipeline of `zarr-python`.
   - Defaults to `False`.
 
@@ -63,6 +67,7 @@ zarr.config.set({
         "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
         "direct_io": False,
+        "decode_mode": None,
         "strict": False
     }
 })
