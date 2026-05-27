@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,7 @@ from zarr.codecs import (
 )
 from zarr.core.array import ShardsConfigParam
 from zarr.core.buffer import default_buffer_prototype
+from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath
 
 from .conftest import ArrayRequest
@@ -46,9 +48,9 @@ def test_sharding(
     arr = create_array(
         spath,
         shape=tuple(s + offset for s in data.shape),
-        chunks=(64,) * data.ndim,
+        chunks=(32,) * data.ndim,
         shards=ShardsConfigParam(
-            shape=(32,) * data.ndim, index_location=index_location
+            shape=(64,) * data.ndim, index_location=index_location
         ),
         dtype=data.dtype,
         fill_value=6,
@@ -85,8 +87,8 @@ def test_sharding_partial(
     a = create_array(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunks=(64, 64, 64),
-        shards=ShardsConfigParam(shape=(32, 32, 32), index_location=index_location),
+        chunks=(32, 32, 32),
+        shards=ShardsConfigParam(shape=(64, 64, 64), index_location=index_location),
         dtype=data.dtype,
         fill_value=0,
         filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
@@ -121,10 +123,8 @@ def test_sharding_partial_readwrite(
     a = create_array(
         spath,
         shape=data.shape,
-        chunks=data.shape,
-        shards=ShardsConfigParam(
-            shape=(1, data.shape[1], data.shape[2]), index_location=index_location
-        ),
+        chunks=(1, data.shape[1], data.shape[2]),
+        shards=ShardsConfigParam(shape=data.shape, index_location=index_location),
         dtype=data.dtype,
         fill_value=0,
     )
@@ -157,8 +157,8 @@ def test_sharding_partial_read(
     a = create_array(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunks=(64, 64, 64),
-        shards=ShardsConfigParam(shape=(32, 32, 32), index_location=index_location),
+        chunks=(32, 32, 32),
+        shards=ShardsConfigParam(shape=(64, 64, 64), index_location=index_location),
         dtype=data.dtype,
         fill_value=1,
         filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
@@ -187,8 +187,8 @@ def test_sharding_partial_overwrite(
     a = create_array(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunks=(64, 64, 64),
-        shards=ShardsConfigParam(shape=(32, 32, 32), index_location=index_location),
+        chunks=(32, 32, 32),
+        shards=ShardsConfigParam(shape=(64, 64, 64), index_location=index_location),
         dtype=data.dtype,
         fill_value=1,
         filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
@@ -213,14 +213,8 @@ def test_sharding_partial_overwrite(
     ],
     indirect=["array_fixture"],
 )
-@pytest.mark.parametrize(
-    "outer_index_location",
-    ["start", "end"],
-)
-@pytest.mark.parametrize(
-    "inner_index_location",
-    ["start", "end"],
-)
+@pytest.mark.parametrize("outer_index_location", ["start", "end"])
+@pytest.mark.parametrize("inner_index_location", ["start", "end"])
 def test_nested_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
@@ -229,17 +223,21 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
+    warnings.filterwarnings("ignore", r".*performance", ZarrUserWarning)
     a = create_array(
         spath,
         shape=data.shape,
         chunks=(64, 64, 64),
-        shards=ShardsConfigParam(
-            shape=(32, 32, 32), index_location=outer_index_location
-        ),
         dtype=data.dtype,
         fill_value=0,
         serializer=ShardingCodec(
-            chunk_shape=(16, 16, 16), index_location=inner_index_location
+            chunk_shape=(32, 32, 32),
+            index_location=outer_index_location,
+            codecs=[
+                ShardingCodec(
+                    chunk_shape=(16, 16, 16), index_location=inner_index_location
+                )
+            ],
         ),
     )
 
@@ -256,8 +254,8 @@ def test_write_partial_sharded_chunks(store: Store) -> None:
     a = create_array(
         spath,
         shape=(40, 40),
-        chunks=(20, 20),
-        shards=(10, 10),
+        chunks=(10, 10),
+        shards=(20, 20),
         dtype=data.dtype,
         fill_value=1,
         compressors=[BloscCodec()],
@@ -271,11 +269,11 @@ async def test_delete_empty_shards(store: Store) -> None:
         pytest.skip("store does not support deletes")
     path = "delete_empty_shards"
     spath = StorePath(store, path)
-    a = create_async_array(
+    a = await create_async_array(
         spath,
         shape=(16, 16),
-        chunks=(8, 16),
-        shards=(8, 8),
+        chunks=(8, 8),
+        shards=(8, 16),
         dtype="uint16",
         fill_value=1,
     )
@@ -295,7 +293,7 @@ async def test_delete_empty_shards(store: Store) -> None:
     )
     chunk_bytes = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
     assert chunk_bytes is not None
-    assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
+    assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4 == 164
 
 
 @pytest.mark.parametrize(
@@ -312,8 +310,8 @@ async def test_sharding_with_empty_inner_chunk(
     a = await create_async_array(
         spath,
         shape=(16, 16),
-        chunks=(8, 8),
-        shards=ShardsConfigParam(shape=(4, 4), index_location=index_location),
+        chunks=(4, 4),
+        shards=ShardsConfigParam(shape=(8, 8), index_location=index_location),
         dtype="uint32",
         fill_value=fill_value,
     )
