@@ -1,20 +1,20 @@
 import numpy as np
-from zarr import Array
+from zarr import create_array
 from zarr.abc.store import Store
-from zarr.codecs import BytesCodec, GzipCodec
+from zarr.codecs import GzipCodec
 from zarr.storage import StorePath
 
 
 def test_gzip(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
-    a = Array.create(
+    a = create_array(
         StorePath(store),
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
-        codecs=[BytesCodec(), GzipCodec()],
+        compressors=[GzipCodec()],
     )
 
     a[:, :] = data
