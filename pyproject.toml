@@ -20,10 +20,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dynamic = ["version"]
-dependencies = [
-    "numpy>=1.24",
-    "zarr>=3.1",
-]
+dependencies = ["numpy>=1.24", "zarr>=3.1"]
 
 [dependency-groups]
 test = [
@@ -31,7 +28,7 @@ test = [
     "fsspec>2024",
     "numcodecs>=0.16.1",
     "obstore>=0.8.2",
-    "pytest",
+    "pytest!=9.1.0",     # https://github.com/pytest-dev/pytest/issues/14591
     "pytest-asyncio",
     "pytest-xdist",
     "pytest-mock",
@@ -41,8 +38,8 @@ dev = [
     "maturin",
     "pip",
     "pre-commit",
-    {include-group = "test"},
-    {include-group = "doc"},
+    { include-group = "test" },
+    { include-group = "doc" },
 ]
 
 [project.entry-points."zarr.codec_pipeline"]
