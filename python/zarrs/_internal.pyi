@@ -19,6 +19,31 @@ class ChunkItem:
     ) -> ChunkItem: ...
 
 @typing.final
+class AsyncCodecPipelineImpl:
+    def __new__(
+        cls,
+        array_metadata: builtins.str,
+        store_config: zarr.abc.store.Store,
+        *,
+        validate_checksums: builtins.bool = False,
+        chunk_concurrent_minimum: builtins.int | None = None,
+        chunk_concurrent_maximum: builtins.int | None = None,
+        num_threads: builtins.int | None = None,
+        direct_io: builtins.bool = False,
+    ) -> AsyncCodecPipelineImpl: ...
+    def retrieve_chunks_and_apply_index(
+        self,
+        chunk_descriptions: typing.Sequence[ChunkItem],
+        value: numpy.typing.NDArray[typing.Any],
+    ) -> None: ...
+    def store_chunks_with_indices(
+        self,
+        chunk_descriptions: typing.Sequence[ChunkItem],
+        value: numpy.typing.NDArray[typing.Any],
+        write_empty_chunks: builtins.bool,
+    ) -> None: ...
+
+@typing.final
 class CodecPipelineImpl:
     def __new__(
         cls,

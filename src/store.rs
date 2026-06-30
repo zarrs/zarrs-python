@@ -8,7 +8,8 @@ use pyo3::{
 };
 use pyo3_object_store::PyExternalObjectStore;
 use zarrs::storage::{
-    ReadableWritableListableStorage, storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
+    AsyncReadableWritableListableStorage, ReadableWritableListableStorage,
+    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
 };
 
 use crate::{runtime::tokio_block_on, utils::PyErrExt};
@@ -99,6 +100,28 @@ impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
     }
 }
 
+impl TryFrom<&StoreConfig> for AsyncReadableWritableListableStorage {
+    type Error = PyErr;
+
+    fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
+        match value {
+            // The filesystem store (`zarrs::filesystem::FilesystemStore`) only
+            // implements the synchronous storage traits, so it cannot back the
+            // asynchronous pipeline. Object-store and HTTP backends are natively
+            // asynchronous and are used directly (i.e. *without* the
+            // `AsyncToSyncStorageAdapter` that the synchronous pipeline wraps
+            // around them).
+            StoreConfig::Filesystem(_) => Err(PyErr::new::<PyNotImplementedError, _>(
+                "the asynchronous codec pipeline does not support the filesystem store \
+                 (zarrs's FilesystemStore is synchronous); use the synchronous pipeline instead"
+                    .to_string(),
+            )),
+            StoreConfig::Http(config) => config.try_into(),
+            StoreConfig::ObStore(config) => config.try_into(),
+        }
+    }
+}
+
 fn opendal_builder_to_sync_store<B: Builder>(
     builder: B,
 ) -> PyResult<ReadableWritableListableStorage> {
@@ -107,5 +130,15 @@ fn opendal_builder_to_sync_store<B: Builder>(
         .finish();
     let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
     let store = Arc::new(AsyncToSyncStorageAdapter::new(store, tokio_block_on()));
+    Ok(store)
+}
+
+fn opendal_builder_to_async_store<B: Builder>(
+    builder: B,
+) -> PyResult<AsyncReadableWritableListableStorage> {
+    let operator = opendal::Operator::new(builder)
+        .map_py_err::<PyValueError>()?
+        .finish();
+    let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
     Ok(store)
 }
