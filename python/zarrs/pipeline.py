@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 from warnings import warn
 
 import numpy as np
 from zarr.abc.codec import Codec, CodecPipeline
+from zarr.codecs import ShardingCodec
 from zarr.codecs._v2 import V2Codec
 from zarr.core import BatchedCodecPipeline
 from zarr.core.config import config
@@ -31,6 +32,8 @@ from .utils import (
     UnsupportedVIndexingError,
     make_chunk_info_for_rust_with_indices,
 )
+
+SubchunkWriteOrder = Literal["morton", "unordered", "lexicographic", "colexicographic"]
 
 
 class UnsupportedDataTypeError(Exception):
@@ -62,9 +65,7 @@ def get_codec_pipeline_impl(
             ),
             num_threads=config.get("threading.max_workers", None),
             direct_io=config.get("codec_pipeline.direct_io", False),
-            subchunk_write_order=config.get(
-                "codec_pipeline.subchunk_write_order", "random"
-            ),
+            subchunk_write_order=_subchunk_write_orders(metadata),
         )
     except TypeError as e:
         if strict:
@@ -90,6 +91,30 @@ def get_codec_pipeline_fallback(
 class ZarrsCodecPipelineState(TypedDict):
     codec_metadata_json: str
     codecs: tuple[Codec, ...]
+
+
+def _subchunk_write_orders(
+    metadata: ArrayMetadata,
+) -> list[SubchunkWriteOrder]:
+    """Subchunk write order can be nested inside the sharding codec - return that order here.
+
+    Parameters
+    ----------
+    metadata
+        The array metadata containing the potentially nested shards.
+
+    Returns
+    -------
+        A list of subchunk write orders
+    """
+    orders: list[SubchunkWriteOrder] = []
+    codecs: Iterable[Codec] = array_metadata_to_codecs(metadata)
+    while (
+        sharding := next((c for c in codecs if isinstance(c, ShardingCodec)), None)
+    ) is not None:
+        orders.append(getattr(sharding, "subchunk_write_order", "morton"))
+        codecs = sharding.codecs
+    return orders
 
 
 def array_metadata_to_codecs(metadata: ArrayMetadata) -> list[Codec]:

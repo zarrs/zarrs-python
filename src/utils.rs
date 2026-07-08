@@ -48,6 +48,11 @@ pub fn is_whole_chunk(item: &ChunkItem) -> bool {
 #[derive(Debug, Clone, Copy)]
 pub struct SubchunkWriteOrderWrapper(pub SubchunkWriteOrder);
 
+// zarr-python's sharding codec exposes `subchunk_write_order` as one of
+// morton / unordered / lexicographic / colexicographic. zarrs can only write
+// C (== lexicographic) and Unordered, so the orders it can't reproduce fall
+// back to Unordered — data is correct, only the physical byte layout differs.
+// ponytail: map morton/colexicographic -> Unordered until zarrs can write them.
 impl<'py> IntoPyObject<'py> for SubchunkWriteOrderWrapper {
     type Target = PyString;
     type Output = Bound<'py, PyString>;
@@ -55,10 +60,12 @@ impl<'py> IntoPyObject<'py> for SubchunkWriteOrderWrapper {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self.0 {
-            SubchunkWriteOrder::C => Ok("C".into_pyobject(py)?),
-            SubchunkWriteOrder::Random => Ok("random".into_pyobject(py)?),
+            SubchunkWriteOrder::C => Ok("lexicographic".into_pyobject(py)?),
+            SubchunkWriteOrder::Unordered | SubchunkWriteOrder::Random => {
+                Ok("unordered".into_pyobject(py)?)
+            }
             _ => Err(PyValueError::new_err(
-                "Unrecognized subchunk write order for converting to python object, only `C` and `random` allowed.",
+                "Unrecognized subchunk write order for converting to python object.",
             )),
         }
     }
@@ -68,18 +75,24 @@ impl<'py> FromPyObject<'_, 'py> for SubchunkWriteOrderWrapper {
     type Error = PyErr;
 
     fn extract(option: Borrowed<'_, 'py, PyAny>) -> PyResult<SubchunkWriteOrderWrapper> {
-        match option.extract::<&str>()? {
-            "C" => Ok(SubchunkWriteOrderWrapper(SubchunkWriteOrder::C)),
-            "random" => Ok(SubchunkWriteOrderWrapper(SubchunkWriteOrder::Random)),
-            _ => Err(PyValueError::new_err(
-                "Unrecognized subchunk write order while extracting to rust, only `C` and `random` allowed.",
-            )),
-        }
+        let order = match option.extract::<&str>()? {
+            "lexicographic" => SubchunkWriteOrder::C,
+            "unordered" | "morton" | "colexicographic" => SubchunkWriteOrder::Unordered,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "Unrecognized subchunk write order {other:?}, only `morton`, `unordered`, `lexicographic` and `colexicographic` allowed.",
+                )));
+            }
+        };
+        Ok(SubchunkWriteOrderWrapper(order))
     }
 }
 
 impl pyo3_stub_gen::PyStubType for SubchunkWriteOrderWrapper {
     fn type_output() -> pyo3_stub_gen::TypeInfo {
-        pyo3_stub_gen::TypeInfo::with_module("typing.Literal['C', 'random']", "typing".into())
+        pyo3_stub_gen::TypeInfo::with_module(
+            "typing.Literal['morton', 'unordered', 'lexicographic', 'colexicographic']",
+            "typing".into(),
+        )
     }
 }
