@@ -1,17 +1,14 @@
-from typing import TYPE_CHECKING
-
 import numpy as np
 import pytest
-from zarr import Array, AsyncArray, config
+from zarr import AsyncArray, config, create_array
 from zarr.abc.store import Store
-from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
+from zarr.api.asynchronous import create_array as create_async_array
+from zarr.codecs import TransposeCodec
+from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import MemoryOrder
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
-
-if TYPE_CHECKING:
-    from zarr.abc.codec import Codec
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
@@ -28,25 +25,15 @@ async def test_transpose(
 ) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
     spath = StorePath(store, path="transpose")
-    codecs_: list[Codec] = (
-        [
-            ShardingCodec(
-                chunk_shape=(1, 16, 8),
-                codecs=[TransposeCodec(order=(2, 1, 0)), BytesCodec()],
-            )
-        ]
-        if with_sharding
-        else [TransposeCodec(order=(2, 1, 0)), BytesCodec()]
-    )
     with config.set({"array.order": runtime_write_order}):
-        a = await AsyncArray.create(
+        a = await create_async_array(
             spath,
             shape=data.shape,
-            chunk_shape=(1, 32, 8),
+            shards=(1, 32, 8) if with_sharding else None,
             dtype=data.dtype,
             fill_value=0,
-            chunk_key_encoding=("v2", "."),
-            codecs=codecs_,
+            chunk_key_encoding=ChunkKeyEncodingParams(name="v2", separator="."),
+            filters=[TransposeCodec(order=(2, 1, 0))],
         )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -73,13 +60,13 @@ def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     shape = [i + 3 for i in range(len(order))]
     data = np.arange(0, np.prod(shape), dtype="uint16").reshape(shape)
     spath = StorePath(store, "transpose_non_self_inverse")
-    a = Array.create(
+    a = create_array(
         spath,
         shape=data.shape,
-        chunk_shape=data.shape,
+        chunks=data.shape,
         dtype=data.dtype,
         fill_value=0,
-        codecs=[TransposeCodec(order=order), BytesCodec()],
+        filters=[TransposeCodec(order=order)],
     )
     a[:, :] = data
     read_data = a[:, :]

@@ -9,7 +9,7 @@
 
 This project serves as a bridge between [`zarrs`](https://docs.rs/zarrs/latest/zarrs/) (Rust) and [`zarr`](https://zarr.readthedocs.io/en/latest/index.html) (`zarr-python`) via [`PyO3`](https://pyo3.rs/v0.22.3/).  The main goal of the project is to speed up i/o (see [`zarr_benchmarks`](https://github.com/LDeakin/zarr_benchmarks)).
 
-To use the project, simply install our package (which depends on `zarr-python>=3.0.0`), and run:
+To use the project, simply install our package `zarrs` from PyPI (which depends on `zarr-python>=3.0.0`), and run:
 
 ```python
 import zarr

@@ -11,6 +11,7 @@ from zarr.storage import FsspecStore, LocalStore, MemoryStore, ZipStore
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
     from typing import Any, Literal
 
     from zarr.abc.store import Store
@@ -31,7 +32,7 @@ def _setup_codec_pipeline():
 
 
 async def parse_store(
-    store: Literal["local", "memory", "remote", "zip"], path: str
+    store: Literal["local", "memory", "remote", "zip"], path: Path
 ) -> LocalStore | MemoryStore | FsspecStore | ZipStore:
     if store == "local":
         return await LocalStore.open(path)
@@ -40,14 +41,14 @@ async def parse_store(
     if store == "remote":
         return await FsspecStore.open(url=path)
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip")
+        return await ZipStore.open(path / "zarr.zip")
     raise AssertionError
 
 
 @pytest.fixture(params=["local"])
-async def store(request: pytest.FixtureRequest, tmpdir) -> Store:
+async def store(request: pytest.FixtureRequest, tmp_path: Path) -> Store:
     param = request.param
-    return await parse_store(param, str(tmpdir))
+    return await parse_store(param, tmp_path)
 
 
 @pytest.fixture
