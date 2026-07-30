@@ -30,6 +30,9 @@ class CodecPipelineImpl:
         chunk_concurrent_maximum: builtins.int | None = None,
         num_threads: builtins.int | None = None,
         direct_io: builtins.bool = False,
+        subchunk_write_order: builtins.list[
+            typing.Literal["morton", "unordered", "lexicographic", "colexicographic"]
+        ] = [],
     ) -> CodecPipelineImpl: ...
     def retrieve_chunks_and_apply_index(
         self,

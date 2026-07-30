@@ -1,10 +1,13 @@
+import inspect
 import warnings
-from typing import Any
+from importlib.metadata import version
+from typing import Any, get_args
 
 import numpy as np
 import numpy.typing as npt
 import pytest
-from zarr import create_array
+from packaging.version import Version
+from zarr import config, create_array
 from zarr.abc.store import Store
 from zarr.api.asynchronous import create_array as create_async_array
 from zarr.codecs import (
@@ -16,7 +19,9 @@ from zarr.codecs import (
 from zarr.core.array import ShardsConfigParam
 from zarr.core.buffer import default_buffer_prototype
 from zarr.errors import ZarrUserWarning
-from zarr.storage import StorePath
+from zarr.storage import LocalStore, StorePath
+
+from zarrs.pipeline import SubchunkWriteOrder
 
 from .conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
@@ -321,3 +326,69 @@ async def test_sharding_with_empty_inner_chunk(
     print("read data")
     data_read = await a.getitem(...)
     assert np.array_equal(data_read, data)
+
+
+_SHARDING_HAS_WRITE_ORDER = (
+    "subchunk_write_order" in inspect.signature(ShardingCodec).parameters
+)
+
+# `subchunk_write_order` on the sharding codec is a zarr-python >=3.2.2 feature.
+requires_write_order = pytest.mark.skipif(
+    Version(version("zarr")) < Version("3.2.2dev0"),
+    reason="zarr-python ShardingCodec has no subchunk_write_order",
+)
+
+
+@requires_write_order
+@pytest.mark.parametrize("nested", [False, True], ids=["flat", "nested"])
+@pytest.mark.parametrize("subchunk_write_order", list(get_args(SubchunkWriteOrder)))
+def test_subchunk_write_order_matches_zarr_python(
+    tmp_path, *, subchunk_write_order: SubchunkWriteOrder, nested: bool
+) -> None:
+    data = np.arange(1, 32 * 32 + 1, dtype="uint32").reshape((32, 32))
+    ground_truth_subchunk_write_order = (
+        "unordered"
+        if subchunk_write_order in {"colexicographic", "unordered", "morton"}
+        else "lexicographic"
+    )
+    if nested:
+        zarrs_codec = ShardingCodec(
+            chunk_shape=(8, 8),
+            subchunk_write_order=subchunk_write_order,
+            codecs=[
+                ShardingCodec(chunk_shape=(2, 2), subchunk_write_order="lexicographic")
+            ],
+        )
+        zarr_codec = ShardingCodec(
+            chunk_shape=(8, 8),
+            subchunk_write_order=ground_truth_subchunk_write_order,
+            codecs=[
+                ShardingCodec(chunk_shape=(2, 2), subchunk_write_order="lexicographic")
+            ],
+        )
+    else:
+        zarrs_codec = ShardingCodec(
+            chunk_shape=(8, 8), subchunk_write_order="lexicographic"
+        )
+        zarr_codec = ShardingCodec(
+            chunk_shape=(8, 8), subchunk_write_order=ground_truth_subchunk_write_order
+        )
+
+    def write(pipeline: str) -> bytes:
+        sub = tmp_path / pipeline.rsplit(".", 1)[-1]
+        with config.set({"codec_pipeline.path": pipeline}):
+            a = create_array(
+                StorePath(LocalStore(sub)),
+                shape=(32, 32),
+                chunks=(32, 32),
+                dtype="uint32",
+                fill_value=0,
+                serializer=zarrs_codec if "zarrs" in pipeline else zarr_codec,
+                compressors=None,
+            )
+            a[:, :] = data
+        return (sub / "c" / "0" / "0").read_bytes()
+
+    zarrs_bytes = write("zarrs.ZarrsCodecPipeline")
+    zarr_bytes = write("zarr.core.codec_pipeline.BatchedCodecPipeline")
+    assert zarrs_bytes == zarr_bytes

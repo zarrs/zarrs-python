@@ -22,7 +22,7 @@ impl FilesystemStoreConfig {
         }
     }
 
-    pub fn direct_io(&mut self, flag: bool) -> () {
+    pub fn direct_io(&mut self, flag: bool) {
         self.opts.direct_io(flag);
     }
 }

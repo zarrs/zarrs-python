@@ -18,6 +18,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
+use zarrs::array::codec::{ShardingCodec, ShardingCodecConfiguration, SubchunkWriteOrder};
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
     ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions, DataType,
@@ -25,6 +26,7 @@ use zarrs::array::{
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
+use zarrs::metadata::v3::MetadataV3;
 use zarrs::plugin::ZarrVersion;
 use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
 
@@ -38,7 +40,60 @@ mod utils;
 
 use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
-use crate::utils::{PyCodecErrExt, PyErrExt as _};
+use crate::utils::{PyCodecErrExt, PyErrExt as _, SubchunkWriteOrderWrapper};
+
+/// Build a codec chain from metadata, applying `orders[depth]` to the sharding
+/// codec at each nesting level (outermost = `orders[0]`). Sharding nests
+/// linearly (one array->bytes codec per chain), so the list is indexed by depth.
+/// Levels beyond the list, or an empty list, keep zarrs' default order.
+fn codec_chain_with_subchunk_write_orders(
+    codecs: &[MetadataV3],
+    orders: &[SubchunkWriteOrderWrapper],
+) -> PyResult<CodecChain> {
+    let base = CodecChain::from_metadata(codecs).map_py_err::<PyTypeError>()?;
+    let array_to_bytes = base.array_to_bytes_codec();
+    let array_to_bytes: Arc<dyn ArrayToBytesCodecTraits> =
+        if array_to_bytes.as_any().is::<ShardingCodec>() {
+            let ShardingCodecConfiguration::V1(config) = codecs
+                .iter()
+                .find_map(|m| m.to_configuration::<ShardingCodecConfiguration>().ok())
+                .ok_or_else(|| {
+                    PyErr::new::<PyTypeError, _>(
+                        "sharding codec present but its metadata was not found",
+                    )
+                })?
+            else {
+                return Err(PyErr::new::<PyTypeError, _>(
+                    "unsupported sharding codec configuration version",
+                ));
+            };
+            let order = orders
+                .first()
+                .map_or(SubchunkWriteOrder::Unordered, |o| o.0);
+            let inner = codec_chain_with_subchunk_write_orders(
+                &config.codecs,
+                orders.get(1..).unwrap_or_default(),
+            )?;
+            let index =
+                CodecChain::from_metadata(&config.index_codecs).map_py_err::<PyTypeError>()?;
+            Arc::new(
+                ShardingCodec::new(
+                    config.chunk_shape,
+                    Arc::new(inner),
+                    Arc::new(index),
+                    config.index_location,
+                )
+                .with_subchunk_write_order(order),
+            )
+        } else {
+            array_to_bytes.clone()
+        };
+    Ok(CodecChain::new(
+        base.array_to_array_codecs().to_vec(),
+        array_to_bytes,
+        base.bytes_to_bytes_codecs().to_vec(),
+    ))
+}
 
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
@@ -209,6 +264,8 @@ impl CodecPipelineImpl {
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
+    #[allow(clippy::too_many_arguments)] // python functions can have defaults
+    #[allow(clippy::needless_pass_by_value)] // pyo3 extracts args by value
     #[pyo3(signature = (
         array_metadata,
         store_config,
@@ -218,6 +275,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
+        subchunk_write_order=Vec::new(),
     ))]
     #[new]
     fn new(
@@ -228,6 +286,10 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
+        // One order per sharding-codec nesting level, outermost first. Sharding
+        // nests linearly (a codec chain has exactly one array->bytes codec), so a
+        // flat depth-indexed list is enough — no tree needed.
+        subchunk_write_order: Vec<SubchunkWriteOrderWrapper>,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
         let metadata = serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
@@ -237,8 +299,10 @@ impl CodecPipelineImpl {
             }
             ArrayMetadata::V3(v3) => Cow::Borrowed(v3),
         };
-        let codec_chain =
-            Arc::new(CodecChain::from_metadata(&metadata_v3.codecs).map_py_err::<PyTypeError>()?);
+        let codec_chain = Arc::new(codec_chain_with_subchunk_write_orders(
+            &metadata_v3.codecs,
+            &subchunk_write_order,
+        )?);
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
         let chunk_concurrent_minimum =
@@ -254,17 +318,15 @@ impl CodecPipelineImpl {
             DataType::from_metadata(&metadata_v3.data_type).map_py_err::<PyTypeError>()?;
         let fill_value = data_type
             .fill_value(&metadata_v3.fill_value, ZarrVersion::V3)
-            .or_else(|_| {
-                Err(match &metadata {
-                    ArrayMetadata::V2(metadata) => format!(
-                        "incompatible fill value metadata: dtype={}, fill_value={}",
-                        metadata.dtype, metadata.fill_value
-                    ),
-                    ArrayMetadata::V3(metadata) => format!(
-                        "incompatible fill value metadata: data_type={}, fill_value={}",
-                        metadata.data_type, metadata.fill_value
-                    ),
-                })
+            .map_err(|_| match &metadata {
+                ArrayMetadata::V2(metadata) => format!(
+                    "incompatible fill value metadata: dtype={}, fill_value={}",
+                    metadata.dtype, metadata.fill_value
+                ),
+                ArrayMetadata::V3(metadata) => format!(
+                    "incompatible fill value metadata: data_type={}, fill_value={}",
+                    metadata.data_type, metadata.fill_value
+                ),
             })
             .map_py_err::<PyTypeError>()?;
 

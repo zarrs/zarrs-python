@@ -52,6 +52,8 @@ The `ZarrsCodecPipeline` specific options are:
 - `codec_pipeline.strict`: raise exceptions for unsupported operations instead of falling back to the default codec pipeline of `zarr-python`.
   - Defaults to `False`.
 
+The subchunk write order within a shard is derived from each `ShardingCodec`'s `subchunk_write_order` (`zarr-python` >= 3.2.2). Nested shards are handled per level: the order is read from the sharding codec at each nesting depth. `zarrs` falls back to `unordered` for `morton`/`colexicographic` but can handle `lexicographic` and `unordered` explicitly.
+
 For example:
 ```python
 zarr.config.set({
@@ -63,8 +65,8 @@ zarr.config.set({
         "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
         "direct_io": False,
-        "strict": False
-    }
+        "strict": False,
+    },
 })
 ```
 

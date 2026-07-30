@@ -72,7 +72,7 @@ impl<'py> FromPyObject<'_, 'py> for StoreConfig {
 }
 
 impl StoreConfig {
-    pub fn direct_io(&mut self, flag: bool) -> () {
+    pub fn direct_io(&mut self, flag: bool) {
         match self {
             StoreConfig::Filesystem(config) => config.direct_io(flag),
             StoreConfig::Http(_config) => (),
