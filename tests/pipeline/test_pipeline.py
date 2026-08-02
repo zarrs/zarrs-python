@@ -128,3 +128,40 @@ def test_direct_io(tmp_path: Path) -> None:
     ground_truth_arr = np.random.random(z.shape)
     z[...] = ground_truth_arr
     np.testing.assert_array_equal(z[...], ground_truth_arr)
+
+
+def _open_fds() -> int:
+    fd_dir = Path("/proc/self/fd")
+    if not fd_dir.is_dir():
+        fd_dir = Path("/dev/fd")
+    return len(list(fd_dir.iterdir()))
+
+
+def _sharded_array(path: Path) -> np.ndarray:
+    z = zarr.create_array(
+        path, dtype=np.float64, shape=(80, 100), chunks=(10, 10), shards=(20, 20)
+    )
+    ground_truth_arr = np.random.random(z.shape)
+    z[...] = ground_truth_arr
+    return ground_truth_arr
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="needs /proc/self/fd or /dev/fd"
+)
+@pytest.mark.parametrize("cache_size", [0, 4])
+def test_file_handle_cache(tmp_path: Path, cache_size: int) -> None:
+    path = tmp_path / "foo.zarr"
+    ground_truth_arr = _sharded_array(path)
+
+    with zarr.config.set(
+        {
+            "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
+            "codec_pipeline.file_handle_cache_size": cache_size,
+        }
+    ):
+        before = _open_fds()
+        z = zarr.open_array(path, mode="r")
+        np.testing.assert_array_equal(z[...], ground_truth_arr)
+        # Shard files stay open only while the cache is enabled.
+        assert _open_fds() - before == cache_size
