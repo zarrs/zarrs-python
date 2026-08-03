@@ -210,7 +210,10 @@ def test_invalid_metadata_order(store: Store) -> None:
 
 def test_invalid_metadata_chunk_shape(store: Store) -> None:
     spath = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError, match=r"chunk.*number of dimensions"):
+    # zarr < 3.3 fails in the sharding codec ("The shard's `chunk_shape` and array's
+    # `shape` need to have the same number of dimensions."), zarr >= 3.3 fails earlier
+    # when parsing the chunk grid ("chunks has 1 dimensions but shape has 2 dimensions")
+    with pytest.raises(ValueError, match=r"chunk.*dimensions"):
         create_array(
             spath,
             shape=(8, 8),
@@ -223,7 +226,9 @@ def test_invalid_metadata_chunk_shape(store: Store) -> None:
 
 def test_invalid_metadata_inner_chunk_shape(store: Store) -> None:
     spath = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError, match=r"inner chunk size"):
+    # zarr < 3.3 says "divisible by the shard's inner `chunk_shape`",
+    # zarr >= 3.3 says "divisible by the shard's inner chunk size"
+    with pytest.raises(ValueError, match=r"divisible by the shard's inner"):
         create_array(
             spath,
             shape=(8, 8),
