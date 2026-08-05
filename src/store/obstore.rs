@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use pyo3::PyErr;
 use zarrs::storage::{
-    ReadableWritableListableStorage, storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
+    AsyncReadableWritableListableStorage, ReadableWritableListableStorage,
+    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
 };
 use zarrs_object_store::{AsyncObjectStore, object_store::ObjectStore};
 
@@ -29,5 +30,16 @@ impl TryInto<ReadableWritableListableStorage> for &ObStoreConfig {
             tokio_block_on(),
         ));
         Ok(sync_store)
+    }
+}
+
+impl TryInto<AsyncReadableWritableListableStorage> for &ObStoreConfig {
+    type Error = PyErr;
+
+    fn try_into(self) -> Result<AsyncReadableWritableListableStorage, Self::Error> {
+        // `AsyncObjectStore` is natively asynchronous, so it can back the
+        // asynchronous pipeline directly without the `AsyncToSyncStorageAdapter`.
+        let async_store = Arc::new(AsyncObjectStore::new(self.store.clone()));
+        Ok(async_store)
     }
 }
