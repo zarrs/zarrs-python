@@ -8,7 +8,6 @@ from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
@@ -20,12 +19,10 @@ numpy_str_dtypes: list[type | str | None] = [
     "S",
     "U",
 ]
-expected_array_string_dtype: np.dtype[Any]
-if _NUMPY_SUPPORTS_VLEN_STRING:
+# `zarr.core.dtype.npy.string._NUMPY_SUPPORTS_VLEN_STRING` was removed in zarr 3.3,
+# which requires numpy 2+. This is how zarr itself defined it.
+if hasattr(np.dtypes, "StringDType"):
     numpy_str_dtypes.append(np.dtypes.StringDType)
-    expected_array_string_dtype = np.dtypes.StringDType()
-else:
-    expected_array_string_dtype = np.dtype("O")
 
 
 @pytest.mark.filterwarnings(
