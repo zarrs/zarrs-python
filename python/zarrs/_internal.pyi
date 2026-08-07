@@ -30,6 +30,7 @@ class CodecPipelineImpl:
         chunk_concurrent_maximum: builtins.int | None = None,
         num_threads: builtins.int | None = None,
         direct_io: builtins.bool = False,
+        file_handle_cache_size: builtins.int = 0,
     ) -> CodecPipelineImpl: ...
     def retrieve_chunks_and_apply_index(
         self,

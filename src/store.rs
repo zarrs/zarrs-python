@@ -79,6 +79,14 @@ impl StoreConfig {
             StoreConfig::ObStore(_config) => (),
         }
     }
+
+    pub fn file_handle_cache_size(&mut self, size: usize) {
+        match self {
+            StoreConfig::Filesystem(config) => config.file_handle_cache_size(size),
+            StoreConfig::Http(_config) => (),
+            StoreConfig::ObStore(_config) => (),
+        }
+    }
 }
 
 impl pyo3_stub_gen::PyStubType for StoreConfig {

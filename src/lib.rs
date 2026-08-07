@@ -218,6 +218,7 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
+        file_handle_cache_size=0,
     ))]
     #[new]
     fn new(
@@ -228,8 +229,10 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
+        file_handle_cache_size: usize,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
+        store_config.file_handle_cache_size(file_handle_cache_size);
         let metadata = serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
         let metadata_v3 = match &metadata {
             ArrayMetadata::V2(v2) => {

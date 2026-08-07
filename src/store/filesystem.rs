@@ -25,6 +25,10 @@ impl FilesystemStoreConfig {
     pub fn direct_io(&mut self, flag: bool) -> () {
         self.opts.direct_io(flag);
     }
+
+    pub fn file_handle_cache_size(&mut self, size: usize) {
+        self.opts.file_handle_cache_size(size);
+    }
 }
 
 impl TryInto<ReadableWritableListableStorage> for &FilesystemStoreConfig {

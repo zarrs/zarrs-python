@@ -47,6 +47,10 @@ The `ZarrsCodecPipeline` specific options are:
   - Defaults to 4 if `None`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#chunk-concurrent-minimum) for more info.
 - `codec_pipeline.validate_checksums`: enable checksum validation (e.g. with the CRC32C codec).
   - Defaults to `True`. See [here](https://docs.rs/zarrs/latest/zarrs/config/struct.Config.html#validate-checksums) for more info.
+- `codec_pipeline.file_handle_cache_size`: the capacity of the filesystem store's file handle cache. If nonzero, files are kept open in a least-recently-used cache and reused across partial reads instead of being reopened per read, which cuts `open`/`stat`/`close` operations when many byte ranges are read from the same files, such as partial reads of sharded arrays. This is particularly beneficial on network filesystems (e.g. Lustre, NFS), where each metadata operation is a server round trip.
+  - Defaults to `0` (disabled). Only applies to filesystem stores, and has no effect when `direct_io` is enabled.
+  - Cached handles are invalidated on writes through this pipeline, but not on modification from anywhere else — and `zarr-python` itself is such a writer, since `resize`, `delete_dir` and metadata writes go through its own store. A cached handle can then still read a chunk file that has been deleted. Only enable this while nothing is modifying the array.
+  - The cache is per `Array` object, not per process, so compare `file_handle_cache_size` times the number of open arrays against `ulimit -n`. See [here](https://docs.rs/zarrs_filesystem/latest/zarrs_filesystem/struct.FilesystemStoreOptions.html#method.file_handle_cache_size) for more info.
 - `codec_pipeline.direct_io`: enable `O_DIRECT` read/write, needs support from the operating system (currently only Linux) and file system.
   - Defaults to `False`.
 - `codec_pipeline.strict`: raise exceptions for unsupported operations instead of falling back to the default codec pipeline of `zarr-python`.
@@ -62,6 +66,7 @@ zarr.config.set({
         "validate_checksums": True,
         "chunk_concurrent_maximum": None,
         "chunk_concurrent_minimum": 4,
+        "file_handle_cache_size": 0,
         "direct_io": False,
         "strict": False
     }
