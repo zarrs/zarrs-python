@@ -53,6 +53,11 @@ pub struct CodecPipelineImpl {
     pub(crate) num_threads: usize,
     pub(crate) fill_value: FillValue,
     pub(crate) data_type: DataType,
+    /// Whether zarr-python opened this store read-only.
+    ///
+    /// Not inferable here: `StoreConfig` builds a writable Rust store whatever mode the
+    /// array was opened in.
+    pub(crate) store_is_read_only: bool,
 }
 
 impl CodecPipelineImpl {
@@ -208,6 +213,7 @@ impl CodecPipelineImpl {
         num_threads=None,
         direct_io=false,
         file_handle_cache_size=0,
+        store_is_read_only=false,
     ))]
     #[new]
     fn new(
@@ -219,6 +225,7 @@ impl CodecPipelineImpl {
         num_threads: Option<usize>,
         direct_io: bool,
         file_handle_cache_size: usize,
+        store_is_read_only: bool,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
         store_config.file_handle_cache_size(file_handle_cache_size);
@@ -275,6 +282,7 @@ impl CodecPipelineImpl {
             num_threads,
             fill_value,
             data_type,
+            store_is_read_only,
         })
     }
 
@@ -387,6 +395,11 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
         write_empty_chunks: bool,
     ) -> PyResult<()> {
+        if self.store_is_read_only {
+            return Err(PyValueError::new_err(
+                "store was opened in read-only mode and does not support writing",
+            ));
+        }
         enum InputValue<'a> {
             Array(ArrayBytes<'a>),
             Constant(FillValue),
