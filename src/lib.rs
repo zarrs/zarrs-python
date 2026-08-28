@@ -18,10 +18,11 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
+use zarrs::array::codec::api::BytesPartialDecoderTraits;
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
-    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions, DataType,
-    FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
+    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecChainBound, CodecOptions,
+    DataType, FillValue, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
@@ -45,7 +46,7 @@ use crate::utils::{PyCodecErrExt, PyErrExt as _};
 #[pyclass]
 pub struct CodecPipelineImpl {
     pub(crate) store: ReadableWritableListableStorage,
-    pub(crate) codec_chain: Arc<CodecChain>,
+    pub(crate) codec_chain: Arc<CodecChainBound>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
     pub(crate) chunk_concurrent_maximum: usize,
@@ -58,20 +59,14 @@ impl CodecPipelineImpl {
     fn retrieve_chunk_bytes<'a>(
         &self,
         item: &ChunkItem,
-        codec_chain: &CodecChain,
+        codec_chain: &CodecChainBound,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
         let value_encoded = self.store.get(&item.key).map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
-                .decode(
-                    value_encoded.into(),
-                    &item.shape,
-                    &self.data_type,
-                    &self.fill_value,
-                    codec_options,
-                )
+                .decode(value_encoded.into(), &item.shape, codec_options)
                 .map_codec_err()?
         } else {
             ArrayBytes::new_fill_value(&self.data_type, item.num_elements, &self.fill_value)
@@ -83,7 +78,7 @@ impl CodecPipelineImpl {
     fn store_chunk_bytes(
         &self,
         item: &ChunkItem,
-        codec_chain: &CodecChain,
+        codec_chain: &CodecChainBound,
         value_decoded: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
@@ -95,13 +90,7 @@ impl CodecPipelineImpl {
             self.store.erase(&item.key).map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
-                .encode(
-                    value_decoded,
-                    &item.shape,
-                    &self.data_type,
-                    &self.fill_value,
-                    codec_options,
-                )
+                .encode(value_decoded, &item.shape, codec_options)
                 .map(Cow::into_owned)
                 .map_codec_err()?;
 
@@ -115,7 +104,7 @@ impl CodecPipelineImpl {
     fn store_chunk_subset_bytes(
         &self,
         item: &ChunkItem,
-        codec_chain: &CodecChain,
+        codec_chain: &CodecChainBound,
         chunk_subset_bytes: ArrayBytes,
         codec_options: &CodecOptions,
     ) -> PyResult<()> {
@@ -240,8 +229,10 @@ impl CodecPipelineImpl {
             }
             ArrayMetadata::V3(v3) => Cow::Borrowed(v3),
         };
+        // Parsed before binding, so an array with bad codecs and a bad fill value still
+        // reports the codecs.
         let codec_chain =
-            Arc::new(CodecChain::from_metadata(&metadata_v3.codecs).map_py_err::<PyTypeError>()?);
+            CodecChain::from_metadata(&metadata_v3.codecs).map_py_err::<PyTypeError>()?;
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
         let chunk_concurrent_minimum =
@@ -269,6 +260,10 @@ impl CodecPipelineImpl {
                     ),
                 })
             })
+            .map_py_err::<PyTypeError>()?;
+
+        let codec_chain = codec_chain
+            .with_context(data_type.clone(), fill_value.clone())
             .map_py_err::<PyTypeError>()?;
 
         Ok(Self {
@@ -310,18 +305,13 @@ impl CodecPipelineImpl {
         if !partial_chunk_items.is_empty() {
             let key_decoder_pairs =
                 iter_concurrent_limit!(chunk_concurrent_limit, partial_chunk_items, map, |item| {
-                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
-                    let input_handle = StoragePartialDecoder::new(storage_handle, item.key.clone());
+                    // The (storage, key) tuple IS the store-backed `BytesPartialDecoderTraits`.
+                    let input_handle: Arc<dyn BytesPartialDecoderTraits> =
+                        Arc::new((StorageHandle::new(self.store.clone()), item.key.clone()));
                     let partial_decoder = self
                         .codec_chain
                         .clone()
-                        .partial_decoder(
-                            Arc::new(input_handle),
-                            &item.shape,
-                            &self.data_type,
-                            &self.fill_value,
-                            &codec_options,
-                        )
+                        .partial_decoder(input_handle, &item.shape, &codec_options)
                         .map_codec_err()?;
                     Ok((item.key.clone(), partial_decoder))
                 })
@@ -362,8 +352,6 @@ impl CodecPipelineImpl {
                         self.codec_chain.decode_into(
                             Cow::Owned(chunk_encoded),
                             &item.shape,
-                            &self.data_type,
-                            &self.fill_value,
                             target,
                             &codec_options,
                         )
