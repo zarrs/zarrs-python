@@ -29,7 +29,8 @@ from .utils import (
     DiscontiguousArrayError,
     FillValueNoneError,
     UnsupportedVIndexingError,
-    make_chunk_info_for_rust_with_indices,
+    chunk_info_for_read,
+    chunk_info_for_write,
 )
 
 
@@ -183,9 +184,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             if self.impl is None:
                 raise UnsupportedMetadataError()
             self._raise_error_on_unsupported_batch_dtype(batch_info)
-            chunks_desc = make_chunk_info_for_rust_with_indices(
-                batch_info, drop_axes, out.shape
-            )
+            chunks_desc = chunk_info_for_read(batch_info, drop_axes, out.shape)
         except (
             UnsupportedMetadataError,
             DiscontiguousArrayError,
@@ -218,9 +217,7 @@ class ZarrsCodecPipeline(CodecPipeline):
             if self.impl is None:
                 raise UnsupportedMetadataError()
             self._raise_error_on_unsupported_batch_dtype(batch_info)
-            chunks_desc = make_chunk_info_for_rust_with_indices(
-                batch_info, drop_axes, value.shape
-            )
+            chunks_desc = chunk_info_for_write(batch_info, drop_axes, value.shape)
         except (
             UnsupportedMetadataError,
             DiscontiguousArrayError,
