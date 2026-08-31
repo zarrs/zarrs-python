@@ -2,11 +2,12 @@
 
 zarr-python enforces this in the store itself -- `Store._check_writable`, reached from the
 concrete store's `_set`. This pipeline never gets there: it is handed a `StoreConfig` and
-builds its own Rust store, writable whatever mode the array was opened in. Without the guard
-a write to a `mode="r"` array SUCCEEDS here and raises through the default pipeline.
+builds its own Rust store, so nothing zarr-python checks is in the path -- a `mode="r"` write
+SUCCEEDS unless this side refuses it. It refuses by keeping a writable handle only when the
+store is writable; the read handle has no `set`/`erase` in its interface at all.
 
 Opened STRICT throughout, and that is what makes the assertion mean anything: zarr's own
-refusal message is byte-identical to the Rust guard's, so with a fallback available these
+refusal message is byte-identical to the Rust one, so with a fallback available these
 tests would pass whether the guard fired or zarr-python served the write.
 """
 
