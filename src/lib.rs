@@ -43,7 +43,7 @@ use crate::utils::{PyCodecErrExt, PyErrExt as _};
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
 #[pyclass]
-pub struct CodecPipelineImpl {
+pub(crate) struct CodecPipelineImpl {
     pub(crate) store: ReadableWritableListableStorage,
     pub(crate) codec_chain: Arc<CodecChain>,
     pub(crate) codec_options: CodecOptions,
@@ -468,10 +468,13 @@ impl CodecPipelineImpl {
 /// A Python module implemented in Rust.
 #[pymodule]
 pub mod _internal {
+    #[pymodule_export]
     #[allow(non_upper_case_globals)]
-    pub const __version__: &str = env!("CARGO_PKG_VERSION");
-    pub use super::CodecPipelineImpl;
-    pub use super::chunk_item::ChunkItem;
+    const __version__: &str = env!("CARGO_PKG_VERSION");
+    #[pymodule_export]
+    use super::CodecPipelineImpl;
+    #[pymodule_export]
+    use super::chunk_item::ChunkItem;
 }
 
 define_stub_info_gatherer!(stub_info);
