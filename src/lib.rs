@@ -43,7 +43,7 @@ use crate::utils::{PyCodecErrExt, PyErrExt as _};
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
 #[pyclass]
-pub struct CodecPipelineImpl {
+pub(crate) struct CodecPipelineImpl {
     pub(crate) store: ReadableWritableListableStorage,
     pub(crate) codec_chain: Arc<CodecChain>,
     pub(crate) codec_options: CodecOptions,
@@ -257,17 +257,15 @@ impl CodecPipelineImpl {
             DataType::from_metadata(&metadata_v3.data_type).map_py_err::<PyTypeError>()?;
         let fill_value = data_type
             .fill_value(&metadata_v3.fill_value, ZarrVersion::V3)
-            .or_else(|_| {
-                Err(match &metadata {
-                    ArrayMetadata::V2(metadata) => format!(
-                        "incompatible fill value metadata: dtype={}, fill_value={}",
-                        metadata.dtype, metadata.fill_value
-                    ),
-                    ArrayMetadata::V3(metadata) => format!(
-                        "incompatible fill value metadata: data_type={}, fill_value={}",
-                        metadata.data_type, metadata.fill_value
-                    ),
-                })
+            .map_err(|_| match &metadata {
+                ArrayMetadata::V2(metadata) => format!(
+                    "incompatible fill value metadata: dtype={}, fill_value={}",
+                    metadata.dtype, metadata.fill_value
+                ),
+                ArrayMetadata::V3(metadata) => format!(
+                    "incompatible fill value metadata: data_type={}, fill_value={}",
+                    metadata.data_type, metadata.fill_value
+                ),
             })
             .map_py_err::<PyTypeError>()?;
 
@@ -469,11 +467,14 @@ impl CodecPipelineImpl {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add_class::<CodecPipelineImpl>()?;
-    m.add_class::<chunk_item::ChunkItem>()?;
-    Ok(())
+pub mod _internal {
+    #[pymodule_export]
+    #[allow(non_upper_case_globals)]
+    const __version__: &str = env!("CARGO_PKG_VERSION");
+    #[pymodule_export]
+    use super::CodecPipelineImpl;
+    #[pymodule_export]
+    use super::chunk_item::ChunkItem;
 }
 
 define_stub_info_gatherer!(stub_info);

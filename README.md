@@ -13,6 +13,7 @@ To use the project, simply install our package `zarrs` from PyPI (which depends 
 
 ```python
 import zarr
+
 zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 ```
 
@@ -68,8 +69,8 @@ zarr.config.set({
         "chunk_concurrent_minimum": 4,
         "file_handle_cache_size": 0,
         "direct_io": False,
-        "strict": False
-    }
+        "strict": False,
+    },
 })
 ```
 
