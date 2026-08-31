@@ -65,7 +65,6 @@ def get_codec_pipeline_impl(
             file_handle_cache_size=config.get(
                 "codec_pipeline.file_handle_cache_size", 0
             ),
-            store_is_read_only=store.read_only,
         )
     except TypeError as e:
         if strict:

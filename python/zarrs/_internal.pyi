@@ -31,7 +31,6 @@ class CodecPipelineImpl:
         num_threads: builtins.int | None = None,
         direct_io: builtins.bool = False,
         file_handle_cache_size: builtins.int = 0,
-        store_is_read_only: builtins.bool = False,
     ) -> CodecPipelineImpl: ...
     def retrieve_chunks_and_apply_index(
         self,
