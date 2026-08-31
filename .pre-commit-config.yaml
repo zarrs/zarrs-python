@@ -30,6 +30,7 @@ repos:
       - id: ruff
         args: ["--fix"]
       - id: ruff-format
+        args: ["--preview"]
       # The following can be removed once PLR0917 is out of preview
       - name: ruff preview rules
         id: ruff

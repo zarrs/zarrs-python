@@ -26,7 +26,7 @@ fn to_nonzero_u64_vec(v: Vec<u64>) -> PyResult<Vec<NonZeroU64>> {
 #[derive(Clone)]
 #[gen_stub_pyclass]
 #[pyclass]
-pub(crate) struct ChunkItem {
+pub struct ChunkItem {
     pub key: StoreKey,
     pub chunk_subset: ArraySubset,
     pub subset: ArraySubset,

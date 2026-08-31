@@ -59,21 +59,19 @@ The `ZarrsCodecPipeline` specific options are:
 
 For example:
 ```python
-zarr.config.set(
-    {
-        "threading.max_workers": None,
-        "array.write_empty_chunks": False,
-        "codec_pipeline": {
-            "path": "zarrs.ZarrsCodecPipeline",
-            "validate_checksums": True,
-            "chunk_concurrent_maximum": None,
-            "chunk_concurrent_minimum": 4,
-            "file_handle_cache_size": 0,
-            "direct_io": False,
-            "strict": False,
-        },
-    }
-)
+zarr.config.set({
+    "threading.max_workers": None,
+    "array.write_empty_chunks": False,
+    "codec_pipeline": {
+        "path": "zarrs.ZarrsCodecPipeline",
+        "validate_checksums": True,
+        "chunk_concurrent_maximum": None,
+        "chunk_concurrent_minimum": 4,
+        "file_handle_cache_size": 0,
+        "direct_io": False,
+        "strict": False,
+    },
+})
 ```
 
 If the `ZarrsCodecPipeline` is pickled, and then un-pickled, and during that time one of `chunk_concurrent_minimum`, `chunk_concurrent_maximum`, or `num_threads` has changed, the newly un-pickled version will pick up the new value.  However, once a `ZarrsCodecPipeline` object has been instantiated, these values are then fixed.  This may change in the future as guidance from the `zarr` community becomes clear.

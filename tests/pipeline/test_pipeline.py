@@ -98,19 +98,15 @@ def test_pipeline_used(
 
 @pytest.fixture
 def use_zarrs_direct_io() -> Generator[None]:
-    zarr.config.set(
-        {
-            "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
-            "codec_pipeline.direct_io": True,
-        }
-    )
+    zarr.config.set({
+        "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
+        "codec_pipeline.direct_io": True,
+    })
     yield
-    zarr.config.set(
-        {
-            "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
-            "codec_pipeline.direct_io": False,
-        }
-    )
+    zarr.config.set({
+        "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
+        "codec_pipeline.direct_io": False,
+    })
 
 
 @pytest.mark.skipif(
@@ -154,12 +150,10 @@ def test_file_handle_cache(tmp_path: Path, cache_size: int) -> None:
     path = tmp_path / "foo.zarr"
     ground_truth_arr = _sharded_array(path)
 
-    with zarr.config.set(
-        {
-            "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
-            "codec_pipeline.file_handle_cache_size": cache_size,
-        }
-    ):
+    with zarr.config.set({
+        "codec_pipeline.path": "zarrs.ZarrsCodecPipeline",
+        "codec_pipeline.file_handle_cache_size": cache_size,
+    }):
         before = _open_fds()
         z = zarr.open_array(path, mode="r")
         np.testing.assert_array_equal(z[...], ground_truth_arr)
