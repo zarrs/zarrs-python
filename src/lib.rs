@@ -26,7 +26,7 @@ use zarrs::array::{
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
 use zarrs::plugin::ZarrVersion;
-use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
+use zarrs::storage::{ReadableStorage, ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
 mod concurrency;
@@ -44,7 +44,12 @@ use crate::utils::{PyCodecErrExt, PyErrExt as _};
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct CodecPipelineImpl {
-    pub(crate) store: ReadableWritableListableStorage,
+    /// Read handle, deliberately the READ-ONLY type: `set`/`erase` are not in its interface,
+    /// so the only way to reach a write is `writable()`.
+    pub(crate) readable_store: ReadableStorage,
+    /// The writable handle -- `None` when zarr-python opened the store read-only. Same object
+    /// as `readable_store`; the read-only case simply never keeps a writable view of it.
+    pub(crate) writable_store: Option<ReadableWritableListableStorage>,
     pub(crate) codec_chain: Arc<CodecChain>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
@@ -61,7 +66,10 @@ impl CodecPipelineImpl {
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = self.store.get(&item.key).map_py_err::<PyRuntimeError>()?;
+        let value_encoded = self
+            .readable_store
+            .get(&item.key)
+            .map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
@@ -80,6 +88,13 @@ impl CodecPipelineImpl {
         Ok(value_decoded)
     }
 
+    /// The writable store, or zarr-python's own refusal, verbatim.
+    fn writable(&self) -> PyResult<&ReadableWritableListableStorage> {
+        self.writable_store.as_ref().ok_or_else(|| {
+            PyValueError::new_err("store was opened in read-only mode and does not support writing")
+        })
+    }
+
     fn store_chunk_bytes(
         &self,
         item: &ChunkItem,
@@ -91,8 +106,10 @@ impl CodecPipelineImpl {
             .validate(item.num_elements, &self.data_type)
             .map_codec_err()?;
 
+        let store = self.writable()?;
+
         if value_decoded.is_fill_value(&self.fill_value) {
-            self.store.erase(&item.key).map_py_err::<PyRuntimeError>()
+            store.erase(&item.key).map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
                 .encode(
@@ -106,7 +123,7 @@ impl CodecPipelineImpl {
                 .map_codec_err()?;
 
             // Store the encoded chunk
-            self.store
+            store
                 .set(&item.key, value_encoded.into())
                 .map_py_err::<PyRuntimeError>()
         }
@@ -252,6 +269,8 @@ impl CodecPipelineImpl {
 
         let store: ReadableWritableListableStorage =
             (&store_config).try_into().map_py_err::<PyTypeError>()?;
+        let writable_store = (!store_config.read_only).then(|| store.clone());
+        let readable_store: ReadableStorage = store.readable();
 
         let data_type =
             DataType::from_metadata(&metadata_v3.data_type).map_py_err::<PyTypeError>()?;
@@ -270,7 +289,7 @@ impl CodecPipelineImpl {
             .map_py_err::<PyTypeError>()?;
 
         Ok(Self {
-            store,
+            readable_store,
             codec_chain,
             codec_options,
             chunk_concurrent_minimum,
@@ -278,6 +297,7 @@ impl CodecPipelineImpl {
             num_threads,
             fill_value,
             data_type,
+            writable_store,
         })
     }
 
@@ -308,7 +328,7 @@ impl CodecPipelineImpl {
         if !partial_chunk_items.is_empty() {
             let key_decoder_pairs =
                 iter_concurrent_limit!(chunk_concurrent_limit, partial_chunk_items, map, |item| {
-                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
+                    let storage_handle = Arc::new(StorageHandle::new(self.readable_store.clone()));
                     let input_handle = StoragePartialDecoder::new(storage_handle, item.key.clone());
                     let partial_decoder = self
                         .codec_chain
@@ -352,8 +372,10 @@ impl CodecPipelineImpl {
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if is_whole_chunk(&item) {
                     // See zarrs::array::Array::retrieve_chunk_into
-                    if let Some(chunk_encoded) =
-                        self.store.get(&item.key).map_py_err::<PyRuntimeError>()?
+                    if let Some(chunk_encoded) = self
+                        .readable_store
+                        .get(&item.key)
+                        .map_py_err::<PyRuntimeError>()?
                     {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -397,6 +419,9 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
         write_empty_chunks: bool,
     ) -> PyResult<()> {
+        // Fail before decoding anything; the write site checks again by construction.
+        self.writable()?;
+
         enum InputValue<'a> {
             Array(ArrayBytes<'a>),
             Constant(FillValue),
