@@ -33,6 +33,7 @@ class CodecPipelineImpl:
         subchunk_write_order: builtins.list[
             typing.Literal["morton", "unordered", "lexicographic", "colexicographic"]
         ] = [],
+        file_handle_cache_size: builtins.int = 0,
     ) -> CodecPipelineImpl: ...
     def retrieve_chunks_and_apply_index(
         self,

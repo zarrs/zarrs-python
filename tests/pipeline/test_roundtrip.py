@@ -90,9 +90,9 @@ def indexing_method(roundtrip: tuple[Literal[2, 3], int, Index, Callable]) -> Ca
 
 @contextmanager
 def use_zarr_default_codec_reader() -> Generator[None]:
-    zarr.config.set(
-        {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
-    )
+    zarr.config.set({
+        "codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"
+    })
     yield
     zarr.config.set({"codec_pipeline.path": "zarrs.ZarrsCodecPipeline"})
 
