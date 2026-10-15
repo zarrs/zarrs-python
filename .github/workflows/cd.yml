@@ -25,7 +25,9 @@ jobs:
         include:
           # manylinux for various platforms
           - { os: linux, manylinux: '2_28', target: armv7 }
-          - { os: linux, manylinux: '2_28', target: ppc64le }
+          # rustc 1.99.0 LLVM crashes on ppc64le (`Cannot select: sign_extend v4i32` in libbz2-rs-sys); unpin once fixed upstream
+          # Waiting for https://github.com/llvm/llvm-project/issues/229609 to land visibly to rustc
+          - { os: linux, manylinux: '2_28', target: ppc64le, rust-toolchain: '1.98.1' }
           #- { os: linux, manylinux: '2_28', target: s390x }
           # musl
           - { os: linux, manylinux: musllinux_1_2, target: x86_64 }
@@ -48,7 +50,7 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
           args: --release --out dist --interpreter '3.11 3.12 3.13'
-          rust-toolchain: stable
+          rust-toolchain: ${{ matrix.rust-toolchain || 'stable' }}
           docker-options: -e CI
           maturin-version: 1.9.4
           before-script-linux: |
