@@ -1,10 +1,7 @@
 use pyo3::ffi::c_str;
 
 use numpy::PyUntypedArray;
-use pyo3::{
-    Bound, PyResult, Python,
-    types::{PyAnyMethods, PyModule},
-};
+use pyo3::prelude::*;
 
 use crate::CodecPipelineImpl;
 

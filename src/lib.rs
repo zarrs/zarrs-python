@@ -18,17 +18,17 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon_iter_concurrent_limit::iter_concurrent_limit;
 use unsafe_cell_slice::UnsafeCellSlice;
 use utils::is_whole_chunk;
-use zarrs::array::codec::{ShardingCodecOptions, SubchunkWriteOrder};
+use zarrs::array::codec::{ShardingCodec, ShardingCodecConfiguration, SubchunkWriteOrder};
 use zarrs::array::{
     ArrayBytes, ArrayBytesDecodeIntoTarget, ArrayBytesFixedDisjointView, ArrayMetadata,
-    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions,
-    CodecSpecificOptions, DataType, FillValue, StoragePartialDecoder, copy_fill_value_into,
-    update_array_bytes,
+    ArrayPartialDecoderTraits, ArrayToBytesCodecTraits, CodecChain, CodecOptions, DataType,
+    FillValue, StoragePartialDecoder, copy_fill_value_into, update_array_bytes,
 };
 use zarrs::config::global_config;
 use zarrs::convert::array_metadata_v2_to_v3;
+use zarrs::metadata::v3::MetadataV3;
 use zarrs::plugin::ZarrVersion;
-use zarrs::storage::{ReadableWritableListableStorage, StorageHandle, StoreKey};
+use zarrs::storage::{ReadableStorage, ReadableWritableListableStorage, StorageHandle, StoreKey};
 
 mod chunk_item;
 mod concurrency;
@@ -42,11 +42,69 @@ use crate::concurrency::ChunkConcurrentLimitAndCodecOptions;
 use crate::store::StoreConfig;
 use crate::utils::{PyCodecErrExt, PyErrExt as _, SubchunkWriteOrderWrapper};
 
+/// Build a codec chain from metadata, applying `orders[depth]` to the sharding
+/// codec at each nesting level (outermost = `orders[0]`). Sharding nests
+/// linearly (one array->bytes codec per chain), so the list is indexed by depth.
+/// Levels beyond the list, or an empty list, keep zarrs' default order.
+fn codec_chain_with_subchunk_write_orders(
+    codecs: &[MetadataV3],
+    orders: &[SubchunkWriteOrderWrapper],
+) -> PyResult<CodecChain> {
+    let base = CodecChain::from_metadata(codecs).map_py_err::<PyTypeError>()?;
+    let array_to_bytes = base.array_to_bytes_codec();
+    let array_to_bytes: Arc<dyn ArrayToBytesCodecTraits> =
+        if array_to_bytes.as_any().is::<ShardingCodec>() {
+            let ShardingCodecConfiguration::V1(config) = codecs
+                .iter()
+                .find_map(|m| m.to_configuration::<ShardingCodecConfiguration>().ok())
+                .ok_or_else(|| {
+                    PyErr::new::<PyTypeError, _>(
+                        "sharding codec present but its metadata was not found",
+                    )
+                })?
+            else {
+                return Err(PyErr::new::<PyTypeError, _>(
+                    "unsupported sharding codec configuration version",
+                ));
+            };
+            let order = orders
+                .first()
+                .map_or(SubchunkWriteOrder::Unordered, |o| o.0);
+            let inner = codec_chain_with_subchunk_write_orders(
+                &config.codecs,
+                orders.get(1..).unwrap_or_default(),
+            )?;
+            let index =
+                CodecChain::from_metadata(&config.index_codecs).map_py_err::<PyTypeError>()?;
+            Arc::new(
+                ShardingCodec::new(
+                    config.chunk_shape,
+                    Arc::new(inner),
+                    Arc::new(index),
+                    config.index_location,
+                )
+                .with_subchunk_write_order(order),
+            )
+        } else {
+            array_to_bytes.clone()
+        };
+    Ok(CodecChain::new(
+        base.array_to_array_codecs().to_vec(),
+        array_to_bytes,
+        base.bytes_to_bytes_codecs().to_vec(),
+    ))
+}
+
 // TODO: Use a OnceLock for store with get_or_try_init when stabilised?
 #[gen_stub_pyclass]
 #[pyclass]
-pub struct CodecPipelineImpl {
-    pub(crate) store: ReadableWritableListableStorage,
+pub(crate) struct CodecPipelineImpl {
+    /// Read handle, deliberately the READ-ONLY type: `set`/`erase` are not in its interface,
+    /// so the only way to reach a write is `writable()`.
+    pub(crate) readable_store: ReadableStorage,
+    /// The writable handle -- `None` when zarr-python opened the store read-only. Same object
+    /// as `readable_store`; the read-only case simply never keeps a writable view of it.
+    pub(crate) writable_store: Option<ReadableWritableListableStorage>,
     pub(crate) codec_chain: Arc<CodecChain>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
@@ -63,7 +121,10 @@ impl CodecPipelineImpl {
         codec_chain: &CodecChain,
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
-        let value_encoded = self.store.get(&item.key).map_py_err::<PyRuntimeError>()?;
+        let value_encoded = self
+            .readable_store
+            .get(&item.key)
+            .map_py_err::<PyRuntimeError>()?;
         let value_decoded = if let Some(value_encoded) = value_encoded {
             let value_encoded: Vec<u8> = value_encoded.into(); // zero-copy in this case
             codec_chain
@@ -82,6 +143,13 @@ impl CodecPipelineImpl {
         Ok(value_decoded)
     }
 
+    /// The writable store, or zarr-python's own refusal, verbatim.
+    fn writable(&self) -> PyResult<&ReadableWritableListableStorage> {
+        self.writable_store.as_ref().ok_or_else(|| {
+            PyValueError::new_err("store was opened in read-only mode and does not support writing")
+        })
+    }
+
     fn store_chunk_bytes(
         &self,
         item: &ChunkItem,
@@ -93,8 +161,10 @@ impl CodecPipelineImpl {
             .validate(item.num_elements, &self.data_type)
             .map_codec_err()?;
 
+        let store = self.writable()?;
+
         if value_decoded.is_fill_value(&self.fill_value) {
-            self.store.erase(&item.key).map_py_err::<PyRuntimeError>()
+            store.erase(&item.key).map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = codec_chain
                 .encode(
@@ -108,7 +178,7 @@ impl CodecPipelineImpl {
                 .map_codec_err()?;
 
             // Store the encoded chunk
-            self.store
+            store
                 .set(&item.key, value_encoded.into())
                 .map_py_err::<PyRuntimeError>()
         }
@@ -211,6 +281,8 @@ impl CodecPipelineImpl {
 #[gen_stub_pymethods]
 #[pymethods]
 impl CodecPipelineImpl {
+    #[allow(clippy::too_many_arguments)] // python functions can have defaults
+    #[allow(clippy::needless_pass_by_value)] // pyo3 extracts args by value
     #[pyo3(signature = (
         array_metadata,
         store_config,
@@ -220,7 +292,8 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
-        subchunk_write_order=SubchunkWriteOrderWrapper(SubchunkWriteOrder::Random),
+        subchunk_write_order=Vec::new(),
+        file_handle_cache_size=0,
     ))]
     #[new]
     fn new(
@@ -231,9 +304,14 @@ impl CodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
-        subchunk_write_order: SubchunkWriteOrderWrapper,
+        // One order per sharding-codec nesting level, outermost first. Sharding
+        // nests linearly (a codec chain has exactly one array->bytes codec), so a
+        // flat depth-indexed list is enough — no tree needed.
+        subchunk_write_order: Vec<SubchunkWriteOrderWrapper>,
+        file_handle_cache_size: usize,
     ) -> PyResult<Self> {
         store_config.direct_io(direct_io);
+        store_config.file_handle_cache_size(file_handle_cache_size);
         let metadata = serde_json::from_str(array_metadata).map_py_err::<PyTypeError>()?;
         let metadata_v3 = match &metadata {
             ArrayMetadata::V2(v2) => {
@@ -241,16 +319,10 @@ impl CodecPipelineImpl {
             }
             ArrayMetadata::V3(v3) => Cow::Borrowed(v3),
         };
-        let codec_chain = Arc::new(
-            CodecChain::from_metadata(&metadata_v3.codecs)
-                .map_py_err::<PyTypeError>()?
-                .with_codec_specific_options(
-                    &CodecSpecificOptions::default().with_option(
-                        ShardingCodecOptions::default()
-                            .with_subchunk_write_order(subchunk_write_order.0),
-                    ),
-                ),
-        );
+        let codec_chain = Arc::new(codec_chain_with_subchunk_write_orders(
+            &metadata_v3.codecs,
+            &subchunk_write_order,
+        )?);
         let codec_options = CodecOptions::default().with_validate_checksums(validate_checksums);
 
         let chunk_concurrent_minimum =
@@ -261,27 +333,27 @@ impl CodecPipelineImpl {
 
         let store: ReadableWritableListableStorage =
             (&store_config).try_into().map_py_err::<PyTypeError>()?;
+        let writable_store = (!store_config.read_only).then(|| store.clone());
+        let readable_store: ReadableStorage = store.readable();
 
         let data_type =
             DataType::from_metadata(&metadata_v3.data_type).map_py_err::<PyTypeError>()?;
         let fill_value = data_type
             .fill_value(&metadata_v3.fill_value, ZarrVersion::V3)
-            .or_else(|_| {
-                Err(match &metadata {
-                    ArrayMetadata::V2(metadata) => format!(
-                        "incompatible fill value metadata: dtype={}, fill_value={}",
-                        metadata.dtype, metadata.fill_value
-                    ),
-                    ArrayMetadata::V3(metadata) => format!(
-                        "incompatible fill value metadata: data_type={}, fill_value={}",
-                        metadata.data_type, metadata.fill_value
-                    ),
-                })
+            .map_err(|_| match &metadata {
+                ArrayMetadata::V2(metadata) => format!(
+                    "incompatible fill value metadata: dtype={}, fill_value={}",
+                    metadata.dtype, metadata.fill_value
+                ),
+                ArrayMetadata::V3(metadata) => format!(
+                    "incompatible fill value metadata: data_type={}, fill_value={}",
+                    metadata.data_type, metadata.fill_value
+                ),
             })
             .map_py_err::<PyTypeError>()?;
 
         Ok(Self {
-            store,
+            readable_store,
             codec_chain,
             codec_options,
             chunk_concurrent_minimum,
@@ -289,6 +361,7 @@ impl CodecPipelineImpl {
             num_threads,
             fill_value,
             data_type,
+            writable_store,
         })
     }
 
@@ -319,7 +392,7 @@ impl CodecPipelineImpl {
         if !partial_chunk_items.is_empty() {
             let key_decoder_pairs =
                 iter_concurrent_limit!(chunk_concurrent_limit, partial_chunk_items, map, |item| {
-                    let storage_handle = Arc::new(StorageHandle::new(self.store.clone()));
+                    let storage_handle = Arc::new(StorageHandle::new(self.readable_store.clone()));
                     let input_handle = StoragePartialDecoder::new(storage_handle, item.key.clone());
                     let partial_decoder = self
                         .codec_chain
@@ -363,8 +436,10 @@ impl CodecPipelineImpl {
                 // See zarrs::array::Array::retrieve_chunk_subset_into
                 if is_whole_chunk(&item) {
                     // See zarrs::array::Array::retrieve_chunk_into
-                    if let Some(chunk_encoded) =
-                        self.store.get(&item.key).map_py_err::<PyRuntimeError>()?
+                    if let Some(chunk_encoded) = self
+                        .readable_store
+                        .get(&item.key)
+                        .map_py_err::<PyRuntimeError>()?
                     {
                         // Decode the encoded data into the output buffer
                         let chunk_encoded: Vec<u8> = chunk_encoded.into();
@@ -408,6 +483,9 @@ impl CodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
         write_empty_chunks: bool,
     ) -> PyResult<()> {
+        // Fail before decoding anything; the write site checks again by construction.
+        self.writable()?;
+
         enum InputValue<'a> {
             Array(ArrayBytes<'a>),
             Constant(FillValue),
@@ -478,11 +556,14 @@ impl CodecPipelineImpl {
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn _internal(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add_class::<CodecPipelineImpl>()?;
-    m.add_class::<chunk_item::ChunkItem>()?;
-    Ok(())
+pub mod _internal {
+    #[pymodule_export]
+    #[allow(non_upper_case_globals)]
+    const __version__: &str = env!("CARGO_PKG_VERSION");
+    #[pymodule_export]
+    use super::CodecPipelineImpl;
+    #[pymodule_export]
+    use super::chunk_item::ChunkItem;
 }
 
 define_stub_info_gatherer!(stub_info);
