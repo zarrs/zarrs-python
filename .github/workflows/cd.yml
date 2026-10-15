@@ -26,6 +26,7 @@ jobs:
           # manylinux for various platforms
           - { os: linux, manylinux: '2_28', target: armv7 }
           # rustc 1.99.0 LLVM crashes on ppc64le (`Cannot select: sign_extend v4i32` in libbz2-rs-sys); unpin once fixed upstream
+          # Waiting for https://github.com/llvm/llvm-project/issues/229609 to land visibly to rustc
           - { os: linux, manylinux: '2_28', target: ppc64le, rust-toolchain: '1.98.1' }
           #- { os: linux, manylinux: '2_28', target: s390x }
           # musl
