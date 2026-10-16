@@ -313,7 +313,7 @@ impl AsyncCodecPipelineImpl {
         py.detach(move || {
             // Phase 1: fetch + decode every chunk's subset into an owned
             // `ArrayBytes`, in parallel across the tokio runtime's worker threads.
-            let decoded: Vec<ArrayBytes<'static>> = block_on(async {
+            let decoded: Vec<(ChunkItem, ArrayBytes<'static>)> = block_on(async {
                 // Build the partial decoders (one per unique shard) in parallel.
                 let mut cache_tasks: JoinSet<
                     PyResult<(StoreKey, Arc<dyn AsyncArrayPartialDecoderTraits>)>,
@@ -352,9 +352,9 @@ impl AsyncCodecPipelineImpl {
 
                 // One fetch task per chunk. Each returns owned bytes, so the task
                 // is `Send + 'static` and runs with real tokio parallelism.
-                let mut fetch_tasks: JoinSet<PyResult<(usize, ArrayBytes<'static>)>> =
+                let mut fetch_tasks: JoinSet<PyResult<(ChunkItem, ArrayBytes<'static>)>> =
                     JoinSet::new();
-                for (index, item) in chunk_descriptions.iter().enumerate() {
+                for item in chunk_descriptions.iter() {
                     let ctx = ctx.clone();
                     let item = item.clone();
                     let partial_decoder = partial_decoder_cache.get(&item.key).cloned();
@@ -405,28 +405,25 @@ impl AsyncCodecPipelineImpl {
                                 .map_codec_err()?
                                 .into_owned()
                         };
-                        Ok((index, bytes))
+                        Ok((item, bytes))
                     });
                 }
 
-                let mut decoded: Vec<Option<ArrayBytes<'static>>> =
-                    (0..chunk_descriptions.len()).map(|_| None).collect();
-                while let Some(joined) = fetch_tasks.join_next().await {
-                    let (index, bytes) = joined.map_py_err::<PyRuntimeError>()??;
-                    decoded[index] = Some(bytes);
+                let decoded = fetch_tasks
+                    .join_all()
+                    .await
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>()?;
+                if decoded.len() != chunk_descriptions.len() {
+                    return Err(PyRuntimeError::new_err("Not all chunks were fetched."));
                 }
                 // Every index is produced exactly once by the loop above.
-                Ok::<_, PyErr>(
-                    decoded
-                        .into_iter()
-                        .map(|bytes| bytes.expect("every chunk index is decoded exactly once"))
-                        .collect(),
-                )
+                Ok::<_, PyErr>(decoded)
             })?;
 
             // Phase 2: copy each decoded subset into `value`. Synchronous, so the
             // non-`'static` borrow of the output buffer is sound.
-            for (item, bytes) in chunk_descriptions.iter().zip(decoded) {
+            for (item, bytes) in decoded.into_iter() {
                 let mut output_view = unsafe {
                     // SAFETY: chunks represent disjoint array subsets, so the
                     // views never write overlapping output bytes.
