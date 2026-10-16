@@ -1,5 +1,5 @@
 import warnings
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -10,7 +10,6 @@ from zarr.api.asynchronous import create_array as create_async_array
 from zarr.codecs import (
     BloscCodec,
     ShardingCodec,
-    ShardingCodecIndexLocation,
     TransposeCodec,
 )
 from zarr.core.array import ShardsConfigParam
@@ -20,6 +19,10 @@ from zarr.storage import StorePath
 
 from .conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
+
+# zarr < 3.3 wants `ShardingCodecIndexLocation`, which zarr >= 3.3 deprecates in favour
+# of plain strings. Both versions accept the strings, so avoid the enum entirely.
+IndexLocation = Literal["start", "end"]
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -36,7 +39,7 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
 def test_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocation,
     offset: int,
 ) -> None:
     """
@@ -80,7 +83,7 @@ def test_sharding(
 def test_sharding_partial(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -116,7 +119,7 @@ def test_sharding_partial(
 def test_sharding_partial_readwrite(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -150,7 +153,7 @@ def test_sharding_partial_readwrite(
 def test_sharding_partial_read(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -180,7 +183,7 @@ def test_sharding_partial_read(
 def test_sharding_partial_overwrite(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    index_location: IndexLocation,
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -218,8 +221,8 @@ def test_sharding_partial_overwrite(
 def test_nested_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
-    outer_index_location: ShardingCodecIndexLocation,
-    inner_index_location: ShardingCodecIndexLocation,
+    outer_index_location: IndexLocation,
+    inner_index_location: IndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -297,11 +300,9 @@ async def test_delete_empty_shards(store: Store) -> None:
     assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4 == 164
 
 
-@pytest.mark.parametrize(
-    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
-)
+@pytest.mark.parametrize("index_location", ["start", "end"])
 async def test_sharding_with_empty_inner_chunk(
-    store: Store, index_location: ShardingCodecIndexLocation
+    store: Store, index_location: IndexLocation
 ) -> None:
     data = np.arange(0, 16 * 16, dtype="uint32").reshape((16, 16))
     fill_value = 1

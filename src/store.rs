@@ -23,7 +23,17 @@ pub use self::http::HttpStoreConfig;
 pub use self::obstore::ObStoreConfig;
 
 #[derive(Debug, Clone)]
-pub enum StoreConfig {
+pub struct StoreConfig {
+    pub kind: StoreKind,
+    /// Whether zarr-python opened the store read-only, i.e. `mode="r"`.
+    ///
+    /// zarr-python resolves the mode into the store itself (`Store.read_only`), so it comes
+    /// off the same object every other field here does.
+    pub read_only: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum StoreKind {
     Filesystem(FilesystemStoreConfig),
     Http(HttpStoreConfig),
     ObStore(ObStoreConfig),
@@ -36,10 +46,10 @@ impl<'py> FromPyObject<'_, 'py> for StoreConfig {
     fn extract(store: Borrowed<'_, 'py, PyAny>) -> PyResult<Self> {
         let name = store.get_type().name()?;
         let name = name.to_str()?;
-        match name {
+        let kind = match name {
             "LocalStore" => {
                 let root: String = store.getattr("root")?.call_method0("__str__")?.extract()?;
-                Ok(StoreConfig::Filesystem(FilesystemStoreConfig::new(root)))
+                StoreKind::Filesystem(FilesystemStoreConfig::new(root))
             }
             "FsspecStore" => {
                 let fs = store.getattr("fs")?;
@@ -49,13 +59,14 @@ impl<'py> FromPyObject<'_, 'py> for StoreConfig {
                 let storage_options: HashMap<String, Bound<'py, PyAny>> =
                     fs.getattr("storage_options")?.extract()?;
                 match fs_name {
-                    "HTTPFileSystem" => Ok(StoreConfig::Http(HttpStoreConfig::new(
-                        &path,
-                        &storage_options,
-                    )?)),
-                    _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
-                        "zarrs-python does not support {fs_name} (FsspecStore) stores"
-                    ))),
+                    "HTTPFileSystem" => {
+                        StoreKind::Http(HttpStoreConfig::new(&path, &storage_options)?)
+                    }
+                    _ => {
+                        return Err(PyErr::new::<PyNotImplementedError, _>(format!(
+                            "zarrs-python does not support {fs_name} (FsspecStore) stores"
+                        )));
+                    }
                 }
             }
             "ObjectStore" => {
@@ -63,21 +74,35 @@ impl<'py> FromPyObject<'_, 'py> for StoreConfig {
                 let external_object_store: PyExternalObjectStore = underlying_store.extract()?;
                 let object_store: Arc<dyn zarrs_object_store::object_store::ObjectStore> =
                     external_object_store.into_dyn();
-                Ok(StoreConfig::ObStore(ObStoreConfig::new(object_store)))
+                StoreKind::ObStore(ObStoreConfig::new(object_store))
             }
-            _ => Err(PyErr::new::<PyNotImplementedError, _>(format!(
-                "zarrs-python does not support {name} stores"
-            ))),
-        }
+            _ => {
+                return Err(PyErr::new::<PyNotImplementedError, _>(format!(
+                    "zarrs-python does not support {name} stores"
+                )));
+            }
+        };
+        Ok(StoreConfig {
+            kind,
+            read_only: store.getattr("read_only")?.extract()?,
+        })
     }
 }
 
 impl StoreConfig {
-    pub fn direct_io(&mut self, flag: bool) -> () {
-        match self {
-            StoreConfig::Filesystem(config) => config.direct_io(flag),
-            StoreConfig::Http(_config) => (),
-            StoreConfig::ObStore(_config) => (),
+    pub fn direct_io(&mut self, flag: bool) {
+        match &mut self.kind {
+            StoreKind::Filesystem(config) => config.direct_io(flag),
+            StoreKind::Http(_config) => (),
+            StoreKind::ObStore(_config) => (),
+        }
+    }
+
+    pub fn file_handle_cache_size(&mut self, size: usize) {
+        match &mut self.kind {
+            StoreKind::Filesystem(config) => config.file_handle_cache_size(size),
+            StoreKind::Http(_config) => (),
+            StoreKind::ObStore(_config) => (),
         }
     }
 }
@@ -92,10 +117,10 @@ impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
     type Error = PyErr;
 
     fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
-        match value {
-            StoreConfig::Filesystem(config) => config.try_into(),
-            StoreConfig::Http(config) => config.try_into(),
-            StoreConfig::ObStore(config) => config.try_into(),
+        match &value.kind {
+            StoreKind::Filesystem(config) => config.try_into(),
+            StoreKind::Http(config) => config.try_into(),
+            StoreKind::ObStore(config) => config.try_into(),
         }
     }
 }
@@ -104,20 +129,20 @@ impl TryFrom<&StoreConfig> for AsyncReadableWritableListableStorage {
     type Error = PyErr;
 
     fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
-        match value {
+        match &value.kind {
             // The filesystem store (`zarrs::filesystem::FilesystemStore`) only
             // implements the synchronous storage traits, so it cannot back the
             // asynchronous pipeline. Object-store and HTTP backends are natively
             // asynchronous and are used directly (i.e. *without* the
             // `AsyncToSyncStorageAdapter` that the synchronous pipeline wraps
             // around them).
-            StoreConfig::Filesystem(_) => Err(PyErr::new::<PyNotImplementedError, _>(
+            StoreKind::Filesystem(_) => Err(PyErr::new::<PyNotImplementedError, _>(
                 "the asynchronous codec pipeline does not support the filesystem store \
                  (zarrs's FilesystemStore is synchronous); use the synchronous pipeline instead"
                     .to_string(),
             )),
-            StoreConfig::Http(config) => config.try_into(),
-            StoreConfig::ObStore(config) => config.try_into(),
+            StoreKind::Http(config) => config.try_into(),
+            StoreKind::ObStore(config) => config.try_into(),
         }
     }
 }

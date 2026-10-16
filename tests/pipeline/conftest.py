@@ -113,14 +113,12 @@ def roundtrip_params() -> Generator[ParameterSet]:
             if sum(isinstance(i, EllipsisType) for i in index) > 1:
                 continue
             for indexing_method_param in indexing_method_params:
-                id = "-".join(
-                    [
-                        str(indexing_method_param.id),
-                        f"{dimensionality}d",
-                        *(str(index_param.id) for index_param in index_param_prod),
-                        f"v{format}",
-                    ]
-                )
+                id = "-".join([
+                    str(indexing_method_param.id),
+                    f"{dimensionality}d",
+                    *(str(index_param.id) for index_param in index_param_prod),
+                    f"v{format}",
+                ])
                 indexing_method = indexing_method_param.values[0]
                 yield pytest.param(
                     (format, dimensionality, index, indexing_method), id=id

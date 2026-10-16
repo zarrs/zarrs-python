@@ -43,8 +43,8 @@ use zarrs::array::{
     update_array_bytes,
 };
 use zarrs::storage::{
-    AsyncReadableStorageTraits, AsyncReadableWritableListableStorage, AsyncWritableStorageTraits,
-    StorageHandle, StoreKey,
+    AsyncReadableStorage, AsyncReadableStorageTraits, AsyncReadableWritableListableStorage,
+    AsyncWritableStorageTraits, StorageHandle, StoreKey,
 };
 // Not re-exported by `zarrs` (only the async traits are); see Cargo.toml.
 use zarrs_codec::AsyncStoragePartialDecoder;
@@ -57,7 +57,7 @@ use crate::utils::{PyCodecErrExt, PyErrExt as _, is_whole_chunk};
 use crate::{ArrayConfig, CodecPipelineImpl, parse_array_config};
 
 struct RetrieveContext {
-    store: AsyncReadableWritableListableStorage,
+    store: AsyncReadableStorage,
     codec_chain: Arc<CodecChain>,
     codec_options: CodecOptions,
     data_type: DataType,
@@ -66,8 +66,11 @@ struct RetrieveContext {
 
 #[gen_stub_pyclass]
 #[pyclass]
-pub struct AsyncCodecPipelineImpl {
-    pub(crate) store: AsyncReadableWritableListableStorage,
+pub(crate) struct AsyncCodecPipelineImpl {
+    /// Read handle, deliberately the READ-ONLY type; see [`CodecPipelineImpl`].
+    pub(crate) readable_store: AsyncReadableStorage,
+    /// The writable handle -- `None` when zarr-python opened the store read-only.
+    pub(crate) writable_store: Option<AsyncReadableWritableListableStorage>,
     pub(crate) codec_chain: Arc<CodecChain>,
     pub(crate) codec_options: CodecOptions,
     pub(crate) chunk_concurrent_minimum: usize,
@@ -105,7 +108,7 @@ impl AsyncCodecPipelineImpl {
         codec_options: &CodecOptions,
     ) -> PyResult<ArrayBytes<'a>> {
         let value_encoded = self
-            .store
+            .readable_store
             .get(&item.key)
             .await
             .map_py_err::<PyRuntimeError>()?;
@@ -127,6 +130,13 @@ impl AsyncCodecPipelineImpl {
         Ok(value_decoded)
     }
 
+    /// The writable store, or zarr-python's own refusal, verbatim.
+    fn writable(&self) -> PyResult<&AsyncReadableWritableListableStorage> {
+        self.writable_store.as_ref().ok_or_else(|| {
+            PyValueError::new_err("store was opened in read-only mode and does not support writing")
+        })
+    }
+
     async fn store_chunk_bytes(
         &self,
         item: &ChunkItem,
@@ -137,11 +147,10 @@ impl AsyncCodecPipelineImpl {
             .validate(item.num_elements, &self.data_type)
             .map_codec_err()?;
 
+        let store = self.writable()?;
+
         if value_decoded.is_fill_value(&self.fill_value) {
-            self.store
-                .erase(&item.key)
-                .await
-                .map_py_err::<PyRuntimeError>()
+            store.erase(&item.key).await.map_py_err::<PyRuntimeError>()
         } else {
             let value_encoded = self
                 .codec_chain
@@ -156,7 +165,7 @@ impl AsyncCodecPipelineImpl {
                 .map_codec_err()?;
 
             // Store the encoded chunk
-            self.store
+            store
                 .set(&item.key, value_encoded.into())
                 .await
                 .map_py_err::<PyRuntimeError>()
@@ -220,6 +229,7 @@ impl AsyncCodecPipelineImpl {
         chunk_concurrent_maximum=None,
         num_threads=None,
         direct_io=false,
+        file_handle_cache_size=0,
     ))]
     #[new]
     fn new(
@@ -230,10 +240,13 @@ impl AsyncCodecPipelineImpl {
         chunk_concurrent_maximum: Option<usize>,
         num_threads: Option<usize>,
         direct_io: bool,
+        file_handle_cache_size: usize,
     ) -> PyResult<Self> {
-        // `direct_io` only affects the (synchronous) filesystem store, which the
-        // async pipeline does not support; kept for signature parity.
+        // `direct_io` and `file_handle_cache_size` only affect the (synchronous)
+        // filesystem store, which the async pipeline does not support; kept for
+        // signature parity.
         store_config.direct_io(direct_io);
+        store_config.file_handle_cache_size(file_handle_cache_size);
         let ArrayConfig {
             codec_chain,
             codec_options,
@@ -252,9 +265,12 @@ impl AsyncCodecPipelineImpl {
 
         let store: AsyncReadableWritableListableStorage =
             (&store_config).try_into().map_py_err::<PyTypeError>()?;
+        let writable_store = (!store_config.read_only).then(|| store.clone());
+        let readable_store: AsyncReadableStorage = store.readable();
 
         Ok(Self {
-            store,
+            readable_store,
+            writable_store,
             codec_chain,
             codec_options,
             chunk_concurrent_minimum,
@@ -303,7 +319,7 @@ impl AsyncCodecPipelineImpl {
 
         // Owned, `'static` config cloned into each fetch task.
         let ctx = Arc::new(RetrieveContext {
-            store: self.store.clone(),
+            store: self.readable_store.clone(),
             codec_chain: self.codec_chain.clone(),
             codec_options,
             data_type: self.data_type.clone(),
@@ -451,6 +467,9 @@ impl AsyncCodecPipelineImpl {
         value: &Bound<'_, PyUntypedArray>,
         write_empty_chunks: bool,
     ) -> PyResult<()> {
+        // Fail before decoding anything; the write site checks again by construction.
+        self.writable()?;
+
         enum InputValue<'a> {
             Array(ArrayBytes<'a>),
             Constant(FillValue),

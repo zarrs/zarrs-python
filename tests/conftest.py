@@ -55,7 +55,8 @@ async def store(request: pytest.FixtureRequest, tmp_path: Path) -> Store:
 def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
     array_request: ArrayRequest = request.param
     return (
-        np.arange(np.prod(array_request.shape))
+        np
+        .arange(np.prod(array_request.shape))
         .reshape(array_request.shape, order=array_request.order)
         .astype(array_request.dtype)
     )
