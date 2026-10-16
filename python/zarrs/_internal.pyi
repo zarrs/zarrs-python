@@ -30,7 +30,7 @@ class CodecPipelineImpl:
         chunk_concurrent_maximum: builtins.int | None = None,
         num_threads: builtins.int | None = None,
         direct_io: builtins.bool = False,
-        subchunk_write_order: builtins.list[
+        subchunk_write_order: typing.Sequence[
             typing.Literal["morton", "unordered", "lexicographic", "colexicographic"]
         ] = [],
         file_handle_cache_size: builtins.int = 0,
