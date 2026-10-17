@@ -5,26 +5,18 @@
 //! `get`/`set`/`erase` calls instead of going through the
 //! `AsyncToSyncStorageAdapter`.
 //!
-//! [`tokio::task::spawn`] / [`JoinSet`](tokio::task::JoinSet) require their
-//! futures to be `Send + 'static`, so a task that decoded *directly into* that
-//! buffer would not compile: the view borrows `value` and cannot satisfy
-//! `'static` (and we would also have to argue disjoint-write soundness across
-//! threads we do not control).
+//! Its methods return Python awaitables (via [`pyo3_async_runtimes`]) driven on
+//! the shared Tokio runtime, so the asyncio event loop is never blocked.
 //!
-//! So retrieval is split into two phases:
+//! Those futures must be `Send + 'static`, so they cannot borrow the output
+//! `numpy` buffer. Instead, [`AsyncCodecPipelineImpl::retrieve_chunks`] returns
+//! one awaitable per chunk resolving to that chunk's decoded subset, and Python
+//! copies each into the output as soon as it arrives. A decoded subset is
+//! dropped right after its copy, so peak memory is bounded by the chunks in
+//! flight rather than by the whole output.
 //!
-//! 1. **Fetch (parallel concurrent-fetch/decode, `tokio`)
-//! 2. **Fill (synchronous, parallel).**
-//!    [`ArrayBytesFixedDisjointView::copy_from_slice`] over its disjoint subset.
-//!    This touches the non-`'static` borrow, but it is plain synchronous code —
-//!    no `tokio`, no `'static` requirement.
-//!
-//! The trade-off is that all decoded chunk subsets are held in memory at once
-//! (≈ the size of `value`) before the fill begins.
-//!
-//! The write path has no such conflict — it only *reads* the input buffer — so it
-//! still drives `async` stores concurrently inside a single
-//! [`crate::runtime::block_on`] via [`futures`] combinators.
+//! The write path only *reads* the input buffer; its future keeps the array
+//! alive via a [`Py`] reference and reads it through a raw pointer.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -32,38 +24,44 @@ use std::sync::Arc;
 
 use futures::stream::{self, TryStreamExt};
 use itertools::Itertools;
-use numpy::{PyUntypedArray, PyUntypedArrayMethods};
+use numpy::{IntoPyArray, PyArray1, PyUntypedArray, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3_stub_gen::derive::{gen_stub_pyclass, gen_stub_pymethods};
-use tokio::task::JoinSet;
+use tokio::sync::OnceCell;
 use zarrs::array::{
-    ArrayBytes, ArrayBytesFixedDisjointView, ArrayToBytesCodecTraits,
-    AsyncArrayPartialDecoderTraits, CodecChain, CodecOptions, DataType, FillValue,
-    update_array_bytes,
+    ArrayBytes, ArrayToBytesCodecTraits, AsyncArrayPartialDecoderTraits, CodecChain, CodecOptions,
+    DataType, FillValue, update_array_bytes,
 };
 use zarrs::storage::{
     AsyncReadableStorage, AsyncReadableStorageTraits, AsyncReadableWritableListableStorage,
-    AsyncWritableStorageTraits, StorageHandle, StoreKey,
+    AsyncWritableStorageTraits, StorageHandle,
 };
 // Not re-exported by `zarrs` (only the async traits are); see Cargo.toml.
 use zarrs_codec::AsyncStoragePartialDecoder;
 
 use crate::chunk_item::ChunkItem;
 use crate::concurrency::{ChunkConcurrentLimitAndCodecOptions, CodecPipelineConfig};
-use crate::runtime::block_on;
 use crate::store::StoreConfig;
 use crate::utils::{PyCodecErrExt, PyErrExt as _, is_whole_chunk};
 use crate::{ArrayConfig, CodecPipelineImpl, parse_array_config};
 
-struct RetrieveContext {
-    store: AsyncReadableStorage,
-    codec_chain: Arc<CodecChain>,
-    codec_options: CodecOptions,
-    data_type: DataType,
-    fill_value: FillValue,
+type PartialDecoderCell = Arc<OnceCell<Arc<dyn AsyncArrayPartialDecoderTraits>>>;
+
+/// A decoded chunk subset, converted to a 1D `uint8` numpy array without copying.
+struct DecodedBytes(Vec<u8>);
+
+impl<'py> IntoPyObject<'py> for DecodedBytes {
+    type Target = PyArray1<u8>;
+    type Output = Bound<'py, PyArray1<u8>>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_pyarray(py))
+    }
 }
 
+#[derive(Clone)]
 #[gen_stub_pyclass]
 #[pyclass]
 pub(crate) struct AsyncCodecPipelineImpl {
@@ -281,243 +279,155 @@ impl AsyncCodecPipelineImpl {
         })
     }
 
-    fn retrieve_chunks_and_apply_index(
+    /// One awaitable per chunk, each resolving to that chunk's decoded subset as a
+    /// flat `uint8` array; the caller copies it into the output.
+    #[gen_stub(override_return_type(
+        type_repr = "builtins.list[collections.abc.Awaitable[numpy.typing.NDArray[numpy.uint8]]]",
+        imports = ("builtins", "collections.abc", "numpy", "numpy.typing")
+    ))]
+    fn retrieve_chunks<'py>(
         &self,
-        py: Python,
-        chunk_descriptions: Vec<ChunkItem>, // FIXME: Ref / iterable?
-        value: &Bound<'_, PyUntypedArray>,
-    ) -> PyResult<()> {
-        // `output` is an `UnsafeCellSlice` borrowing `value`'s buffer; its
-        // lifetime is *not* `'static`. It is never handed to a `tokio` task —
-        // only the synchronous fill phase below touches it (see module docs).
-        let output = CodecPipelineImpl::nparray_to_unsafe_cell_slice(value)?;
-
+        py: Python<'py>,
+        chunk_descriptions: Vec<ChunkItem>,
+    ) -> PyResult<Vec<Bound<'py, PyAny>>> {
         // Only the codec options are needed here; chunk-level parallelism is
         // delegated to the tokio runtime rather than a manual concurrency limit.
         let Some((_chunk_concurrent_limit, codec_options)) =
             chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
         else {
-            return Ok(());
+            return Ok(vec![]);
         };
+        // Cheap (all `Arc`s / small values); the futures must own it.
+        let pipeline = Arc::new(self.clone());
+        let codec_options = Arc::new(codec_options);
 
-        // FIXME: the fill phase only supports fixed length data types. For
-        // variable length data types, need a codepath without `copy_from_slice`.
-        let data_type_size = self
-            .data_type
-            .fixed_size()
-            .ok_or("variable length data type not supported")
-            .map_py_err::<PyTypeError>()?;
-
-        // Unique partial (non-whole) chunks each need an async partial decoder,
-        // so that subsets sharing a shard reuse a single decoder.
-        let partial_chunk_items: Vec<ChunkItem> = chunk_descriptions
+        // Subsets sharing a (partial) chunk share one lazily-built partial decoder.
+        let partial_decoders: HashMap<_, PartialDecoderCell> = chunk_descriptions
             .iter()
             .filter(|item| !is_whole_chunk(item))
-            .unique_by(|item| item.key.clone())
-            .cloned()
+            .map(|item| item.key.clone())
+            .unique()
+            .map(|key| (key, Arc::default()))
             .collect();
 
-        // Owned, `'static` config cloned into each fetch task.
-        let ctx = Arc::new(RetrieveContext {
-            store: self.readable_store.clone(),
-            codec_chain: self.codec_chain.clone(),
-            codec_options,
-            data_type: self.data_type.clone(),
-            fill_value: self.fill_value.clone(),
-        });
-
-        py.detach(move || {
-            // Phase 1: fetch + decode every chunk's subset into an owned
-            // `ArrayBytes`, in parallel across the tokio runtime's worker threads.
-            let decoded: Vec<(ChunkItem, ArrayBytes<'static>)> = block_on(async {
-                // Build the partial decoders (one per unique shard) in parallel.
-                let mut cache_tasks: JoinSet<
-                    PyResult<(StoreKey, Arc<dyn AsyncArrayPartialDecoderTraits>)>,
-                > = JoinSet::new();
-                for item in partial_chunk_items {
-                    let ctx = ctx.clone();
-                    cache_tasks.spawn(async move {
-                        let storage_handle = Arc::new(StorageHandle::new(ctx.store.clone()));
-                        let input_handle = Arc::new(AsyncStoragePartialDecoder::new(
-                            storage_handle,
-                            item.key.clone(),
-                        ));
-                        let partial_decoder = ctx
-                            .codec_chain
-                            .clone()
-                            .async_partial_decoder(
-                                input_handle,
-                                &item.shape,
-                                &ctx.data_type,
-                                &ctx.fill_value,
-                                &ctx.codec_options,
-                            )
+        chunk_descriptions
+            .into_iter()
+            .map(|item| {
+                let p = pipeline.clone();
+                let codec_options = codec_options.clone();
+                let partial_decoder = partial_decoders.get(&item.key).cloned();
+                pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                    let bytes = if let Some(cell) = partial_decoder {
+                        let partial_decoder = cell
+                            .get_or_try_init(|| async {
+                                let input_handle = Arc::new(AsyncStoragePartialDecoder::new(
+                                    Arc::new(StorageHandle::new(p.readable_store.clone())),
+                                    item.key.clone(),
+                                ));
+                                p.codec_chain
+                                    .clone()
+                                    .async_partial_decoder(
+                                        input_handle,
+                                        &item.shape,
+                                        &p.data_type,
+                                        &p.fill_value,
+                                        &codec_options,
+                                    )
+                                    .await
+                                    .map_codec_err()
+                            })
+                            .await?;
+                        partial_decoder
+                            .partial_decode(&item.chunk_subset, &codec_options)
                             .await
-                            .map_codec_err()?;
-                        Ok((item.key, partial_decoder))
-                    });
-                }
-                let mut partial_decoder_cache: HashMap<
-                    StoreKey,
-                    Arc<dyn AsyncArrayPartialDecoderTraits>,
-                > = HashMap::new();
-                while let Some(joined) = cache_tasks.join_next().await {
-                    let (key, decoder) = joined.map_py_err::<PyRuntimeError>()??;
-                    partial_decoder_cache.insert(key, decoder);
-                }
-
-                // One fetch task per chunk. Each returns owned bytes, so the task
-                // is `Send + 'static` and runs with real tokio parallelism.
-                let mut fetch_tasks: JoinSet<PyResult<(ChunkItem, ArrayBytes<'static>)>> =
-                    JoinSet::new();
-                for item in chunk_descriptions.iter() {
-                    let ctx = ctx.clone();
-                    let item = item.clone();
-                    let partial_decoder = partial_decoder_cache.get(&item.key).cloned();
-                    fetch_tasks.spawn(async move {
-                        let bytes: ArrayBytes<'static> = if is_whole_chunk(&item) {
-                            // See zarrs::array::Array::async_retrieve_chunk_opt
-                            match ctx
-                                .store
-                                .get(&item.key)
-                                .await
-                                .map_py_err::<PyRuntimeError>()?
-                            {
-                                Some(chunk_encoded) => {
-                                    let chunk_encoded: Vec<u8> = chunk_encoded.into();
-                                    ctx.codec_chain
-                                        .decode(
-                                            chunk_encoded.into(),
-                                            &item.shape,
-                                            &ctx.data_type,
-                                            &ctx.fill_value,
-                                            &ctx.codec_options,
-                                        )
-                                        .map_codec_err()?
-                                        .into_owned()
-                                }
-                                // Missing chunk: the subset is the fill value.
-                                None => ArrayBytes::new_fill_value(
-                                    &ctx.data_type,
-                                    item.num_elements,
-                                    &ctx.fill_value,
-                                )
-                                .map_py_err::<PyRuntimeError>()?
-                                .into_owned(),
-                            }
-                        } else {
-                            // See zarrs::array::Array::async_retrieve_chunk_subset_opt
-                            let partial_decoder = partial_decoder.ok_or_else(|| {
-                                PyRuntimeError::new_err(format!(
-                                    "Partial decoder not found for key: {}",
-                                    item.key
-                                ))
-                            })?;
-                            // `into_owned` here drops the borrow of the task-local
-                            // partial decoder so the bytes can leave the task.
-                            partial_decoder
-                                .partial_decode(&item.chunk_subset, &ctx.codec_options)
-                                .await
-                                .map_codec_err()?
-                                .into_owned()
-                        };
-                        Ok((item, bytes))
-                    });
-                }
-
-                let decoded = fetch_tasks
-                    .join_all()
-                    .await
-                    .into_iter()
-                    .collect::<Result<Vec<_>, _>>()?;
-                if decoded.len() != chunk_descriptions.len() {
-                    return Err(PyRuntimeError::new_err("Not all chunks were fetched."));
-                }
-                // Every index is produced exactly once by the loop above.
-                Ok::<_, PyErr>(decoded)
-            })?;
-
-            // Phase 2: copy each decoded subset into `value`. Synchronous, so the
-            // non-`'static` borrow of the output buffer is sound.
-            for (item, bytes) in decoded.into_iter() {
-                let mut output_view = unsafe {
-                    // SAFETY: chunks represent disjoint array subsets, so the
-                    // views never write overlapping output bytes.
-                    ArrayBytesFixedDisjointView::new(
-                        output,
-                        data_type_size,
-                        bytemuck::must_cast_slice(&item.array_shape),
-                        item.subset.clone(),
-                    )
-                    .map_py_err::<PyRuntimeError>()?
-                };
-                let bytes = bytes.into_fixed().map_py_err::<PyRuntimeError>()?;
-                output_view
-                    .copy_from_slice(&bytes)
-                    .map_py_err::<PyRuntimeError>()?;
-            }
-            Ok(())
-        })
+                            .map_codec_err()?
+                            .into_owned()
+                    } else {
+                        p.retrieve_chunk_bytes(&item, &codec_options).await?
+                    };
+                    // FIXME: only supports fixed length data types.
+                    let bytes = bytes.into_fixed().map_py_err::<PyTypeError>()?;
+                    Ok(DecodedBytes(bytes.into_owned()))
+                })
+            })
+            .collect()
     }
 
-    fn store_chunks_with_indices(
+    #[gen_stub(override_return_type(
+        type_repr = "collections.abc.Awaitable[None]",
+        imports = ("collections.abc")
+    ))]
+    fn store_chunks_with_indices<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         chunk_descriptions: Vec<ChunkItem>,
-        value: &Bound<'_, PyUntypedArray>,
+        value: &Bound<'py, PyUntypedArray>,
         write_empty_chunks: bool,
-    ) -> PyResult<()> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         // Fail before decoding anything; the write site checks again by construction.
         self.writable()?;
 
-        enum InputValue<'a> {
-            Array(ArrayBytes<'a>),
+        enum InputValue {
+            /// Address and length of `value`'s buffer, kept alive by `value_ref`.
+            Array(usize, usize),
             Constant(FillValue),
         }
 
         // Get input array
         let input_slice = CodecPipelineImpl::nparray_to_slice(value)?;
         let input = if value.ndim() > 0 {
-            // FIXME: Handle variable length data types, convert value to bytes and offsets
-            InputValue::Array(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
+            InputValue::Array(input_slice.as_ptr() as usize, input_slice.len())
         } else {
             InputValue::Constant(FillValue::new(input_slice.to_vec()))
         };
+        let value_ref = value.clone().unbind();
 
         // Adjust the concurrency based on the codec chain and the first chunk description
         let Some((chunk_concurrent_limit, mut codec_options)) =
             chunk_descriptions.get_chunk_concurrent_limit_and_codec_options(self)?
         else {
-            return Ok(());
+            return pyo3_async_runtimes::tokio::future_into_py(py, async { Ok(()) });
         };
         codec_options.set_store_empty_chunks(write_empty_chunks);
 
-        py.detach(move || {
-            block_on(async move {
-                let input = &input;
-                let codec_options = &codec_options;
-                stream::iter(chunk_descriptions.into_iter().map(Ok::<ChunkItem, PyErr>))
-                    .try_for_each_concurrent(chunk_concurrent_limit, move |item| async move {
-                        let chunk_subset_bytes = match input {
-                            InputValue::Array(input) => input
-                                .extract_array_subset(
-                                    &item.subset,
-                                    bytemuck::must_cast_slice(&item.array_shape),
-                                    &self.data_type,
-                                )
-                                .map_codec_err()?,
-                            InputValue::Constant(constant_value) => ArrayBytes::new_fill_value(
-                                &self.data_type,
-                                item.chunk_subset.num_elements(),
-                                constant_value,
+        let p = self.clone();
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
+            let _keep_alive = value_ref;
+            let p = &p;
+            let input = match input {
+                InputValue::Array(ptr, len) => {
+                    // SAFETY: `value_ref` keeps the array alive until this future
+                    // completes. As in the sync pipeline, the caller must not
+                    // mutate it while the write is in flight.
+                    // FIXME: Handle variable length data types, convert value to bytes and offsets
+                    let input_slice = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+                    Ok(ArrayBytes::new_flen(Cow::Borrowed(input_slice)))
+                }
+                InputValue::Constant(constant_value) => Err(constant_value),
+            };
+            let input = &input;
+            let codec_options = &codec_options;
+            stream::iter(chunk_descriptions.into_iter().map(Ok::<ChunkItem, PyErr>))
+                .try_for_each_concurrent(chunk_concurrent_limit, move |item| async move {
+                    let chunk_subset_bytes = match input {
+                        Ok(input) => input
+                            .extract_array_subset(
+                                &item.subset,
+                                bytemuck::must_cast_slice(&item.array_shape),
+                                &p.data_type,
                             )
-                            .map_py_err::<PyRuntimeError>()?,
-                        };
-                        self.store_chunk_subset_bytes(&item, chunk_subset_bytes, codec_options)
-                            .await
-                    })
-                    .await
-            })
+                            .map_codec_err()?,
+                        Err(constant_value) => ArrayBytes::new_fill_value(
+                            &p.data_type,
+                            item.chunk_subset.num_elements(),
+                            constant_value,
+                        )
+                        .map_py_err::<PyRuntimeError>()?,
+                    };
+                    p.store_chunk_subset_bytes(&item, chunk_subset_bytes, codec_options)
+                        .await
+                })
+                .await
         })
     }
 }

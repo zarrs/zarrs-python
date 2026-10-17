@@ -2,21 +2,12 @@
 # ruff: noqa: E501, F401
 
 import builtins
+import collections.abc
 import typing
 
+import numpy
 import numpy.typing
 import zarr.abc.store
-
-@typing.final
-class ChunkItem:
-    def __new__(
-        cls,
-        key: builtins.str,
-        chunk_subset: typing.Sequence[slice],
-        chunk_shape: typing.Sequence[builtins.int],
-        subset: typing.Sequence[slice],
-        shape: typing.Sequence[builtins.int],
-    ) -> ChunkItem: ...
 
 @typing.final
 class AsyncCodecPipelineImpl:
@@ -32,17 +23,40 @@ class AsyncCodecPipelineImpl:
         direct_io: builtins.bool = False,
         file_handle_cache_size: builtins.int = 0,
     ) -> AsyncCodecPipelineImpl: ...
-    def retrieve_chunks_and_apply_index(
-        self,
-        chunk_descriptions: typing.Sequence[ChunkItem],
-        value: numpy.typing.NDArray[typing.Any],
-    ) -> None: ...
+    def retrieve_chunks(
+        self, chunk_descriptions: typing.Sequence[ChunkItem]
+    ) -> builtins.list[collections.abc.Awaitable[numpy.typing.NDArray[numpy.uint8]]]:
+        r"""
+        One awaitable per chunk, each resolving to that chunk's decoded subset as a
+        flat `uint8` array; the caller copies it into the output.
+        """
     def store_chunks_with_indices(
         self,
         chunk_descriptions: typing.Sequence[ChunkItem],
         value: numpy.typing.NDArray[typing.Any],
         write_empty_chunks: builtins.bool,
-    ) -> None: ...
+    ) -> collections.abc.Awaitable[None]: ...
+
+@typing.final
+class ChunkItem:
+    @property
+    def io_shape(self) -> builtins.list[builtins.int]:
+        r"""
+        The shape of the input/output array, with dropped axes reinstated as 1.
+        """
+    @property
+    def io_selection(self) -> builtins.list[slice]:
+        r"""
+        The selection of this chunk's subset within an array of [`Self::io_shape`].
+        """
+    def __new__(
+        cls,
+        key: builtins.str,
+        chunk_subset: typing.Sequence[slice],
+        chunk_shape: typing.Sequence[builtins.int],
+        subset: typing.Sequence[slice],
+        shape: typing.Sequence[builtins.int],
+    ) -> ChunkItem: ...
 
 @typing.final
 class CodecPipelineImpl:
