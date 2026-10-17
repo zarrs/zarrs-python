@@ -7,12 +7,9 @@ use pyo3::{
     types::{PyAnyMethods, PyStringMethods, PyTypeMethods},
 };
 use pyo3_object_store::PyExternalObjectStore;
-use zarrs::storage::{
-    AsyncReadableWritableListableStorage, ReadableWritableListableStorage,
-    storage_adapter::async_to_sync::AsyncToSyncStorageAdapter,
-};
+use zarrs::storage::{AsyncReadableWritableListableStorage, ReadableWritableListableStorage};
 
-use crate::{runtime::tokio_block_on, utils::PyErrExt};
+use crate::utils::PyErrExt;
 
 mod filesystem;
 mod http;
@@ -119,8 +116,15 @@ impl TryFrom<&StoreConfig> for ReadableWritableListableStorage {
     fn try_from(value: &StoreConfig) -> Result<Self, Self::Error> {
         match &value.kind {
             StoreKind::Filesystem(config) => config.try_into(),
-            StoreKind::Http(config) => config.try_into(),
-            StoreKind::ObStore(config) => config.try_into(),
+            // HTTP and object-store backends are asynchronous and are routed to the
+            // asynchronous pipeline instead (see `python/zarrs/pipeline.py`).
+            StoreKind::Http(_) | StoreKind::ObStore(_) => {
+                Err(PyErr::new::<PyNotImplementedError, _>(
+                    "the synchronous codec pipeline only supports the filesystem store; \
+                     use the asynchronous pipeline instead"
+                        .to_string(),
+                ))
+            }
         }
     }
 }
@@ -132,10 +136,7 @@ impl TryFrom<&StoreConfig> for AsyncReadableWritableListableStorage {
         match &value.kind {
             // The filesystem store (`zarrs::filesystem::FilesystemStore`) only
             // implements the synchronous storage traits, so it cannot back the
-            // asynchronous pipeline. Object-store and HTTP backends are natively
-            // asynchronous and are used directly (i.e. *without* the
-            // `AsyncToSyncStorageAdapter` that the synchronous pipeline wraps
-            // around them).
+            // asynchronous pipeline.
             StoreKind::Filesystem(_) => Err(PyErr::new::<PyNotImplementedError, _>(
                 "the asynchronous codec pipeline does not support the filesystem store \
                  (zarrs's FilesystemStore is synchronous); use the synchronous pipeline instead"
@@ -145,17 +146,6 @@ impl TryFrom<&StoreConfig> for AsyncReadableWritableListableStorage {
             StoreKind::ObStore(config) => config.try_into(),
         }
     }
-}
-
-fn opendal_builder_to_sync_store<B: Builder>(
-    builder: B,
-) -> PyResult<ReadableWritableListableStorage> {
-    let operator = opendal::Operator::new(builder)
-        .map_py_err::<PyValueError>()?
-        .finish();
-    let store = Arc::new(zarrs_opendal::AsyncOpendalStore::new(operator));
-    let store = Arc::new(AsyncToSyncStorageAdapter::new(store, tokio_block_on()));
-    Ok(store)
 }
 
 fn opendal_builder_to_async_store<B: Builder>(

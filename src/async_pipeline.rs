@@ -2,8 +2,7 @@
 //!
 //! [`AsyncCodecPipelineImpl`] mirrors [`crate::CodecPipelineImpl`], but holds an
 //! [`AsyncReadableWritableListableStorage`] and talks to it with `async`
-//! `get`/`set`/`erase` calls instead of going through the
-//! `AsyncToSyncStorageAdapter`.
+//! `get`/`set`/`erase` calls.
 //!
 //! Its methods return Python awaitables (via [`pyo3_async_runtimes`]) driven on
 //! the shared Tokio runtime, so the asyncio event loop is never blocked.

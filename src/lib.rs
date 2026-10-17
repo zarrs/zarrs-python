@@ -15,7 +15,6 @@ use zarrs::plugin::ZarrVersion;
 mod async_pipeline;
 mod chunk_item;
 mod concurrency;
-mod runtime;
 mod store;
 mod sync_pipeline;
 #[cfg(test)]
