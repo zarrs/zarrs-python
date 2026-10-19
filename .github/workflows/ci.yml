@@ -16,12 +16,13 @@ env:
 
 jobs:
   build_and_test:
-    name: build and test
+    name: build and test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
         rust_toolchain: ["stable"]  # "nightly"
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
