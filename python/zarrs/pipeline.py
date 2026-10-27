@@ -12,9 +12,17 @@ from zarr.codecs._v2 import V2Codec
 from zarr.core import BatchedCodecPipeline
 from zarr.core.config import config
 from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.storage import FsspecStore
+
+try:
+    from zarr.storage import ObjectStore
+
+    _ASYNC_STORES: tuple[type, ...] = (FsspecStore, ObjectStore)
+except ImportError:
+    _ASYNC_STORES = (FsspecStore,)
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Awaitable, Iterable, Iterator
     from typing import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
@@ -24,7 +32,7 @@ if TYPE_CHECKING:
     from zarr.core.indexing import SelectorTuple
     from zarr.dtype import ZDType
 
-from ._internal import CodecPipelineImpl
+from ._internal import AsyncCodecPipelineImpl, ChunkItem, CodecPipelineImpl
 from .utils import (
     DiscontiguousArrayError,
     FillValueNoneError,
@@ -41,16 +49,27 @@ class UnsupportedMetadataError(Exception):
     pass
 
 
+def _supports_async_pipeline(store: Store) -> bool:
+    # Async-backed stores issue many requests concurrently instead of blocking a
+    # worker thread per request; everything else (e.g. ``LocalStore``) uses the
+    # synchronous pipeline. Mirrors the stores accepted by the Rust
+    # ``AsyncReadableWritableListableStorage`` conversion (see ``src/store.rs``).
+    return isinstance(store, _ASYNC_STORES)
+
+
 def get_codec_pipeline_impl(
     metadata: ArrayMetadata, store: Store, *, strict: bool
-) -> CodecPipelineImpl | None:
+) -> CodecPipelineImpl | AsyncCodecPipelineImpl | None:
+    pipeline_class = (
+        AsyncCodecPipelineImpl if _supports_async_pipeline(store) else CodecPipelineImpl
+    )
     try:
         array_metadata_json = json.dumps(metadata.to_dict())
         # Maintain old behavior: https://github.com/zarrs/zarrs-python/tree/b36ba797cafec77f5f41a25316be02c718a2b4f8?tab=readme-ov-file#configuration
         validate_checksums = config.get("codec_pipeline.validate_checksums", True)
         if validate_checksums is None:
             validate_checksums = True
-        return CodecPipelineImpl(
+        return pipeline_class(
             array_metadata_json,
             store_config=store,
             validate_checksums=validate_checksums,
@@ -104,7 +123,7 @@ def array_metadata_to_codecs(metadata: ArrayMetadata) -> list[Codec]:
 class ZarrsCodecPipeline(CodecPipeline):
     metadata: ArrayMetadata
     store: Store
-    impl: CodecPipelineImpl | None
+    impl: CodecPipelineImpl | AsyncCodecPipelineImpl | None
     python_impl: BatchedCodecPipeline | None
 
     def __getstate__(self) -> ZarrsCodecPipelineState:
@@ -167,6 +186,22 @@ class ZarrsCodecPipeline(CodecPipeline):
     ) -> Iterable[Buffer | None]:
         raise NotImplementedError("encode")
 
+    async def _retrieve_async(
+        self, impl: AsyncCodecPipelineImpl, chunks: list[ChunkItem], out: np.ndarray
+    ) -> None:
+        # Rust decodes each chunk on its tokio runtime; the copy into ``out``
+        # happens here as each one lands, so decoded chunks are freed eagerly.
+        if not out.flags.c_contiguous:
+            raise ValueError("output array must be a C contiguous array")
+
+        async def fill(chunk: ChunkItem, decoded: Awaitable[np.ndarray]) -> None:
+            dst = out.reshape(chunk.io_shape)[tuple(chunk.io_selection)]
+            dst[...] = (await decoded).view(out.dtype).reshape(dst.shape)
+
+        await asyncio.gather(
+            *map(fill, chunks, impl.retrieve_chunks(chunks)),
+        )
+
     async def read(
         self,
         batch_info: Iterable[
@@ -198,11 +233,16 @@ class ZarrsCodecPipeline(CodecPipeline):
             return None
         else:
             out: NDArrayLike = out.as_ndarray_like()
-            await asyncio.to_thread(
-                self.impl.retrieve_chunks_and_apply_index,
-                chunks_desc.chunk_info_with_indices,
-                out,
-            )
+            if isinstance(self.impl, AsyncCodecPipelineImpl):
+                await self._retrieve_async(
+                    self.impl, chunks_desc.chunk_info_with_indices, out
+                )
+            else:
+                await asyncio.to_thread(
+                    self.impl.retrieve_chunks_and_apply_index,
+                    chunks_desc.chunk_info_with_indices,
+                    out,
+                )
             return None
 
     async def write(
@@ -240,12 +280,15 @@ class ZarrsCodecPipeline(CodecPipeline):
                 )
             elif not value_np.flags.c_contiguous:
                 value_np = np.ascontiguousarray(value_np)
-            await asyncio.to_thread(
-                self.impl.store_chunks_with_indices,
+            args = (
                 chunks_desc.chunk_info_with_indices,
                 value_np,
                 chunks_desc.write_empty_chunks,
             )
+            if isinstance(self.impl, AsyncCodecPipelineImpl):
+                await self.impl.store_chunks_with_indices(*args)
+            else:
+                await asyncio.to_thread(self.impl.store_chunks_with_indices, *args)
             return None
 
     def _raise_error_on_unsupported_batch_dtype(
