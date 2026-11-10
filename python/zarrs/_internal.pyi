@@ -2,13 +2,53 @@
 # ruff: noqa: E501, F401
 
 import builtins
+import collections.abc
 import typing
 
+import numpy
 import numpy.typing
 import zarr.abc.store
 
 @typing.final
+class AsyncCodecPipelineImpl:
+    def __new__(
+        cls,
+        array_metadata: builtins.str,
+        store_config: zarr.abc.store.Store,
+        *,
+        validate_checksums: builtins.bool = False,
+        chunk_concurrent_minimum: builtins.int | None = None,
+        chunk_concurrent_maximum: builtins.int | None = None,
+        num_threads: builtins.int | None = None,
+        direct_io: builtins.bool = False,
+        file_handle_cache_size: builtins.int = 0,
+    ) -> AsyncCodecPipelineImpl: ...
+    def retrieve_chunks(
+        self, chunk_descriptions: typing.Sequence[ChunkItem]
+    ) -> builtins.list[collections.abc.Awaitable[numpy.typing.NDArray[numpy.uint8]]]:
+        r"""
+        One awaitable per chunk, each resolving to that chunk's decoded subset as a
+        flat `uint8` array; the caller copies it into the output.
+        """
+    def store_chunks_with_indices(
+        self,
+        chunk_descriptions: typing.Sequence[ChunkItem],
+        value: numpy.typing.NDArray[typing.Any],
+        write_empty_chunks: builtins.bool,
+    ) -> collections.abc.Awaitable[None]: ...
+
+@typing.final
 class ChunkItem:
+    @property
+    def io_shape(self) -> builtins.list[builtins.int]:
+        r"""
+        The shape of the input/output array, with dropped axes reinstated as 1.
+        """
+    @property
+    def io_selection(self) -> builtins.list[slice]:
+        r"""
+        The selection of this chunk's subset within an array of [`Self::io_shape`].
+        """
     def __new__(
         cls,
         key: builtins.str,

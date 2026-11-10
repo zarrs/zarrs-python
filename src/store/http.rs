@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use pyo3::{Bound, PyAny, PyErr, PyResult, exceptions::PyValueError};
-use zarrs::storage::ReadableWritableListableStorage;
+use zarrs::storage::AsyncReadableWritableListableStorage;
 
-use super::opendal_builder_to_sync_store;
+use super::opendal_builder_to_async_store;
 
 #[derive(Debug, Clone)]
 pub struct HttpStoreConfig {
@@ -32,11 +32,11 @@ impl HttpStoreConfig {
     }
 }
 
-impl TryInto<ReadableWritableListableStorage> for &HttpStoreConfig {
+impl TryInto<AsyncReadableWritableListableStorage> for &HttpStoreConfig {
     type Error = PyErr;
 
-    fn try_into(self) -> Result<ReadableWritableListableStorage, Self::Error> {
+    fn try_into(self) -> Result<AsyncReadableWritableListableStorage, Self::Error> {
         let builder = opendal::services::Http::default().endpoint(&self.endpoint);
-        opendal_builder_to_sync_store(builder)
+        opendal_builder_to_async_store(builder)
     }
 }
