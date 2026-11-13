@@ -16,12 +16,13 @@ env:
 
 jobs:
   build_and_test:
-    name: build and test (${{ matrix.os }})
+    name: build and test (${{ matrix.os }}, zarr ${{ matrix.zarr_version }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm]
         rust_toolchain: ["stable"]  # "nightly"
+        zarr_version: ["released", "main"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -53,6 +54,12 @@ jobs:
       - name: Install python deps + Build
         run: |
           uv pip install --system -e . --group dev --verbose
+
+      - name: Install zarr-python from main
+        if: matrix.zarr_version == 'main'
+        run: |
+          uv pip install --system --reinstall-package zarr \
+            "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main"
 
       - name: Python Tests
         run: pytest -n auto
