@@ -3,7 +3,7 @@ use std::fmt::Display;
 use pyo3::{PyErr, PyResult, PyTypeInfo};
 use zarrs::array::CodecError;
 
-use crate::ChunkItem;
+use crate::chunk_item::ChunkItem;
 
 pub(crate) trait PyErrExt<T> {
     fn map_py_err<PE: PyTypeInfo>(self) -> PyResult<T>;
