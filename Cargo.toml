@@ -10,7 +10,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 pyo3 = { version = "0.27.1", features = ["abi3-py311"] }
-zarrs = { version = "0.23.6", features = ["async", "zlib", "pcodec", "bz2"] }
+# ON THE 0.24 RELEASE: replace with `zarrs = { version = "0.24", features = [...] }` AND
+# delete the [patch.crates-io] block below, in the SAME commit -- see the note there for why
+# doing only one of the two builds silently against the wrong `zarrs_storage`. src/ already
+# compiles against the 0.24 API.
+zarrs = { git = "https://github.com/zarrs/zarrs", rev = "c17fe374b1fa7df8373b6c6f6eb3f1d33c3a3bd7", features = ["async", "zlib", "pcodec", "bz2"] }
 rayon_iter_concurrent_limit = "0.2.0"
 rayon = "1.10.0"
 # fix for https://stackoverflow.com/questions/76593417/package-openssl-was-not-found-in-the-pkg-config-search-path
@@ -29,3 +33,16 @@ zarrs_object_store = "0.5.0" # object_store 0.12
 
 [profile.release]
 lto = true
+
+# ON THE 0.24 RELEASE: delete this, in the same commit that drops the git rev above.
+#
+# `zarrs_opendal` and `zarrs_object_store` do not depend on `zarrs` at all -- only on
+# `zarrs_storage`, from crates.io. While `zarrs` comes from git that is a SECOND copy of
+# `zarrs_storage`, so there are two `AsyncReadableStorageTraits` and the bounds on the async
+# stores cannot be satisfied. Patching the one crate to the same rev collapses the graph.
+#
+# Drop the git rev above WITHOUT deleting this and the build is silently wrong: released
+# `zarrs 0.24` compiled against an unpublished `zarrs_storage`. Nothing warns, because the
+# git copy carries the same version number as the published one with different contents.
+[patch.crates-io]
+zarrs_storage = { git = "https://github.com/zarrs/zarrs", rev = "c17fe374b1fa7df8373b6c6f6eb3f1d33c3a3bd7" }
