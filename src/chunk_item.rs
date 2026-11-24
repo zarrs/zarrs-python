@@ -1,7 +1,7 @@
 use std::num::NonZeroU64;
 
 use pyo3::{
-    Bound, PyErr, PyResult,
+    Bound, PyErr, PyResult, Python,
     exceptions::{PyIndexError, PyValueError},
     pyclass, pymethods,
     types::{PySlice, PySliceMethods as _},
@@ -68,6 +68,29 @@ impl ChunkItem {
             num_elements,
             array_shape: shape_nonzero_u64,
         })
+    }
+
+    /// The shape of the input/output array, with dropped axes reinstated as 1.
+    #[getter]
+    fn io_shape(&self) -> Vec<u64> {
+        self.array_shape.iter().map(|d| d.get()).collect()
+    }
+
+    /// The selection of this chunk's subset within an array of [`Self::io_shape`].
+    #[getter]
+    fn io_selection<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PySlice>>> {
+        self.subset
+            .to_ranges()
+            .into_iter()
+            .map(|r| {
+                Ok(PySlice::new(
+                    py,
+                    isize::try_from(r.start)?,
+                    isize::try_from(r.end)?,
+                    1,
+                ))
+            })
+            .collect()
     }
 }
 
